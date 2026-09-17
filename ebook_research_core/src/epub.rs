@@ -16,6 +16,8 @@ use std::io::Read;
 
 pub struct ParsedChapter {
     pub file_name: String,
+    /// First `<h1>`/`<h2>` text, falling back to `file_name`.
+    pub title: String,
     /// (char_start, char_end, text) within this chapter's joined plain text
     pub paragraphs: Vec<(usize, usize, String)>,
 }
@@ -74,14 +76,20 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
             s
         };
 
-        let paragraph_texts = extract_paragraphs(&xhtml);
-        if paragraph_texts.is_empty() {
+        let blocks = extract_paragraphs(&xhtml);
+        if blocks.is_empty() {
             continue;
         }
 
+        let title = blocks
+            .iter()
+            .find(|(is_heading, _)| *is_heading)
+            .map(|(_, text)| text.clone())
+            .unwrap_or_else(|| full_path.clone());
+
         let mut paragraphs = Vec::new();
         let mut cursor = 0usize;
-        for text in paragraph_texts {
+        for (_, text) in blocks {
             let start = cursor;
             let end = start + text.chars().count();
             cursor = end + 2; // account for the "\n\n" joiner, matching the Python prototype
@@ -90,6 +98,7 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
 
         chapters.push(ParsedChapter {
             file_name: full_path,
+            title,
             paragraphs,
         });
     }
@@ -203,17 +212,19 @@ fn local_name(tag: &[u8]) -> &str {
     s.rsplit(':').next().unwrap_or(s)
 }
 
-/// Walks a chapter's XHTML and returns one string per block-level element,
-/// with inline whitespace normalized. This mirrors the Python prototype's
-/// BeautifulSoup-based extraction but via a streaming XML parser.
-fn extract_paragraphs(xhtml: &str) -> Vec<String> {
+/// Walks a chapter's XHTML and returns `(is_heading, text)` per block-level
+/// element, with inline whitespace normalized. `is_heading` is true only for
+/// `<h1>`/`<h2>`. This mirrors the Python prototype's BeautifulSoup-based
+/// extraction but via a streaming XML parser.
+fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
     let mut reader = Reader::from_str(xhtml);
     reader.trim_text(false);
     reader.check_end_names(false); // real-world XHTML is sometimes malformed
     let mut buf = Vec::new();
 
     let mut paragraphs = Vec::new();
-    let mut depth_stack: Vec<bool> = Vec::new(); // true = inside a block tag we care about
+    // (is_block, is_heading) per open tag
+    let mut depth_stack: Vec<(bool, bool)> = Vec::new();
     let mut current = String::new();
 
     loop {
@@ -224,14 +235,14 @@ fn extract_paragraphs(xhtml: &str) -> Vec<String> {
                 if is_block {
                     current.clear();
                 }
-                depth_stack.push(is_block);
+                depth_stack.push((is_block, local == "h1" || local == "h2"));
             }
             Ok(Event::Text(e)) => {
                 // Check the whole stack, not just the top: real-world XHTML
                 // wraps paragraph text in inline tags (`<span>`, `<a>`, `<em>`,
                 // ...), so the innermost open tag is rarely the block tag
                 // itself even when we're still nested inside one.
-                if depth_stack.iter().any(|&is_block| is_block) {
+                if depth_stack.iter().any(|&(is_block, _)| is_block) {
                     if let Ok(t) = e.unescape() {
                         current.push_str(&t);
                         current.push(' ');
@@ -239,11 +250,11 @@ fn extract_paragraphs(xhtml: &str) -> Vec<String> {
                 }
             }
             Ok(Event::End(_)) => {
-                if let Some(was_block) = depth_stack.pop() {
+                if let Some((was_block, was_heading)) = depth_stack.pop() {
                     if was_block {
                         let cleaned = normalize_whitespace(&current);
                         if !cleaned.is_empty() {
-                            paragraphs.push(cleaned);
+                            paragraphs.push((was_heading, cleaned));
                         }
                         current.clear();
                     }
@@ -261,4 +272,31 @@ fn extract_paragraphs(xhtml: &str) -> Vec<String> {
 
 fn normalize_whitespace(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_paragraphs;
+
+    #[test]
+    fn flags_h1_and_h2_as_headings() {
+        let blocks = extract_paragraphs(
+            "<body><h1>Title <em>One</em></h1><p>x</p><h2>Sub</h2><h3>Minor</h3></body>",
+        );
+        assert_eq!(
+            blocks,
+            vec![
+                (true, "Title One".to_string()),
+                (false, "x".to_string()),
+                (true, "Sub".to_string()),
+                (false, "Minor".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn no_headings_means_no_title_candidate() {
+        let blocks = extract_paragraphs("<body><p>only text</p><li>item</li></body>");
+        assert!(blocks.iter().all(|(is_heading, _)| !is_heading));
+    }
 }

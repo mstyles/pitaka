@@ -19,21 +19,31 @@ members, sharing one `Cargo.lock`/`target/`.
 - `ebook_research_core/src/epub.rs` — unzips an EPUB, walks
   `META-INF/container.xml` → the OPF manifest/spine → each chapter's
   XHTML, and splits it into paragraphs (`p`, `h1`-`h6`, `li`,
-  `blockquote`) with char offsets.
+  `blockquote`) with char offsets. Each chapter's title is its first
+  `<h1>`/`<h2>`, falling back to the internal file path.
 - `ebook_research_core/src/db.rs` — loads `schema.sql` into SQLite via
-  `rusqlite`, inserts parsed books, and runs FTS5 full-text search with
-  ranked, highlighted snippets.
+  `rusqlite`, inserts parsed books, runs FTS5 full-text search with
+  ranked, highlighted snippets, and serves the reader's read queries
+  (`list_books`, `get_book_chapters`, `get_chapter_content`).
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, loads it into a fresh DB, and asserts search returns
-  correct, ranked hits. `cargo test -p ebook_research_core` passes.
-- The frontend (`src/App.tsx`) typechecks (`npx tsc --noEmit`) and wires
-  up both commands: a native file-picker → `invoke('import_book', {path})`,
-  and a search box → `invoke('search_library', {query})`, rendering
-  highlighted snippets.
+  correct, ranked hits, chapter titles round-trip, and search hits point
+  at the right chapter content. `cargo test -p ebook_research_core` passes.
+- The frontend typechecks (`npx tsc --noEmit`):
+  - `src/LibraryView.tsx` — native file-picker → `import_book`, a book
+    list from `list_books`, and a search box → `search_library` rendering
+    highlighted snippets.
+  - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
+    sidebar. Clicking a book opens it at the first chapter; clicking a
+    search hit opens its chapter, centres the matching paragraph and
+    briefly flashes it.
+  - The reader flow was checked in a browser against mocked `invoke`
+    responses, not against a real library DB.
 
-`src-tauri` has **not** been build/run-verified end to end yet — that
-needs the Linux system webview libs (webkit2gtk, dbus, appindicator,
-etc.), which aren't installed as of this commit. Run:
+`src-tauri` builds and `npm run tauri dev` launches the app, but the UI
+hasn't been clicked through end to end inside the Tauri window yet. The
+build needs the Linux system webview libs (webkit2gtk, dbus,
+appindicator, etc.):
 
 ```
 sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev \
@@ -41,7 +51,7 @@ sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev \
   libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
 ```
 
-then `npm run tauri dev` to confirm the shell actually launches.
+then `npm run tauri dev` to launch the app.
 
 ## Project structure
 
@@ -57,8 +67,13 @@ pitaka/
 │   └── src/
 │       ├── main.rs
 │       ├── lib.rs                <- registers commands + plugins
-│       └── commands.rs           <- import_book / search_library
+│       └── commands.rs           <- import_book / search_library / list_books /
+│                                    get_book_chapters / get_chapter_content
 ├── src/                         <- React + TS frontend
+│   ├── App.tsx                  <- switches between library and reader
+│   ├── LibraryView.tsx          <- import, book list, search
+│   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
+│   └── types.ts                 <- TS mirrors of the Rust command types
 ├── schema.sql
 └── package.json
 ```
@@ -77,9 +92,12 @@ pitaka/
    top-level children instead of tracking a flat depth stack once you
    hit this.
 2. No distinct handling of footnotes/endnotes.
-3. Chapter "titles" are just the internal file path — pull the real
-   heading text from the first `<h1>`/`<h2>` for display purposes.
-4. Images, tables, and other non-text content are silently dropped.
+3. Chapter titles come from the first `<h1>`/`<h2>`, but there's no
+   migration: books imported before that change keep file-path titles
+   until re-imported. Spine items like `nav.xhtml` also show up as
+   chapters in the reader.
+4. Images, tables, and other non-text content are silently dropped, and
+   formatting is lost — the reader renders every block as a plain `<p>`.
 5. No de-dup/re-index logic: importing the same file twice creates a
    second `books` row. Check `file_hash` against existing rows first.
 6. `extract_paragraphs` tolerates malformed XHTML by bailing out on the

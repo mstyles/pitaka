@@ -3,7 +3,9 @@
 //! unit/integration tested there. This file just adapts it to Tauri's
 //! command/state conventions.
 
-use ebook_research_core::{db, open_db, parse_epub, SearchResult};
+use ebook_research_core::{
+    db, open_db, parse_epub, BookSummary, ChapterContent, ChapterSummary, SearchResult,
+};
 use rusqlite::Connection;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
@@ -48,6 +50,26 @@ pub fn import_book(path: String, state: State<AppState>) -> Result<i64, String> 
 pub fn search_library(query: String, state: State<AppState>) -> Result<Vec<SearchResult>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::search(&conn, &query, 50).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_books(state: State<AppState>) -> Result<Vec<BookSummary>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_books(&conn).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("get_book_chapters", { bookId: 1 })`
+#[tauri::command]
+pub fn get_book_chapters(book_id: i64, state: State<AppState>) -> Result<Vec<ChapterSummary>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_book_chapters(&conn, book_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("get_chapter_content", { chapterId: 1 })`
+#[tauri::command]
+pub fn get_chapter_content(chapter_id: i64, state: State<AppState>) -> Result<ChapterContent, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_chapter_content(&conn, chapter_id).map_err(|e| e.to_string())
 }
 
 pub fn register(app: &mut tauri::App) {
