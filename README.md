@@ -95,8 +95,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
   but `user_version = 0`; `open_db` marks them as version 1 first.
-- `rusqlite_migration` is pinned to `~1.2` because 1.3+ needs a newer
-  `rusqlite`. Bump both together.
+- `rusqlite` is a dependency of both `ebook_research_core` and `src-tauri`
+  (which holds the core crate's `Connection`), so bump them together, and
+  keep `rusqlite_migration` on the release built for that `rusqlite`.
 
 ## Setup steps
 
