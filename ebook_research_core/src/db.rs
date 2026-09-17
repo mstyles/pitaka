@@ -1,6 +1,6 @@
-use crate::epub::ParsedBook;
-use anyhow::Result;
-use rusqlite::{params, Connection};
+use crate::epub::{parse_epub, ParsedBook};
+use anyhow::{bail, Result};
+use rusqlite::{params, Connection, OptionalExtension};
 use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -44,26 +44,70 @@ fn file_hash(path: &str) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Inserts a parsed book, its chapters, and its paragraphs. Returns the new book_id.
-pub fn load_book(conn: &Connection, epub_path: &str, parsed: &ParsedBook) -> Result<i64> {
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct ImportOutcome {
+    pub book_id: i64,
+    /// True if a book with identical file contents was already in the
+    /// library (from any path), in which case nothing was imported.
+    pub already_imported: bool,
+}
+
+/// Imports an EPUB unless a book with the same file contents is already in
+/// the library. The file is hashed before it's parsed, so duplicates are
+/// cheap to skip.
+pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutcome> {
     let hash = file_hash(epub_path)?;
 
-    conn.execute(
+    let existing: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM books WHERE file_hash = ?1 ORDER BY id LIMIT 1",
+            params![hash],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(book_id) = existing {
+        return Ok(ImportOutcome { book_id, already_imported: true });
+    }
+
+    let path_taken: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM books WHERE file_path = ?1)",
+        params![epub_path],
+        |row| row.get(0),
+    )?;
+    if path_taken {
+        bail!(
+            "{epub_path} is already in the library, but the file has changed since it was \
+             imported. Re-importing a changed file isn't supported yet."
+        );
+    }
+
+    let parsed = parse_epub(epub_path)?;
+    let book_id = load_book(conn, epub_path, &hash, &parsed)?;
+    Ok(ImportOutcome { book_id, already_imported: false })
+}
+
+/// Inserts a parsed book, its chapters, and its paragraphs in one
+/// transaction, so a failure part-way leaves nothing behind. Returns the new
+/// book_id.
+fn load_book(conn: &mut Connection, epub_path: &str, hash: &str, parsed: &ParsedBook) -> Result<i64> {
+    let tx = conn.transaction()?;
+
+    tx.execute(
         "INSERT INTO books (file_path, file_hash, title, author, format, last_indexed_at)
          VALUES (?1, ?2, ?3, ?4, 'epub', datetime('now'))",
         params![epub_path, hash, parsed.title, parsed.author],
     )?;
-    let book_id = conn.last_insert_rowid();
+    let book_id = tx.last_insert_rowid();
 
     for (chapter_idx, chapter) in parsed.chapters.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "INSERT INTO chapters (book_id, idx, title) VALUES (?1, ?2, ?3)",
             params![book_id, chapter_idx as i64, chapter.title],
         )?;
-        let chapter_id = conn.last_insert_rowid();
+        let chapter_id = tx.last_insert_rowid();
 
         for (block_idx, (start, end, text)) in chapter.paragraphs.iter().enumerate() {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO content_blocks
                  (book_id, chapter_id, block_idx, char_start, char_end, text)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -79,6 +123,7 @@ pub fn load_book(conn: &Connection, epub_path: &str, parsed: &ParsedBook) -> Res
         }
     }
 
+    tx.commit()?;
     Ok(book_id)
 }
 
