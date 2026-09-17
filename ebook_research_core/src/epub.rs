@@ -29,7 +29,7 @@ pub struct ParsedBook {
 }
 
 const BLOCK_TAGS: &[&str] = &[
-    "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote",
+    "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote",
 ];
 
 pub fn parse_epub(path: &str) -> Result<ParsedBook> {
@@ -233,6 +233,17 @@ fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
                 let local = local_name(e.name().as_ref()).to_string();
                 let is_block = BLOCK_TAGS.contains(&local.as_str());
                 if is_block {
+                    // Emit any text the enclosing block collected before this
+                    // nested one opened (e.g. `<div>intro<div>...</div></div>`)
+                    // rather than dropping it.
+                    if let Some(&(_, parent_heading)) =
+                        depth_stack.iter().rev().find(|&&(b, _)| b)
+                    {
+                        let cleaned = normalize_whitespace(&current);
+                        if !cleaned.is_empty() {
+                            paragraphs.push((parent_heading, cleaned));
+                        }
+                    }
                     current.clear();
                 }
                 depth_stack.push((is_block, local == "h1" || local == "h2"));
@@ -291,6 +302,20 @@ mod tests {
                 (true, "Sub".to_string()),
                 (false, "Minor".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn div_based_paragraphs_are_extracted() {
+        let blocks = extract_paragraphs(
+            "<body><div class=\"tx\">First <i>para</i> here</div>\
+             <div class=\"atx1\"><div class=\"tx1\">Nested<br/>verse</div></div>\
+             <div>Intro <div>inner</div> tail</div></body>",
+        );
+        let texts: Vec<_> = blocks.into_iter().map(|(_, t)| t).collect();
+        assert_eq!(
+            texts,
+            vec!["First para here", "Nested verse", "Intro", "inner", "tail"]
         );
     }
 
