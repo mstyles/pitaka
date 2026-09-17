@@ -128,8 +128,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 4. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
 5. No re-index logic: if a book's file changes after it was imported,
-   importing it again from the same path fails with an error, and a
-   changed copy at a new path is added as a separate book.
+   importing it again from the same path fails with an error (remove the
+   book first, then import it), and a changed copy at a new path is added
+   as a separate book.
 6. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
    first parse error rather than trying to recover — real-world EPUBs
    occasionally have genuinely broken markup, so you may want a
@@ -139,9 +140,6 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    split across inline tags gains spaces that weren't there. Drop caps
    like `<b>B</b>EFORE` become "B EFORE", which a search for "before"
    won't match, and the reader shows `(<i>dhatu</i>)` as "( dhatu )".
-8. There's no way to delete a book. Imports are de-duped by file hash, so
-   a book imported with a parser bug can't be re-imported after the fix
-   without removing its rows from the database by hand.
 
 ## Roadmap
 
@@ -157,6 +155,7 @@ Done:
 - [x] De-dup imports by `file_hash` instead of adding a second `books`
       row
 - [x] Import paragraphs from books that use `<div>` instead of `<p>`
+- [x] Remove a book from the library, so it can be re-imported
 
 Next up (fixes for the known limitations above):
 
@@ -165,8 +164,6 @@ Next up (fixes for the known limitations above):
 - [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 6)
-- [ ] Delete a book from the library, so it can be re-imported
-      (limitation 8)
 
 Later:
 

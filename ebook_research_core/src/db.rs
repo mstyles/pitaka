@@ -77,7 +77,7 @@ pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutco
     if path_taken {
         bail!(
             "{epub_path} is already in the library, but the file has changed since it was \
-             imported. Re-importing a changed file isn't supported yet."
+             imported. Remove the book from the library, then import it again."
         );
     }
 
@@ -125,6 +125,19 @@ fn load_book(conn: &mut Connection, epub_path: &str, hash: &str, parsed: &Parsed
 
     tx.commit()?;
     Ok(book_id)
+}
+
+/// Removes a book and everything that belongs to it from the library. The
+/// EPUB file on disk is left alone. Chapters, content blocks and annotations
+/// go with it via `ON DELETE CASCADE`, and the `content_blocks_ad` trigger
+/// drops its text from both search indexes, so this relies on the
+/// `foreign_keys` pragma that `open_db` turns on.
+pub fn delete_book(conn: &Connection, book_id: i64) -> Result<()> {
+    let deleted = conn.execute("DELETE FROM books WHERE id = ?1", params![book_id])?;
+    if deleted == 0 {
+        bail!("no book with id {book_id}");
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Debug)]
@@ -368,6 +381,61 @@ mod tests {
     #[test]
     fn migrations_are_valid() {
         migrations().validate().unwrap();
+    }
+
+    fn one_chapter_book(title: &str, paragraphs: &[&str]) -> ParsedBook {
+        ParsedBook {
+            title: Some(title.to_string()),
+            author: None,
+            chapters: vec![crate::epub::ParsedChapter {
+                file_name: "ch1.xhtml".to_string(),
+                title: "Chapter 1".to_string(),
+                paragraphs: paragraphs.iter().map(|p| (0, p.len(), p.to_string())).collect(),
+            }],
+        }
+    }
+
+    #[test]
+    fn delete_book_leaves_other_books_alone() {
+        let mut conn = open_db(":memory:").unwrap();
+        let a = one_chapter_book("A", &["zebra alpha", "zebra beta"]);
+        let b = one_chapter_book("B", &["zebra gamma"]);
+        let gone = load_book(&mut conn, "/a.epub", "ha", &a).unwrap();
+        let kept = load_book(&mut conn, "/b.epub", "hb", &b).unwrap();
+        conn.execute(
+            "INSERT INTO highlights (book_id, content_block_id, start_offset, end_offset)
+             SELECT book_id, id, 0, 5 FROM content_blocks WHERE book_id = ?1 LIMIT 1",
+            [gone],
+        )
+        .unwrap();
+
+        delete_book(&conn, gone).unwrap();
+
+        let ids: Vec<i64> = list_books(&conn).unwrap().iter().map(|b| b.id).collect();
+        assert_eq!(ids, vec![kept]);
+        for table in ["chapters", "content_blocks", "highlights"] {
+            let sql = format!("SELECT COUNT(*) FROM {table} WHERE book_id = ?1");
+            let orphans: i64 = conn.query_row(&sql, [gone], |r| r.get(0)).unwrap();
+            assert_eq!(orphans, 0, "{table} rows should go with the book");
+        }
+        assert_eq!(get_book_chapters(&conn, kept).unwrap().len(), 1);
+        for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+            let hits = search(&conn, "zebra", mode, 10).unwrap();
+            assert_eq!(hits.len(), 1, "{mode:?}");
+            assert_eq!(hits[0].book_id, kept, "{mode:?}");
+        }
+        for fts in ["content_fts", "content_fts_exact"] {
+            let sql = format!("INSERT INTO {fts}({fts}, rank) VALUES ('integrity-check', 1)");
+            conn.execute(&sql, [])
+                .unwrap_or_else(|e| panic!("{fts} integrity check failed: {e}"));
+        }
+    }
+
+    #[test]
+    fn delete_unknown_book_is_an_error() {
+        let conn = open_db(":memory:").unwrap();
+        let err = delete_book(&conn, 42).expect_err("deleting a missing book should fail");
+        assert!(err.to_string().contains("no book with id 42"), "{err}");
     }
 
     fn fts(q: &str) -> Option<String> {

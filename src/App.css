@@ -78,6 +78,7 @@
 .book-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 1em;
   padding: 0.75em 0.5em;
   border-bottom: 1px solid rgba(128, 128, 128, 0.3);
@@ -92,6 +93,15 @@
 .book-meta {
   font-size: 0.85em;
   opacity: 0.7;
+}
+
+.book-title {
+  flex: 1;
+}
+
+.book-remove {
+  padding: 0.3em 0.8em;
+  font-size: 0.85em;
 }
 
 /* Fixed so it fills the window regardless of the default body margin. */
