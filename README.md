@@ -28,7 +28,10 @@ members, sharing one `Cargo.lock`/`target/`.
   (`list_books`, `get_book_chapters`, `get_chapter_content`).
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
-  case and diacritics ("samsara" matches "saṃsāra").
+  case and diacritics ("samsara" matches "saṃsāra"). Each word of the
+  query is quoted before it reaches FTS5, so punctuation (`don't`,
+  `self-aware`) is searched as text. "Quoted phrases", `prefix*` and
+  uppercase `AND`/`OR`/`NOT` still work.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, loads it into a fresh DB, and asserts search returns
   correct, ranked hits in both modes, chapter titles round-trip, and
@@ -121,12 +124,7 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    formatting is lost — the reader renders every block as a plain `<p>`.
 5. No de-dup/re-index logic: importing the same file twice creates a
    second `books` row. Check `file_hash` against existing rows first.
-6. Search queries go straight into FTS5's query syntax, so punctuation in
-   an unquoted query fails with an FTS5 error instead of searching:
-   `don't` → `syntax error near "'"`, `self-aware` → `no such column:
-   aware`, `a.b` → `syntax error near "."`. Wrapping the query (or each
-   term) in double quotes works around it. Affects both search modes.
-7. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
+6. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
    first parse error rather than trying to recover — real-world EPUBs
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
@@ -141,18 +139,18 @@ Done:
 - [x] Chapter titles from the first `<h1>`/`<h2>`
 - [x] Exact-word search mode alongside stemmed search
 - [x] Versioned schema migrations
+- [x] Quote search terms before passing them to FTS5 so punctuation
+      doesn't break the query
 
 Next up (fixes for the known limitations above):
 
-- [ ] Quote search terms before passing them to FTS5 so punctuation
-      doesn't throw (limitation 6)
 - [ ] De-dup imports by `file_hash` instead of adding a second `books`
       row (limitation 5)
 - [ ] Walk top-level block children so nested tags don't duplicate
       text (limitation 1)
 - [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
 - [ ] Recover from malformed XHTML instead of bailing on the first
-      parse error (limitation 7)
+      parse error (limitation 6)
 
 Later:
 

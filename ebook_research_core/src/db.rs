@@ -112,14 +112,87 @@ impl SearchMode {
     }
 }
 
-/// Runs an FTS5 query across the whole library. `query` uses SQLite FTS5
-/// query syntax (supports phrases in quotes, AND/OR/NOT, prefix* etc).
+/// Turns a user's search box text into a valid FTS5 query. Every word is
+/// wrapped in double quotes, so punctuation (`don't`, `self-aware`, `a.b`)
+/// is left to the tokenizer instead of being parsed as FTS5 syntax. Kept:
+/// "quoted phrases", a trailing `*` for prefix search, and uppercase
+/// AND/OR/NOT between two terms. Anything else FTS5 would treat as syntax
+/// (parentheses, `NEAR`, `column:`) is searched as text.
+/// Returns `None` if there's nothing to search for.
+fn to_fts_query(query: &str) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    let mut last_is_term = false;
+    let mut chars = query.chars().peekable();
+
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+            continue;
+        }
+
+        let (text, is_phrase) = if c == '"' && query_has_closing_quote(&chars) {
+            chars.next();
+            let phrase: String = chars.by_ref().take_while(|&c| c != '"').collect();
+            (phrase, true)
+        } else {
+            let mut word = String::new();
+            while let Some(&c) = chars.peek() {
+                if c.is_whitespace() || (c == '"' && query_has_closing_quote(&chars)) {
+                    break;
+                }
+                word.push(c);
+                chars.next();
+            }
+            (word, false)
+        };
+
+        if !is_phrase && matches!(text.as_str(), "AND" | "OR" | "NOT") && last_is_term {
+            parts.push(text);
+            last_is_term = false;
+            continue;
+        }
+
+        // A phrase takes a prefix `*` straight after its closing quote.
+        let prefix = if is_phrase {
+            chars.next_if_eq(&'*').is_some()
+        } else {
+            text.ends_with('*')
+        };
+        let term = if is_phrase { &text[..] } else { text.trim_end_matches('*') };
+        if term.trim().is_empty() {
+            continue;
+        }
+
+        parts.push(format!(
+            "\"{}\"{}",
+            term.replace('"', "\"\""),
+            if prefix { "*" } else { "" }
+        ));
+        last_is_term = true;
+    }
+
+    if !last_is_term {
+        parts.pop(); // a trailing operator, e.g. "neural OR"
+    }
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
+
+/// Whether a `"` at the front of `chars` has a matching closing quote.
+fn query_has_closing_quote(chars: &std::iter::Peekable<std::str::Chars>) -> bool {
+    chars.clone().skip(1).any(|c| c == '"')
+}
+
+/// Searches the whole library. `query` is what the user typed; see
+/// `to_fts_query` for how it's interpreted.
 pub fn search(
     conn: &Connection,
     query: &str,
     mode: SearchMode,
     limit: i64,
 ) -> Result<Vec<SearchResult>> {
+    let Some(fts_query) = to_fts_query(query) else {
+        return Ok(Vec::new());
+    };
     // The table name comes from the enum, never from user input.
     let fts = mode.fts_table();
     let mut stmt = conn.prepare(&format!(
@@ -135,7 +208,7 @@ pub fn search(
          LIMIT ?2"
     ))?;
 
-    let rows = stmt.query_map(params![query, limit], |row| {
+    let rows = stmt.query_map(params![fts_query, limit], |row| {
         Ok(SearchResult {
             book_id: row.get(0)?,
             book_title: row.get(1)?,
@@ -148,7 +221,7 @@ pub fn search(
         })
     })?;
 
-    Ok(rows.filter_map(|r| r.ok()).collect())
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 #[derive(Serialize, Debug)]
@@ -250,5 +323,51 @@ mod tests {
     #[test]
     fn migrations_are_valid() {
         migrations().validate().unwrap();
+    }
+
+    fn fts(q: &str) -> Option<String> {
+        to_fts_query(q)
+    }
+
+    #[test]
+    fn fts_query_quotes_each_word() {
+        assert_eq!(fts("neural networks").unwrap(), r#""neural" "networks""#);
+        assert_eq!(fts("don't").unwrap(), r#""don't""#);
+        assert_eq!(fts("self-aware a.b").unwrap(), r#""self-aware" "a.b""#);
+        assert_eq!(fts("(foo) bar:baz NEAR").unwrap(), r#""(foo)" "bar:baz" "NEAR""#);
+    }
+
+    #[test]
+    fn fts_query_keeps_phrases_and_prefixes() {
+        assert_eq!(fts(r#""neural networks""#).unwrap(), r#""neural networks""#);
+        assert_eq!(fts(r#"say"hi there""#).unwrap(), r#""say" "hi there""#);
+        assert_eq!(fts("learn*").unwrap(), r#""learn"*"#);
+        assert_eq!(fts(r#""deep learn"*"#).unwrap(), r#""deep learn"*"#);
+    }
+
+    #[test]
+    fn fts_query_escapes_unbalanced_quotes() {
+        assert_eq!(fts(r#"don"t"#).unwrap(), r#""don""t""#);
+        assert_eq!(fts(r#"a "b" c""#).unwrap(), r#""a" "b" "c""""#);
+    }
+
+    #[test]
+    fn fts_query_keeps_operators_only_between_terms() {
+        assert_eq!(fts("a OR b").unwrap(), r#""a" OR "b""#);
+        assert_eq!(fts("a NOT b AND c").unwrap(), r#""a" NOT "b" AND "c""#);
+        assert_eq!(fts("OR a").unwrap(), r#""OR" "a""#);
+        assert_eq!(fts("a OR").unwrap(), r#""a""#);
+        assert_eq!(fts("a OR AND b").unwrap(), r#""a" OR "AND" "b""#);
+        assert_eq!(fts("a or b").unwrap(), r#""a" "or" "b""#);
+        assert_eq!(fts(r#"a "OR" b"#).unwrap(), r#""a" "OR" "b""#);
+    }
+
+    #[test]
+    fn fts_query_empty_input() {
+        assert_eq!(fts(""), None);
+        assert_eq!(fts("   "), None);
+        assert_eq!(fts(r#""""#), None);
+        assert_eq!(fts("*"), None);
+        assert_eq!(fts("AND"), Some(r#""AND""#.into()));
     }
 }
