@@ -23,8 +23,10 @@ members, sharing one `Cargo.lock`/`target/`.
   `<h1>`/`<h2>`, falling back to the internal file path.
 - `ebook_research_core/src/db.rs` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
-  inserts parsed books, runs FTS5 full-text search with ranked,
-  highlighted snippets, and serves the reader's read queries
+  imports books (each in one transaction, skipping any whose file
+  contents are already in the library from any path), runs FTS5
+  full-text search with ranked, highlighted snippets, and serves the
+  reader's read queries
   (`list_books`, `get_book_chapters`, `get_chapter_content`).
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
@@ -35,7 +37,8 @@ members, sharing one `Cargo.lock`/`target/`.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, loads it into a fresh DB, and asserts search returns
   correct, ranked hits in both modes, chapter titles round-trip, and
-  search hits point at the right chapter content. It also upgrades a
+  search hits point at the right chapter content, and that duplicate
+  imports return the existing book. It also upgrades a
   library created before migrations existed and checks both indexes
   were rebuilt from its text. `cargo test -p ebook_research_core` passes.
 - The frontend typechecks (`npx tsc --noEmit`):
@@ -122,8 +125,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    chapters in the reader.
 4. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
-5. No de-dup/re-index logic: importing the same file twice creates a
-   second `books` row. Check `file_hash` against existing rows first.
+5. No re-index logic: if a book's file changes after it was imported,
+   importing it again from the same path fails with an error, and a
+   changed copy at a new path is added as a separate book.
 6. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
    first parse error rather than trying to recover — real-world EPUBs
    occasionally have genuinely broken markup, so you may want a
@@ -141,11 +145,11 @@ Done:
 - [x] Versioned schema migrations
 - [x] Quote search terms before passing them to FTS5 so punctuation
       doesn't break the query
+- [x] De-dup imports by `file_hash` instead of adding a second `books`
+      row
 
 Next up (fixes for the known limitations above):
 
-- [ ] De-dup imports by `file_hash` instead of adding a second `books`
-      row (limitation 5)
 - [ ] Walk top-level block children so nested tags don't duplicate
       text (limitation 1)
 - [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)

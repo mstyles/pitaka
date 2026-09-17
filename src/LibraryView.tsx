@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { BookSummary, SearchMode, SearchResult } from "./types";
+import type { BookSummary, ImportOutcome, SearchMode, SearchResult } from "./types";
 
 type Props = {
   onOpenBook: (bookId: number) => void;
@@ -37,8 +37,10 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
 
     setImportStatus(`Importing ${path}…`);
     try {
-      const bookId = await invoke<number>("import_book", { path });
-      setImportStatus(`Imported book #${bookId}`);
+      const { book_id, already_imported } = await invoke<ImportOutcome>("import_book", { path });
+      setImportStatus(
+        already_imported ? `Already in library as book #${book_id}` : `Imported book #${book_id}`,
+      );
       await refreshBooks();
     } catch (err) {
       setImportStatus(`Import failed: ${err}`);

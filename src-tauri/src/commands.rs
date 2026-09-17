@@ -4,7 +4,8 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, parse_epub, BookSummary, ChapterContent, ChapterSummary, SearchMode, SearchResult,
+    db, open_db, BookSummary, ChapterContent, ChapterSummary, ImportOutcome, SearchMode,
+    SearchResult,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -38,11 +39,11 @@ pub fn init_state(app: &AppHandle) -> AppState {
 }
 
 /// Frontend calls: `invoke("import_book", { path: "/Users/matt/Books/foo.epub" })`
+/// (returns the existing book, with `already_imported: true`, for a duplicate).
 #[tauri::command]
-pub fn import_book(path: String, state: State<AppState>) -> Result<i64, String> {
-    let parsed = parse_epub(&path).map_err(|e| e.to_string())?;
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    db::load_book(&conn, &path, &parsed).map_err(|e| e.to_string())
+pub fn import_book(path: String, state: State<AppState>) -> Result<ImportOutcome, String> {
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::import_book(&mut conn, &path).map_err(|e| e.to_string())
 }
 
 /// Frontend calls: `invoke("search_library", { query: "neural networks", mode: "exact" })`

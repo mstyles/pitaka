@@ -11,6 +11,11 @@ export type SearchResult = {
   rank: number;
 };
 
+export type ImportOutcome = {
+  book_id: number;
+  already_imported: boolean;
+};
+
 export type BookSummary = {
   id: number;
   title: string | null;

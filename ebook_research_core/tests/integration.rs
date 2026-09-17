@@ -1,4 +1,4 @@
-use ebook_research_core::{db, open_db, parse_epub, search, SearchMode};
+use ebook_research_core::{db, import_book, open_db, parse_epub, search, ImportOutcome, SearchMode};
 use rusqlite::Connection;
 
 #[test]
@@ -13,8 +13,10 @@ fn parses_and_indexes_and_searches() {
     let total_paragraphs: usize = parsed.chapters.iter().map(|c| c.paragraphs.len()).sum();
     assert!(total_paragraphs >= 4, "expected at least 4 paragraphs, got {total_paragraphs}");
 
-    let conn = open_db(db_path).expect("open_db failed");
-    let book_id = db::load_book(&conn, "test.epub", &parsed).expect("load_book failed");
+    let mut conn = open_db(db_path).expect("open_db failed");
+    let outcome = import_book(&mut conn, "test.epub").expect("import_book failed");
+    assert!(!outcome.already_imported);
+    let book_id = outcome.book_id;
     assert!(book_id > 0);
 
     let results = search(&conn, "neural networks", SearchMode::Stemmed, 10).expect("search failed");
@@ -78,6 +80,40 @@ fn parses_and_indexes_and_searches() {
         hit_chapter.blocks.iter().any(|b| b.id == hit.content_block_id),
         "search hit's block should be in the chapter it points to"
     );
+}
+
+/// Importing a file whose contents are already in the library, from the same
+/// path or a copy elsewhere, returns the existing book instead of adding
+/// another. A changed file at an already-imported path is a clear error.
+#[test]
+fn skips_duplicate_imports() {
+    let db_path = "/tmp/test_dedup_library.db";
+    let copy_path = "/tmp/test_dedup_copy.epub";
+    let changed_path = "/tmp/test_dedup_changed.epub";
+    let _ = std::fs::remove_file(db_path);
+    std::fs::copy("test.epub", copy_path).unwrap();
+    std::fs::write(changed_path, b"edited since it was imported").unwrap();
+
+    let mut conn = open_db(db_path).unwrap();
+    let first = import_book(&mut conn, "test.epub").unwrap();
+    assert!(!first.already_imported);
+    let duplicate = ImportOutcome { book_id: first.book_id, already_imported: true };
+
+    assert_eq!(import_book(&mut conn, "test.epub").unwrap(), duplicate, "same path");
+    assert_eq!(import_book(&mut conn, copy_path).unwrap(), duplicate, "copy at another path");
+
+    let books: i64 = conn.query_row("SELECT COUNT(*) FROM books", [], |r| r.get(0)).unwrap();
+    assert_eq!(books, 1);
+    assert_eq!(search(&conn, "gradient", SearchMode::Exact, 10).unwrap().len(), 1, "no duplicate hits");
+
+    // `changed_path` was imported, then the file changed on disk.
+    conn.execute(
+        "INSERT INTO books (file_path, file_hash, format) VALUES (?1, 'old-hash', 'epub')",
+        [changed_path],
+    )
+    .unwrap();
+    let err = import_book(&mut conn, changed_path).expect_err("a changed file at an imported path should fail");
+    assert!(err.to_string().contains("has changed"), "{err}");
 }
 
 /// A library created before migrations were tracked (the 001 schema with
