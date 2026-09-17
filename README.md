@@ -131,3 +131,36 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
    before shipping.
+
+## Roadmap
+
+Done:
+
+- [x] EPUB import with FTS5 full-text search and highlighted snippets
+- [x] Library list and continuous-scroll reader with jump-to-search-hit
+- [x] Chapter titles from the first `<h1>`/`<h2>`
+- [x] Exact-word search mode alongside stemmed search
+- [x] Versioned schema migrations
+
+Next up (fixes for the known limitations above):
+
+- [ ] Quote search terms before passing them to FTS5 so punctuation
+      doesn't throw (limitation 6)
+- [ ] De-dup imports by `file_hash` instead of adding a second `books`
+      row (limitation 5)
+- [ ] Walk top-level block children so nested tags don't duplicate
+      text (limitation 1)
+- [ ] Skip non-content spine items like `nav.xhtml`, and backfill
+      chapter titles for books imported before titles existed
+      (limitation 3)
+- [ ] Recover from malformed XHTML instead of bailing on the first
+      parse error (limitation 7)
+
+Later:
+
+- [ ] Highlights, notes and bookmarks UI (the `highlights`, `notes` and
+      `bookmarks` tables already exist in the schema)
+- [ ] Export bookmarks, notes and highlights
+- [ ] Footnote/endnote handling (limitation 2)
+- [ ] Keep formatting, images and tables in the reader instead of
+      rendering every block as a plain `<p>` (limitation 4)
