@@ -34,6 +34,19 @@ fn parses_and_indexes_and_searches() {
     assert!(hits("learning", SearchMode::Exact) > 0);
     assert!(hits("NEURAL", SearchMode::Exact) > 0, "exact search should still ignore case");
 
+    // --- punctuation and query syntax ---
+    for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+        for q in ["don't", "self-aware", "a.b", "(neural", "neural:", "\"neural", "OR", "neural AND", ""] {
+            search(&conn, q, mode, 10).unwrap_or_else(|e| panic!("{q:?} ({mode:?}) failed: {e}"));
+        }
+        assert_eq!(hits("machine-learning", mode), 1, "hyphenated words should match as a phrase");
+        assert_eq!(hits("\"networks can\"", mode), 1, "quoted phrases should still work");
+        assert_eq!(hits("\"can networks\"", mode), 0, "phrase word order should matter");
+        assert_eq!(hits("reinforce*", mode), 1, "prefix search should still work");
+        assert_eq!(hits("neural NOT gradient", mode), 2);
+    }
+    assert_eq!(hits("", SearchMode::Stemmed), 0);
+
     // --- reader view read APIs ---
     let parsed_titles: Vec<&str> = parsed.chapters.iter().map(|c| c.title.as_str()).collect();
     assert!(parsed_titles.contains(&"Chapter One: Beginnings"), "titles: {parsed_titles:?}");
