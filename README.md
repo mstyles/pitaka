@@ -121,8 +121,10 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 2. No distinct handling of footnotes/endnotes.
 3. Chapter titles come from the first `<h1>`/`<h2>`, but there's no
    migration: books imported before that change keep file-path titles
-   until re-imported. Spine items like `nav.xhtml` also show up as
-   chapters in the reader.
+   until re-imported. Books that style headings as `<div>`s (e.g.
+   `<div class="ct">`) instead of `<h1>`/`<h2>` also get file-path
+   titles. Spine items like `nav.xhtml` also show up as chapters in the
+   reader.
 4. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
 5. No re-index logic: if a book's file changes after it was imported,
@@ -133,6 +135,13 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
    before shipping.
+7. `extract_paragraphs` adds a space after every text node, so text
+   split across inline tags gains spaces that weren't there. Drop caps
+   like `<b>B</b>EFORE` become "B EFORE", which a search for "before"
+   won't match, and the reader shows `(<i>dhatu</i>)` as "( dhatu )".
+8. There's no way to delete a book. Imports are de-duped by file hash, so
+   a book imported with a parser bug can't be re-imported after the fix
+   without removing its rows from the database by hand.
 
 ## Roadmap
 
@@ -147,6 +156,7 @@ Done:
       doesn't break the query
 - [x] De-dup imports by `file_hash` instead of adding a second `books`
       row
+- [x] Import paragraphs from books that use `<div>` instead of `<p>`
 
 Next up (fixes for the known limitations above):
 
@@ -155,6 +165,8 @@ Next up (fixes for the known limitations above):
 - [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 6)
+- [ ] Delete a book from the library, so it can be re-imported
+      (limitation 8)
 
 Later:
 
