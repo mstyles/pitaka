@@ -30,6 +30,13 @@
   margin: 0.75em 0;
 }
 
+.search-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  white-space: nowrap;
+}
+
 .results {
   list-style: none;
   margin: 1em auto 0;

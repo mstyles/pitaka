@@ -4,7 +4,7 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, parse_epub, BookSummary, ChapterContent, ChapterSummary, SearchResult,
+    db, open_db, parse_epub, BookSummary, ChapterContent, ChapterSummary, SearchMode, SearchResult,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -45,11 +45,16 @@ pub fn import_book(path: String, state: State<AppState>) -> Result<i64, String> 
     db::load_book(&conn, &path, &parsed).map_err(|e| e.to_string())
 }
 
-/// Frontend calls: `invoke("search_library", { query: "neural networks" })`
+/// Frontend calls: `invoke("search_library", { query: "neural networks", mode: "exact" })`
+/// (`mode` is `"stemmed"` or `"exact"`).
 #[tauri::command]
-pub fn search_library(query: String, state: State<AppState>) -> Result<Vec<SearchResult>, String> {
+pub fn search_library(
+    query: String,
+    mode: SearchMode,
+    state: State<AppState>,
+) -> Result<Vec<SearchResult>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    db::search(&conn, &query, 50).map_err(|e| e.to_string())
+    db::search(&conn, &query, mode, 50).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

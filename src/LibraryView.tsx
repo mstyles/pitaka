@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { BookSummary, SearchResult } from "./types";
+import type { BookSummary, SearchMode, SearchResult } from "./types";
 
 type Props = {
   onOpenBook: (bookId: number) => void;
@@ -14,6 +14,7 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [exactWords, setExactWords] = useState(false);
 
   async function refreshBooks() {
     try {
@@ -44,18 +45,24 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
     }
   }
 
-  async function runSearch(e: React.FormEvent) {
-    e.preventDefault();
+  async function runSearch(exact: boolean) {
     if (!query.trim()) return;
+    const mode: SearchMode = exact ? "exact" : "stemmed";
     setSearching(true);
     try {
-      const hits = await invoke<SearchResult[]>("search_library", { query });
+      const hits = await invoke<SearchResult[]>("search_library", { query, mode });
       setResults(hits);
     } catch (err) {
       setImportStatus(`Search failed: ${err}`);
     } finally {
       setSearching(false);
     }
+  }
+
+  function toggleExactWords(exact: boolean) {
+    setExactWords(exact);
+    // Re-run straight away so the two modes are easy to compare.
+    runSearch(exact);
   }
 
   return (
@@ -78,7 +85,13 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
         ))}
       </ul>
 
-      <form className="row" onSubmit={runSearch}>
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          runSearch(exactWords);
+        }}
+      >
         <input
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
@@ -87,6 +100,17 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
         <button type="submit" disabled={searching}>
           {searching ? "Searching…" : "Search"}
         </button>
+        <label
+          className="search-mode"
+          title="Match whole words as typed, without matching related forms (e.g. learn / learning)"
+        >
+          <input
+            type="checkbox"
+            checked={exactWords}
+            onChange={(e) => toggleExactWords(e.currentTarget.checked)}
+          />
+          Exact words
+        </label>
       </form>
 
       <ul className="results">

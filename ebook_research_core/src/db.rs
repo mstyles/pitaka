@@ -1,20 +1,40 @@
 use crate::epub::ParsedBook;
 use anyhow::Result;
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use rusqlite_migration::{Migrations, M};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::Path;
 
-pub const SCHEMA_SQL: &str = include_str!("../../schema.sql");
+/// Schema migrations, applied in order. The DB's `PRAGMA user_version` records
+/// how many have run. Never edit one that has shipped — add a new file.
+fn migrations() -> Migrations<'static> {
+    Migrations::new(vec![
+        M::up(include_str!("../migrations/001_initial.sql")),
+        M::up(include_str!("../migrations/002_search_indexes.sql")),
+    ])
+}
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
-    let is_new = !Path::new(db_path).exists();
-    let conn = Connection::open(db_path)?;
+    let mut conn = Connection::open(db_path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-    if is_new {
-        conn.execute_batch(SCHEMA_SQL)?;
-    }
+    baseline_unversioned_db(&conn)?;
+    migrations().to_latest(&mut conn)?;
     Ok(conn)
+}
+
+/// Libraries created before migrations were tracked already have the 001
+/// schema but `user_version = 0`; mark them as version 1 so 001 isn't re-run.
+fn baseline_unversioned_db(conn: &Connection) -> Result<()> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let has_books: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'books')",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == 0 && has_books {
+        conn.pragma_update(None, "user_version", 1)?;
+    }
+    Ok(())
 }
 
 fn file_hash(path: &str) -> Result<String> {
@@ -74,21 +94,46 @@ pub struct SearchResult {
     pub rank: f64,
 }
 
+#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchMode {
+    /// Porter-stemmed: "learning" also matches "learn" and "learns".
+    Stemmed,
+    /// Whole words as typed. Case and diacritics are still ignored.
+    Exact,
+}
+
+impl SearchMode {
+    fn fts_table(self) -> &'static str {
+        match self {
+            SearchMode::Stemmed => "content_fts",
+            SearchMode::Exact => "content_fts_exact",
+        }
+    }
+}
+
 /// Runs an FTS5 query across the whole library. `query` uses SQLite FTS5
 /// query syntax (supports phrases in quotes, AND/OR/NOT, prefix* etc).
-pub fn search(conn: &Connection, query: &str, limit: i64) -> Result<Vec<SearchResult>> {
-    let mut stmt = conn.prepare(
+pub fn search(
+    conn: &Connection,
+    query: &str,
+    mode: SearchMode,
+    limit: i64,
+) -> Result<Vec<SearchResult>> {
+    // The table name comes from the enum, never from user input.
+    let fts = mode.fts_table();
+    let mut stmt = conn.prepare(&format!(
         "SELECT b.id, b.title, ch.id, ch.idx, cb.block_idx, cb.id,
-                snippet(content_fts, 0, '[', ']', '...', 12) AS snip,
-                bm25(content_fts) AS rank
-         FROM content_fts
-         JOIN content_blocks cb ON cb.id = content_fts.rowid
+                snippet({fts}, 0, '[', ']', '...', 12) AS snip,
+                bm25({fts}) AS rank
+         FROM {fts}
+         JOIN content_blocks cb ON cb.id = {fts}.rowid
          JOIN chapters ch       ON ch.id = cb.chapter_id
          JOIN books b           ON b.id = cb.book_id
-         WHERE content_fts MATCH ?1
+         WHERE {fts} MATCH ?1
          ORDER BY rank
-         LIMIT ?2",
-    )?;
+         LIMIT ?2"
+    ))?;
 
     let rows = stmt.query_map(params![query, limit], |row| {
         Ok(SearchResult {
@@ -196,4 +241,14 @@ pub fn get_chapter_content(conn: &Connection, chapter_id: i64) -> Result<Chapter
         book_id,
         blocks,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrations_are_valid() {
+        migrations().validate().unwrap();
+    }
 }

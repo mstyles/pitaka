@@ -1,3 +1,5 @@
+export type SearchMode = "stemmed" | "exact";
+
 export type SearchResult = {
   book_id: number;
   book_title: string | null;

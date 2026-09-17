@@ -8,8 +8,10 @@
 -- rendered layout — that makes reflow (font size, window resize) a
 -- non-issue for annotations.
 -- =========================================================================
-
-PRAGMA foreign_keys = ON;
+-- Migration 001. Applied migrations must not be edited; change the schema
+-- with a new numbered file instead. (foreign_keys is a per-connection
+-- setting, turned on in open_db.)
+-- =========================================================================
 
 -- ---------------------------------------------------------------------
 -- One row per imported book.

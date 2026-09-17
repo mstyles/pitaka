@@ -1,4 +1,5 @@
-use ebook_research_core::{open_db, parse_epub, search, db};
+use ebook_research_core::{db, open_db, parse_epub, search, SearchMode};
+use rusqlite::Connection;
 
 #[test]
 fn parses_and_indexes_and_searches() {
@@ -16,12 +17,22 @@ fn parses_and_indexes_and_searches() {
     let book_id = db::load_book(&conn, "test.epub", &parsed).expect("load_book failed");
     assert!(book_id > 0);
 
-    let results = search(&conn, "neural networks", 10).expect("search failed");
+    let results = search(&conn, "neural networks", SearchMode::Stemmed, 10).expect("search failed");
     assert!(!results.is_empty(), "expected search hits for 'neural networks'");
     assert!(results[0].snippet.contains('['), "snippet should contain highlight markers: {}", results[0].snippet);
 
-    let results2 = search(&conn, "transformers OR attention", 10).expect("search failed");
+    let results2 = search(&conn, "transformers OR attention", SearchMode::Stemmed, 10).expect("search failed");
     assert_eq!(results2.len(), 2, "expected 2 hits, got {:?}", results2);
+
+    // --- exact vs stemmed search ---
+    let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
+    assert!(hits("network", SearchMode::Stemmed) > 0, "stemmed 'network' should match 'networks'");
+    assert_eq!(hits("network", SearchMode::Exact), 0, "exact 'network' should not match 'networks'");
+    assert_eq!(hits("networks", SearchMode::Exact), 2);
+    assert!(hits("learn", SearchMode::Stemmed) > 0, "stemmed 'learn' should match 'learning'");
+    assert_eq!(hits("learn", SearchMode::Exact), 0, "exact 'learn' should not match 'learning'");
+    assert!(hits("learning", SearchMode::Exact) > 0);
+    assert!(hits("NEURAL", SearchMode::Exact) > 0, "exact search should still ignore case");
 
     // --- reader view read APIs ---
     let parsed_titles: Vec<&str> = parsed.chapters.iter().map(|c| c.title.as_str()).collect();
@@ -54,4 +65,40 @@ fn parses_and_indexes_and_searches() {
         hit_chapter.blocks.iter().any(|b| b.id == hit.content_block_id),
         "search hit's block should be in the chapter it points to"
     );
+}
+
+/// A library created before migrations were tracked (the 001 schema with
+/// `user_version = 0`) should be upgraded in place, with both search indexes
+/// rebuilt from its existing text.
+#[test]
+fn upgrades_unversioned_library() {
+    let db_path = "/tmp/test_unversioned_library.db";
+    let _ = std::fs::remove_file(db_path);
+
+    {
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute_batch(include_str!("../migrations/001_initial.sql")).unwrap();
+        conn.execute_batch(
+            "INSERT INTO books (id, file_path, file_hash, title, format) VALUES (1, '/x.epub', 'h', 'Old', 'epub');
+             INSERT INTO chapters (id, book_id, idx, title) VALUES (1, 1, 0, 'Ch');
+             INSERT INTO content_blocks (book_id, chapter_id, block_idx, char_start, char_end, text)
+             VALUES (1, 1, 0, 0, 30, 'Wandering on in saṃsāra with Ānanda, ṝ');",
+        )
+        .unwrap();
+    }
+
+    for _ in 0..2 {
+        let conn = open_db(db_path).expect("open_db should upgrade (and then no-op on) an old library");
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 2);
+
+        let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
+        for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+            assert_eq!(hits("samsara", mode), 1, "{mode:?}: diacritics should be folded");
+            assert_eq!(hits("ananda", mode), 1, "{mode:?}");
+            assert_eq!(hits("r", mode), 1, "{mode:?}: multi-diacritic letters should be folded");
+        }
+        assert_eq!(hits("wander", SearchMode::Stemmed), 1);
+        assert_eq!(hits("wander", SearchMode::Exact), 0);
+    }
 }
