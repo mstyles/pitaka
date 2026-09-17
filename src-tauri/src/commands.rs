@@ -58,6 +58,14 @@ pub fn search_library(
     db::search(&conn, &query, mode, 50).map_err(|e| e.to_string())
 }
 
+/// Frontend calls: `invoke("delete_book", { bookId: 1 })`. Removes the book
+/// from the library; the EPUB file itself isn't touched.
+#[tauri::command]
+pub fn delete_book(book_id: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::delete_book(&conn, book_id).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn list_books(state: State<AppState>) -> Result<Vec<BookSummary>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;

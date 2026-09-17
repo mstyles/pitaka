@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import type { BookSummary, ImportOutcome, SearchMode, SearchResult } from "./types";
 
 type Props = {
@@ -47,6 +47,25 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
     }
   }
 
+  async function removeBook(book: BookSummary) {
+    const title = book.title ?? "Untitled";
+    const confirmed = await ask(
+      `Remove "${title}" from the library? The EPUB file won't be deleted.`,
+      { title: "Remove book", kind: "warning", okLabel: "Remove", cancelLabel: "Cancel" },
+    );
+    if (!confirmed) return;
+
+    try {
+      await invoke("delete_book", { bookId: book.id });
+      setImportStatus(`Removed "${title}"`);
+      // Hits in the removed book would open a book that no longer exists.
+      setResults((hits) => hits.filter((r) => r.book_id !== book.id));
+      await refreshBooks();
+    } catch (err) {
+      setImportStatus(`Remove failed: ${err}`);
+    }
+  }
+
   async function runSearch(exact: boolean) {
     if (!query.trim()) return;
     const mode: SearchMode = exact ? "exact" : "stemmed";
@@ -83,6 +102,15 @@ function LibraryView({ onOpenBook, onOpenSearchResult }: Props) {
             <span className="book-meta">
               {b.author ?? "Unknown author"} · {b.chapter_count} chapters
             </span>
+            <button
+              className="book-remove"
+              onClick={(e) => {
+                e.stopPropagation(); // the row itself opens the book
+                removeBook(b);
+              }}
+            >
+              Remove
+            </button>
           </li>
         ))}
       </ul>

@@ -116,6 +116,29 @@ fn skips_duplicate_imports() {
     assert!(err.to_string().contains("has changed"), "{err}");
 }
 
+/// Removing a book takes its text out of search, and because imports are
+/// de-duped by file hash, lets the same file be imported again.
+#[test]
+fn deletes_and_reimports_a_book() {
+    let db_path = "/tmp/test_delete_library.db";
+    let _ = std::fs::remove_file(db_path);
+
+    let mut conn = open_db(db_path).unwrap();
+    let first = import_book(&mut conn, "test.epub").unwrap();
+    db::delete_book(&conn, first.book_id).unwrap();
+
+    assert!(db::list_books(&conn).unwrap().is_empty());
+    assert!(db::get_book_chapters(&conn, first.book_id).unwrap().is_empty());
+    for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+        assert!(search(&conn, "neural networks", mode, 10).unwrap().is_empty(), "{mode:?}");
+    }
+    assert!(db::delete_book(&conn, first.book_id).is_err(), "a second delete should fail");
+
+    let again = import_book(&mut conn, "test.epub").unwrap();
+    assert!(!again.already_imported, "a removed book should import as new");
+    assert!(!search(&conn, "neural networks", SearchMode::Stemmed, 10).unwrap().is_empty());
+}
+
 /// A library created before migrations were tracked (the 001 schema with
 /// `user_version = 0`) should be upgraded in place, with both search indexes
 /// rebuilt from its existing text.
