@@ -150,9 +150,7 @@ Next up (fixes for the known limitations above):
       row (limitation 5)
 - [ ] Walk top-level block children so nested tags don't duplicate
       text (limitation 1)
-- [ ] Skip non-content spine items like `nav.xhtml`, and backfill
-      chapter titles for books imported before titles existed
-      (limitation 3)
+- [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 7)
 
