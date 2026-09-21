@@ -74,14 +74,20 @@ pub fn list_books(state: State<AppState>) -> Result<Vec<BookSummary>, String> {
 
 /// Frontend calls: `invoke("get_book_chapters", { bookId: 1 })`
 #[tauri::command]
-pub fn get_book_chapters(book_id: i64, state: State<AppState>) -> Result<Vec<ChapterSummary>, String> {
+pub fn get_book_chapters(
+    book_id: i64,
+    state: State<AppState>,
+) -> Result<Vec<ChapterSummary>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::get_book_chapters(&conn, book_id).map_err(|e| e.to_string())
 }
 
 /// Frontend calls: `invoke("get_chapter_content", { chapterId: 1 })`
 #[tauri::command]
-pub fn get_chapter_content(chapter_id: i64, state: State<AppState>) -> Result<ChapterContent, String> {
+pub fn get_chapter_content(
+    chapter_id: i64,
+    state: State<AppState>,
+) -> Result<ChapterContent, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::get_chapter_content(&conn, chapter_id).map_err(|e| e.to_string())
 }

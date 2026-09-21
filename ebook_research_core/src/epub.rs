@@ -29,7 +29,16 @@ pub struct ParsedBook {
 }
 
 const BLOCK_TAGS: &[&str] = &[
-    "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote",
+    "p",
+    "div",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "li",
+    "blockquote",
 ];
 
 pub fn parse_epub(path: &str) -> Result<ParsedBook> {
@@ -60,7 +69,9 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
     // --- Step 3: walk spine, extract paragraphs per chapter ---
     let mut chapters = Vec::new();
     for id in spine_ids {
-        let Some(href) = manifest.get(&id) else { continue };
+        let Some(href) = manifest.get(&id) else {
+            continue;
+        };
         let full_path = if opf_dir.is_empty() {
             href.clone()
         } else {
@@ -128,13 +139,20 @@ fn extract_opf_path(container_xml: &str) -> Result<String> {
         }
         buf.clear();
     }
-    Err(anyhow!("no <rootfile full-path=...> found in container.xml"))
+    Err(anyhow!(
+        "no <rootfile full-path=...> found in container.xml"
+    ))
 }
 
-/// Returns (manifest id->href, spine idrefs in order, title, author)
-fn parse_opf(
-    opf_xml: &str,
-) -> Result<(HashMap<String, String>, Vec<String>, Option<String>, Option<String>)> {
+/// (manifest id->href, spine idrefs in order, title, author)
+type Opf = (
+    HashMap<String, String>,
+    Vec<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn parse_opf(opf_xml: &str) -> Result<Opf> {
     let mut reader = Reader::from_str(opf_xml);
     reader.trim_text(true);
     let mut buf = Vec::new();
@@ -236,8 +254,7 @@ fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
                     // Emit any text the enclosing block collected before this
                     // nested one opened (e.g. `<div>intro<div>...</div></div>`)
                     // rather than dropping it.
-                    if let Some(&(_, parent_heading)) =
-                        depth_stack.iter().rev().find(|&&(b, _)| b)
+                    if let Some(&(_, parent_heading)) = depth_stack.iter().rev().find(|&&(b, _)| b)
                     {
                         let cleaned = normalize_whitespace(&current);
                         if !cleaned.is_empty() {
