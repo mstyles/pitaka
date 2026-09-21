@@ -28,4 +28,4 @@ Ship the current changes. $ARGUMENTS
      cases that exposed the problem when known.
    - no bullet lists unless enumerating genuinely separate items
 6. Report: commit hash, check results, and anything unverified. Don't
-   merge or push.
+   merge or push — the next step is `/pr`.

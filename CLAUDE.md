@@ -36,7 +36,7 @@ and what wasn't (e.g. "UI not clicked through").
 
 ## Workflow
 
-Skills cover each step: `/plan <feature>`, `/ship`, `/merge`. CI
+Skills cover each step: `/plan <feature>`, `/ship`, `/pr`, `/merge`. CI
 (`.github/workflows/ci.yml`) runs fmt, clippy `-D warnings`, core tests,
 tsc and the Vite build on pushes to `main` and on PRs.
 
@@ -51,5 +51,8 @@ tsc and the Vite build on pushes to `main` and on PRs.
    prose, wrapped at 72 columns.
 4. **Docs**: update README in the same commit — the "What's actually
    verified" section, known limitations, and tick the roadmap item.
-5. **Merge** with `git merge --no-ff` into `main`; the merge body lists
-   each merged commit's title only, as `* <title>` lines.
+5. **PR**: push the branch and open a pull request against `main` for
+   the user to review. Don't merge until they've reviewed it.
+6. **Merge** after review with `git merge --no-ff` into `main` and push;
+   the merge body lists each merged commit's title only, as
+   `* <title>` lines. Pushing the merge marks the PR as merged.
