@@ -172,4 +172,15 @@ but it must keep passing, which proves the common path didn't regress.
 
 ## Implementation notes (differences from this plan)
 
-_To fill in during implementation._
+None in behaviour. Structure only: the tree is built by `build_tree`
+and walked by `collect_paragraphs`, and `text_of` wraps a `push_text`
+helper that appends into one buffer rather than allocating a string per
+node.
+
+Observed on *Understanding Our Mind* (parser run directly, not through
+the app): 1166 paragraphs before, 1087 after, across the same 66
+chapters. All 57 drop-cap splits ("B EFORE", "T HE", ...) are gone and
+chapter 1 still contains "sarvabijaka". Most of the drop is footnotes
+(`<div class="fn"><a>1</a> <div>text</div></div>` is now one paragraph
+per note, 100 -> 50); the rest is lead-in paragraphs that wrap a
+numbered list of `<div>`s, which the §1 rule keeps as one paragraph.
