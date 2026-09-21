@@ -85,3 +85,9 @@ Checked in the mock (`src/test/mockBackend.ts`): `search_library` filters its fi
 2. `cargo clippy --workspace --all-targets` and `cargo test -p ebook_research_core`. These should be unchanged, since no Rust is touched.
 3. `npm run dev:mock` in Chrome: screenshot home, each screen, the empty-library home, and the reader's back label from a folder with a long name. Check that the cards collapse at a narrow width.
 4. Say whether the Tauri window was clicked through (`npm run tauri dev`).
+
+## Implementation notes (differences from this plan)
+- `BookmarksView` holds `folders` as `null` until loaded and renders nothing meanwhile, so returning from the reader to an open folder doesn't flash the folder list. A load error still renders so it can be shown.
+- `BooksView` also shows `No books yet. Import an EPUB to start.` for an empty library, and `.folders-empty` became a shared `.section-empty`.
+- The test helper `search()` clicks the submit button inside the search form, because the header now has a `Search` button too.
+- Verification: `npm test` (42 tests), `tsc`, clippy and core tests pass. In Chrome against the mocks: home cards with counts, Search autofocus, a hit opening with `← Search results` and returning with the search kept, a folder passage with the long folder name ellipsized in `← Know your limit - Oct 1…` and returning to the folder. The narrow-width collapse of the cards wasn't checked, because the browser window couldn't be resized. The Tauri window hasn't been clicked through.

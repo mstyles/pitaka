@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { fixtures } from "./test/mockBackend";
-import { renderApp } from "./test/renderApp";
+import { goTo, renderApp } from "./test/renderApp";
 
 const FOLDER = fixtures.bookmark_folders[0];
 const [TEST_PASSAGE, LONG_PASSAGE] = fixtures.folder_bookmarks[String(FOLDER.id)];
@@ -22,6 +22,7 @@ function toggleFor(blockId: number) {
 }
 
 async function openLongBook(user: ReturnType<typeof renderApp>["user"]) {
+  await goTo(user, "Books");
   await user.click(await screen.findByText(LONG_BOOK));
   await screen.findByText(/^Part One, paragraph 1:/);
 }
@@ -32,15 +33,17 @@ function partOneBlock(n: number) {
   return fixtures.chapter_content[String(chapterId)].blocks[n - 1].id;
 }
 
-describe("bookmark folders in the library", () => {
+describe("bookmark folders", () => {
   it("lists folders with their passage counts", async () => {
-    renderApp();
+    const { user } = renderApp();
+    await goTo(user, "Bookmarks");
     await screen.findByText(FOLDER.name);
     expect(within(folderRow(FOLDER.name)).getByText("2 passages")).toBeTruthy();
   });
 
   it("says so when there are no folders", async () => {
     const { user } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await user.click(await screen.findByRole("button", { name: "Delete" }));
     expect(
@@ -52,6 +55,7 @@ describe("bookmark folders in the library", () => {
 
   it("creates a folder, and rejects a name that differs only in case", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await screen.findByText(FOLDER.name);
     const input = screen.getByPlaceholderText("New folder name");
     await user.type(input, "  Talk notes  ");
@@ -72,6 +76,7 @@ describe("bookmark folders in the library", () => {
 
   it("shows a folder's passages in the order they were added", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await waitFor(() => expect(passages()).toHaveLength(2));
     expect(callsTo("list_folder_bookmarks")).toEqual([{ folderId: FOLDER.id }]);
@@ -85,6 +90,7 @@ describe("bookmark folders in the library", () => {
 
   it("opens a passage in the reader and comes back to the folder", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await waitFor(() => expect(passages()).toHaveLength(2));
     await user.click(passages()[1]);
@@ -97,13 +103,14 @@ describe("bookmark folders in the library", () => {
     expect(target.classList.contains("flash")).toBe(true);
     expect(callsTo("get_chapter_content")).toEqual([{ chapterId: LONG_PASSAGE.chapter_id }]);
 
-    await user.click(screen.getByRole("button", { name: "← Library" }));
-    expect(screen.getByRole("heading", { name: FOLDER.name })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: `← ${FOLDER.name}` }));
+    expect(await screen.findByRole("heading", { name: FOLDER.name })).toBeTruthy();
     await waitFor(() => expect(callsTo("list_folder_bookmarks")).toHaveLength(2));
   });
 
   it("renames a folder, allowing a change of case only", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await user.click(await screen.findByRole("button", { name: "Rename" }));
     const input = screen.getByLabelText<HTMLInputElement>("Folder name");
@@ -126,6 +133,7 @@ describe("bookmark folders in the library", () => {
 
   it("removes a passage from the folder", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await waitFor(() => expect(passages()).toHaveLength(2));
     await user.click(within(passages()[0]).getByRole("button", { name: "Remove" }));
@@ -140,6 +148,7 @@ describe("bookmark folders in the library", () => {
 
   it("deletes a folder after confirmation", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await waitFor(() => expect(passages()).toHaveLength(2));
     await user.click(screen.getByRole("button", { name: "Delete" }));
@@ -153,6 +162,7 @@ describe("bookmark folders in the library", () => {
 
   it("keeps a folder when deletion isn't confirmed", async () => {
     const { user, callsTo } = renderApp({ confirm: false });
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await user.click(await screen.findByRole("button", { name: "Delete" }));
     await waitFor(() => expect(callsTo("plugin:dialog|message")).toHaveLength(1));
@@ -162,16 +172,27 @@ describe("bookmark folders in the library", () => {
 
   it("warns that removing a book deletes its bookmarks", async () => {
     const { user, callsTo } = renderApp();
-    await screen.findByText(FOLDER.name);
-    const bookRow = screen.getByText(LONG_BOOK).closest("li")!;
+    await goTo(user, "Books");
+    const bookRow = (await screen.findByText(LONG_BOOK)).closest("li")!;
     await user.click(within(bookRow).getByRole("button", { name: "Remove" }));
     await screen.findByText(`Removed "${LONG_BOOK}"`);
     expect(callsTo("plugin:dialog|message")[0].message).toBe(
       `Remove "${LONG_BOOK}" from the library? Its 1 bookmark will be deleted too. The EPUB file won't be deleted.`,
     );
+    await goTo(user, "Bookmarks");
     await waitFor(() =>
       expect(within(folderRow(FOLDER.name)).getByText("1 passage")).toBeTruthy(),
     );
+  });
+
+  it("the Bookmarks header button leaves an open folder", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Bookmarks");
+    await user.click(await screen.findByText(FOLDER.name));
+    await screen.findByRole("heading", { name: FOLDER.name });
+    await goTo(user, "Bookmarks");
+    expect(screen.queryByRole("heading", { name: FOLDER.name })).toBeNull();
+    expect(folderRow(FOLDER.name)).toBeTruthy();
   });
 });
 
@@ -222,7 +243,8 @@ describe("bookmarking in the reader", () => {
       { folderId: FOLDER.id + 1, contentBlockId: block },
     ]);
 
-    await user.click(screen.getByRole("button", { name: "← Library" }));
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+    await goTo(user, "Bookmarks");
     await waitFor(() =>
       expect(within(folderRow("Second talk")).getByText("1 passage")).toBeTruthy(),
     );
@@ -243,6 +265,7 @@ describe("bookmarking in the reader", () => {
 
   it("offers only a new folder when there are none", async () => {
     const { user } = renderApp();
+    await goTo(user, "Bookmarks");
     await user.click(await screen.findByText(FOLDER.name));
     await user.click(await screen.findByRole("button", { name: "Delete" }));
     await screen.findByPlaceholderText("New folder name");

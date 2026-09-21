@@ -5,8 +5,6 @@ import type { BookmarkFolder, FolderBookmark } from "./types";
 
 type Props = {
   folder: BookmarkFolder;
-  /** False while the reader is open; the passages are refetched on return. */
-  active: boolean;
   onBack: () => void;
   onOpenBookmark: (bookmark: FolderBookmark) => void;
   /** Called after a rename, removal or delete, so folder counts can refresh. */
@@ -18,7 +16,7 @@ function passageCount(n: number) {
 }
 
 /** One bookmark folder's passages, each a click away from its place in the book. */
-function FolderView({ folder, active, onBack, onOpenBookmark, onChanged }: Props) {
+function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
   const [passages, setPassages] = useState<FolderBookmark[]>([]);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
@@ -32,9 +30,10 @@ function FolderView({ folder, active, onBack, onOpenBookmark, onChanged }: Props
     }
   }
 
+  // Remounted on return from the reader, so this also picks up changes made there.
   useEffect(() => {
-    if (active) refreshPassages();
-  }, [folder.id, active]);
+    refreshPassages();
+  }, [folder.id]);
 
   async function rename() {
     try {
@@ -75,7 +74,7 @@ function FolderView({ folder, active, onBack, onOpenBookmark, onChanged }: Props
   return (
     <main className="container folder-view">
       <div className="folder-header">
-        <button onClick={onBack}>← Library</button>
+        <button onClick={onBack}>← Bookmarks</button>
         {renaming ? (
           <form
             className="folder-rename"
