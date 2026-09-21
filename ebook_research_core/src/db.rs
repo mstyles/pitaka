@@ -66,7 +66,10 @@ pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutco
         )
         .optional()?;
     if let Some(book_id) = existing {
-        return Ok(ImportOutcome { book_id, already_imported: true });
+        return Ok(ImportOutcome {
+            book_id,
+            already_imported: true,
+        });
     }
 
     let path_taken: bool = conn.query_row(
@@ -83,13 +86,21 @@ pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutco
 
     let parsed = parse_epub(epub_path)?;
     let book_id = load_book(conn, epub_path, &hash, &parsed)?;
-    Ok(ImportOutcome { book_id, already_imported: false })
+    Ok(ImportOutcome {
+        book_id,
+        already_imported: false,
+    })
 }
 
 /// Inserts a parsed book, its chapters, and its paragraphs in one
 /// transaction, so a failure part-way leaves nothing behind. Returns the new
 /// book_id.
-fn load_book(conn: &mut Connection, epub_path: &str, hash: &str, parsed: &ParsedBook) -> Result<i64> {
+fn load_book(
+    conn: &mut Connection,
+    epub_path: &str,
+    hash: &str,
+    parsed: &ParsedBook,
+) -> Result<i64> {
     let tx = conn.transaction()?;
 
     tx.execute(
@@ -216,7 +227,11 @@ fn to_fts_query(query: &str) -> Option<String> {
         } else {
             text.ends_with('*')
         };
-        let term = if is_phrase { &text[..] } else { text.trim_end_matches('*') };
+        let term = if is_phrase {
+            &text[..]
+        } else {
+            text.trim_end_matches('*')
+        };
         if term.trim().is_empty() {
             continue;
         }
@@ -390,7 +405,10 @@ mod tests {
             chapters: vec![crate::epub::ParsedChapter {
                 file_name: "ch1.xhtml".to_string(),
                 title: "Chapter 1".to_string(),
-                paragraphs: paragraphs.iter().map(|p| (0, p.len(), p.to_string())).collect(),
+                paragraphs: paragraphs
+                    .iter()
+                    .map(|p| (0, p.len(), p.to_string()))
+                    .collect(),
             }],
         }
     }
@@ -447,7 +465,10 @@ mod tests {
         assert_eq!(fts("neural networks").unwrap(), r#""neural" "networks""#);
         assert_eq!(fts("don't").unwrap(), r#""don't""#);
         assert_eq!(fts("self-aware a.b").unwrap(), r#""self-aware" "a.b""#);
-        assert_eq!(fts("(foo) bar:baz NEAR").unwrap(), r#""(foo)" "bar:baz" "NEAR""#);
+        assert_eq!(
+            fts("(foo) bar:baz NEAR").unwrap(),
+            r#""(foo)" "bar:baz" "NEAR""#
+        );
     }
 
     #[test]
