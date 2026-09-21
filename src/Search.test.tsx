@@ -17,7 +17,7 @@ describe("search", () => {
     expect(callsTo("search_library")).toEqual([{ query: "neural networks", mode: "stemmed" }]);
     const marks = resultItems()[0].querySelectorAll("mark");
     expect(Array.from(marks, (m) => m.textContent)).toEqual(["Neural", "networks"]);
-    expect(resultItems()[0].textContent).toContain(`${TEST_BOOK} · chapter 1`);
+    expect(resultItems()[0].textContent).toContain(`${TEST_BOOK} · Chapter Two: Deeper Waters`);
     expect(screen.getByText("2 results")).toBeTruthy();
   });
 

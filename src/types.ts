@@ -5,6 +5,7 @@ export type SearchResult = {
   book_title: string | null;
   chapter_id: number;
   chapter_idx: number;
+  chapter_title: string | null;
   block_idx: number;
   content_block_id: number;
   snippet: string;

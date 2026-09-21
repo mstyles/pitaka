@@ -54,7 +54,8 @@ members, sharing one `Cargo.lock`/`target/`.
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
   search returns correct, ranked hits in both modes, chapter titles
-  round-trip, and search hits point at the right chapter content, and
+  round-trip, and search hits point at the right chapter content and
+  carry its title, and
   that duplicate imports return the existing book. It also upgrades a
   library created before migrations existed and checks both indexes
   were rebuilt from its text, and bookmarks a real paragraph into a
@@ -73,7 +74,9 @@ members, sharing one `Cargo.lock`/`target/`.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
     book list from `list_books` with Remove.
   - `src/SearchView.tsx` — a search box with an "Exact words" toggle →
-    `search_library` rendering highlighted snippets. It stays mounted,
+    `search_library` rendering highlighted snippets, each labelled with
+    its book and chapter title (or "Chapter N", counting from 1, when
+    the chapter has none). It stays mounted,
     so the query and results survive leaving the screen, and re-runs
     the last search when books were imported or removed meanwhile.
   - `src/BookmarksView.tsx` — the list of folders with counts and a
@@ -101,7 +104,8 @@ members, sharing one `Cargo.lock`/`target/`.
   rest of a larger library, the
   empty-library state, moving between screens from the cards and the
   header), importing (new, duplicate,
-  cancelled), searching in both modes with highlighted snippets,
+  cancelled), searching in both modes with highlighted snippets and
+  chapter titles,
   removing a book (confirmed or not), opening the reader, centring and
   flashing a search hit, switching chapters, going back to the screen
   the book was opened from, keeping the search across screens and

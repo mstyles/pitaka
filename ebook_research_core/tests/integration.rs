@@ -168,6 +168,7 @@ fn parses_and_indexes_and_searches() {
     let hit_chapter =
         db::get_chapter_content(&conn, hit.chapter_id).expect("get_chapter_content failed");
     assert_eq!(hit_chapter.chapter_idx, hit.chapter_idx);
+    assert_eq!(hit_chapter.chapter_title, hit.chapter_title);
     assert!(
         hit_chapter
             .blocks

@@ -773,6 +773,7 @@
         "book_title": "Test Book of Research",
         "chapter_id": 2,
         "chapter_idx": 1,
+        "chapter_title": "Chapter Two: Deeper Waters",
         "content_block_id": 5,
         "rank": -10.328889770690349,
         "snippet": "[Neural] [networks] can be combined with reinforcement learning techniques."
@@ -783,6 +784,7 @@
         "book_title": "Test Book of Research",
         "chapter_id": 1,
         "chapter_idx": 0,
+        "chapter_title": "Chapter One: Beginnings",
         "content_block_id": 2,
         "rank": -9.845980638554177,
         "snippet": "This is the first paragraph about [neural] [networks] and machine learning."
@@ -795,6 +797,7 @@
         "book_title": "Test Book of Research",
         "chapter_id": 2,
         "chapter_idx": 1,
+        "chapter_title": "Chapter Two: Deeper Waters",
         "content_block_id": 5,
         "rank": -10.328889770690349,
         "snippet": "[Neural] [networks] can be combined with reinforcement learning techniques."
@@ -805,6 +808,7 @@
         "book_title": "Test Book of Research",
         "chapter_id": 1,
         "chapter_idx": 0,
+        "chapter_title": "Chapter One: Beginnings",
         "content_block_id": 2,
         "rank": -9.845980638554177,
         "snippet": "This is the first paragraph about [neural] [networks] and machine learning."
@@ -817,6 +821,7 @@
         "book_title": "A Long Book for Scrolling",
         "chapter_id": 4,
         "chapter_idx": 1,
+        "chapter_title": "Part Two",
         "content_block_id": 77,
         "rank": -5.575148480074688,
         "snippet": "Part Two, paragraph 30: the trees were planted in a [quincunx]."
