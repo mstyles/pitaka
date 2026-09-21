@@ -36,6 +36,10 @@ and what wasn't (e.g. "UI not clicked through").
 
 ## Workflow
 
+Skills cover each step: `/plan <feature>`, `/ship`, `/merge`. CI
+(`.github/workflows/ci.yml`) runs fmt, clippy `-D warnings`, core tests,
+tsc and the Vite build on pushes to `main` and on PRs.
+
 1. **Plan**: for anything non-trivial, write `docs/plans/<kebab-name>.md`
    first — a `## Context` section (the problem and what's out of scope),
    then numbered sections per area naming the exact files and functions,
