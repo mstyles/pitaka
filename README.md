@@ -38,6 +38,12 @@ members, sharing one `Cargo.lock`/`target/`.
   full-text search with ranked, highlighted snippets, and serves the
   reader's read queries
   (`list_books`, `get_book_chapters`, `get_chapter_content`).
+  Bookmark folders (migration 003): create, rename and delete folders
+  (names trimmed and unique ignoring case), bookmark a paragraph into
+  several folders at most once each, list a folder's passages in the
+  order added, and mark a chapter's bookmarked paragraphs. Unit tests
+  cover moving pre-003 bookmarks into a "Bookmarks" folder, and that
+  deleting a folder or a book cascades to exactly its bookmarks.
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
   case and diacritics ("samsara" matches "saṃsāra"). Each word of the
@@ -51,15 +57,22 @@ members, sharing one `Cargo.lock`/`target/`.
   round-trip, and search hits point at the right chapter content, and
   that duplicate imports return the existing book. It also upgrades a
   library created before migrations existed and checks both indexes
-  were rebuilt from its text. `cargo test -p ebook_research_core` passes.
+  were rebuilt from its text, and bookmarks a real paragraph into a
+  folder, reading back its book, chapter and text, then checks removing
+  the book empties the folder but keeps it. `cargo test -p ebook_research_core` passes.
 - The frontend typechecks (`npx tsc --noEmit`):
   - `src/LibraryView.tsx` — native file-picker → `import_book`, a book
     list from `list_books`, and a search box with an "Exact words"
-    toggle → `search_library` rendering highlighted snippets.
+    toggle → `search_library` rendering highlighted snippets, and a
+    "Bookmarks" list of folders with counts. `src/FolderView.tsx` shows
+    a folder's passages (click to open in the reader, Remove), with
+    Rename and Delete.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
     sidebar. Clicking a book opens it at the first chapter; clicking a
     search hit opens its chapter, centres the matching paragraph and
-    briefly flashes it.
+    briefly flashes it. A bookmark icon in each paragraph's margin
+    (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
+    to tick it into folders or into a new one.
 
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
@@ -67,7 +80,11 @@ members, sharing one `Cargo.lock`/`target/`.
   cancelled), searching in both modes with highlighted snippets,
   removing a book (confirmed or not), opening the reader, centring and
   flashing a search hit, switching chapters, going back with the search
-  kept, and error messages. The mock replays
+  kept, error messages, and bookmark folders: creating, renaming,
+  deleting (confirmed or not), removing passages, opening a passage in
+  the reader and coming back to its folder, the Remove-book warning
+  with its bookmark count, and bookmarking from the reader's popover
+  (tick, untick, new folder, duplicate-name error, closing it). The mock replays
   `src/test/fixtures/library.json`, which the core test
   `ui_fixtures_are_current` writes from real `db.rs` output for
   `test.epub` plus a synthetic 3×40-paragraph book. That test fails when
@@ -82,13 +99,20 @@ members, sharing one `Cargo.lock`/`target/`.
   so the paragraph sat within 1px of the viewport's centre, flashing;
   switching chapters reset the scroll with no flash; going back kept the
   search; Exact words re-ran it; removing a book dropped its row and
-  hits. No console errors.
+  hits. No console errors. Walked again for bookmark folders: the
+  folder listed with counts, the fixture paragraph's icon was filled, a
+  paragraph was bookmarked into a new folder and the existing one from
+  the popover, the library counts updated, and a passage opened in the
+  reader flashing, with "← Library" returning to the folder. No console
+  errors. Not checked in dark mode.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
 words" toggle was added, and not since `nav.xhtml` started being
 skipped or the paragraph-extraction rewrite: re-imported books haven't
-been checked in the reader). The build needs the Linux system webview libs
+been checked in the reader). Bookmark folders haven't been clicked
+through in the Tauri window, and migration 003 hasn't been run against
+a real library yet. The build needs the Linux system webview libs
 (webkit2gtk, dbus, appindicator, etc.):
 
 ```
@@ -115,11 +139,14 @@ pitaka/
 │       ├── main.rs
 │       ├── lib.rs                <- registers commands + plugins
 │       └── commands.rs           <- import_book / search_library / list_books /
-│                                    get_book_chapters / get_chapter_content
+│                                    get_book_chapters / get_chapter_content /
+│                                    bookmark folder + bookmark commands
 ├── src/                         <- React + TS frontend
 │   ├── App.tsx                  <- switches between library and reader
-│   ├── LibraryView.tsx          <- import, book list, search
+│   ├── LibraryView.tsx          <- import, book list, bookmark folders, search
+│   ├── FolderView.tsx           <- one folder's passages
 │   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
+│   ├── BookmarkPopover.tsx      <- tick a paragraph into folders
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
 │   └── types.ts                 <- TS mirrors of the Rust command types
@@ -178,6 +205,10 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
    before shipping.
+6. Bookmarks point at paragraphs, so removing a book (including to
+   re-import it after a parser fix) deletes its bookmarks from every
+   folder; the Remove dialog only warns with a count. Bookmarks cover
+   whole paragraphs, and passages can't be reordered within a folder.
 
 ## Roadmap
 
@@ -200,6 +231,7 @@ Done:
       drop caps like "B EFORE" are searchable
 - [x] Skip the EPUB 3 navigation document (e.g. `nav.xhtml`) in the
       spine (limitation 2)
+- [x] Bookmark paragraphs into named folders
 
 Next up (fixes for the known limitations above):
 
@@ -208,8 +240,11 @@ Next up (fixes for the known limitations above):
 
 Later:
 
-- [ ] Highlights, notes and bookmarks UI (the `highlights`, `notes` and
-      `bookmarks` tables already exist in the schema)
+- [ ] Highlights and notes UI (the `highlights` and `notes` tables
+      already exist in the schema)
+- [ ] Reorder passages within a bookmark folder
+- [ ] Keep bookmarks when a book is removed and re-imported
+      (limitation 6)
 - [ ] Export bookmarks, notes and highlights
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of

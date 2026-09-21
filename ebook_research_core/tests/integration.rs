@@ -296,7 +296,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
@@ -315,4 +315,44 @@ fn upgrades_unversioned_library() {
         assert_eq!(hits("wander", SearchMode::Stemmed), 1);
         assert_eq!(hits("wander", SearchMode::Exact), 0);
     }
+}
+
+/// Bookmarks a real paragraph into a folder, reads it back with its book and
+/// chapter, and checks removing the book empties the folder but keeps it.
+#[test]
+fn bookmarks_a_passage_into_a_folder() {
+    let db_path = "/tmp/test_bookmarks_library.db";
+    let _ = std::fs::remove_file(db_path);
+
+    let mut conn = open_db(db_path).unwrap();
+    let book_id = import_book(&mut conn, "test.epub").unwrap().book_id;
+    let chapter = db::get_book_chapters(&conn, book_id)
+        .unwrap()
+        .into_iter()
+        .find(|c| c.title.as_deref() == Some("Chapter One: Beginnings"))
+        .expect("Chapter One should be imported");
+    let block = db::get_chapter_content(&conn, chapter.id)
+        .unwrap()
+        .blocks
+        .remove(0);
+    let folder = db::create_bookmark_folder(&conn, "Know your limit - Oct 10 2026").unwrap();
+
+    db::add_bookmark(&conn, folder.id, block.id).unwrap();
+
+    let passages = db::list_folder_bookmarks(&conn, folder.id).unwrap();
+    assert_eq!(passages.len(), 1);
+    assert_eq!(
+        passages[0].book_title.as_deref(),
+        Some("Test Book of Research")
+    );
+    assert_eq!(passages[0].chapter_id, chapter.id);
+    assert_eq!(passages[0].chapter_title, chapter.title);
+    assert_eq!(passages[0].text, block.text);
+    assert_eq!(db::list_books(&conn).unwrap()[0].bookmark_count, 1);
+
+    db::delete_book(&conn, book_id).unwrap();
+    let folders = db::list_bookmark_folders(&conn).unwrap();
+    assert_eq!(folders.len(), 1);
+    assert_eq!(folders[0].name, "Know your limit - Oct 10 2026");
+    assert_eq!(folders[0].bookmark_count, 0);
 }

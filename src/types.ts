@@ -21,6 +21,7 @@ export type BookSummary = {
   title: string | null;
   author: string | null;
   chapter_count: number;
+  bookmark_count: number;
 };
 
 export type ChapterSummary = {
@@ -41,4 +42,28 @@ export type ChapterContent = {
   chapter_title: string | null;
   book_id: number;
   blocks: ContentBlockRow[];
+};
+
+export type BookmarkFolder = {
+  id: number;
+  name: string;
+  created_at: string;
+  bookmark_count: number;
+};
+
+export type FolderBookmark = {
+  id: number;
+  folder_id: number;
+  content_block_id: number;
+  book_id: number;
+  book_title: string | null;
+  chapter_id: number;
+  chapter_idx: number;
+  chapter_title: string | null;
+  text: string;
+};
+
+export type BlockBookmark = {
+  content_block_id: number;
+  folder_id: number;
 };

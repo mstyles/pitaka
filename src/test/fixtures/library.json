@@ -1,13 +1,23 @@
 {
+  "bookmark_folders": [
+    {
+      "bookmark_count": 2,
+      "created_at": "2026-09-01 12:00:00",
+      "id": 1,
+      "name": "Know your limit - Oct 10 2026"
+    }
+  ],
   "books": [
     {
       "author": "Fixture Author",
+      "bookmark_count": 1,
       "chapter_count": 3,
       "id": 2,
       "title": "A Long Book for Scrolling"
     },
     {
       "author": "A. Tester",
+      "bookmark_count": 1,
       "chapter_count": 2,
       "id": 1,
       "title": "Test Book of Research"
@@ -718,6 +728,32 @@
         "id": 5,
         "idx": 2,
         "title": "Part Three"
+      }
+    ]
+  },
+  "folder_bookmarks": {
+    "1": [
+      {
+        "book_id": 1,
+        "book_title": "Test Book of Research",
+        "chapter_id": 1,
+        "chapter_idx": 0,
+        "chapter_title": "Chapter One: Beginnings",
+        "content_block_id": 2,
+        "folder_id": 1,
+        "id": 1,
+        "text": "This is the first paragraph about neural networks and machine learning."
+      },
+      {
+        "book_id": 2,
+        "book_title": "A Long Book for Scrolling",
+        "chapter_id": 3,
+        "chapter_idx": 0,
+        "chapter_title": "Part One",
+        "content_block_id": 9,
+        "folder_id": 1,
+        "id": 2,
+        "text": "Part One, paragraph 2: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
       }
     ]
   },
