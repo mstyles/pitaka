@@ -10,10 +10,14 @@ limitations and roadmap — read it before planning a feature.
 - `cargo clippy --workspace --all-targets` — must be warning-free
 - `cargo fmt --all` — runs automatically after Rust edits (hook)
 - `npx tsc --noEmit` — frontend typecheck
+- `npm test` — frontend component tests (Vitest, mocked backend)
+- `npm run dev:mock` — the UI in a browser on :1430 against the mocked
+  backend, no Rust needed
 - `npm run tauri dev` — launch the app (needs the webkit2gtk libs in README)
 
-Before calling work done, run tests, clippy and tsc. Say what was verified
-and what wasn't (e.g. "UI not clicked through").
+Before calling work done, run tests, clippy, tsc and `npm test`. Say what
+was verified and what wasn't (e.g. "checked in the browser against mocks,
+not clicked through in the Tauri window").
 
 ## Architecture rules
 
@@ -33,6 +37,14 @@ and what wasn't (e.g. "UI not clicked through").
 - Tests go in the core crate (`#[cfg(test)]` in the module, or
   `tests/integration.rs` against `test.epub`). Note `test.epub`'s spine
   starts with `nav.xhtml`, so find chapters by title, not index.
+- Frontend tests go in `src/*.test.tsx`, rendering `<App />` via
+  `renderApp` against `src/test/mockBackend.ts`. Its data,
+  `src/test/fixtures/library.json`, is written by the core test
+  `ui_fixtures_are_current` from real `db.rs` output; after changing a
+  returned type, regenerate it with
+  `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures`.
+  A new command needs a fixture entry there and a route in the mock,
+  which throws on unknown commands.
 
 ## Workflow
 

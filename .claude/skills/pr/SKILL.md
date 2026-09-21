@@ -11,8 +11,8 @@ Open a PR for branch: $ARGUMENTS (default: the current branch).
    commits ahead of `main` (`git log main..<branch>`). If there are
    uncommitted changes, stop and suggest `/ship` first.
 2. Run `cargo clippy --workspace --all-targets`, `cargo test -p
-   ebook_research_core` and `npx tsc --noEmit` on the branch. Stop if any
-   fail.
+   ebook_research_core`, `npx tsc --noEmit` and `npm test` on the branch.
+   Stop if any fail.
 3. If `gh pr view <branch>` finds an open PR already, push any new commits
    and show its URL instead of opening a second one.
 4. `git push -u origin <branch>` (never force-push).
@@ -25,7 +25,8 @@ Open a PR for branch: $ARGUMENTS (default: the current branch).
        done differently from it.
      - `## Commits`: one `* <title>` line per commit, oldest first, from
        `git log --reverse --no-merges --format='* %s' main..<branch>`.
-     - `## Verification`: which checks passed, and what wasn't verified
+     - `## Verification`: which checks passed, whether `/ship`'s browser
+       check ran against the mocked backend, and what wasn't verified
        (e.g. "UI not clicked through in the Tauri window").
 6. `gh pr create --base main --head <branch> --title <title> --body-file
    <file>`.

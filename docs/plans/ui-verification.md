@@ -119,3 +119,11 @@ Reader:
 - `npm test`: all cases in section 5 pass. As a one-off sanity check, not kept: dropping the `flash` class in `ReaderView` or deleting a route from `mockBackend.ts` makes the matching test fail.
 - `npm run build` succeeds and `dist/` doesn't contain `quincunx`.
 - Run the section 6 browser check once by hand on this branch as its own proof, with screenshots in the PR description.
+
+## Implementation notes (differences from this plan)
+- `test.epub` has an author ("A. Tester"), so the library test expects "A. Tester · 2 chapters", not "Unknown author".
+- `main.tsx` wraps startup in an `async function start()` instead of using top-level await. It does the same job without depending on the build target.
+- Shared test helpers live in `src/test/renderApp.tsx`: `renderApp(opts)` returns `user` and `callsTo(cmd)`, alongside `search()` and `resultItems()`. `setup.ts` also runs `vi.clearAllMocks()` so `scrollIntoView` calls don't leak between tests.
+- Sanity checks, each reverted: without the `flash` class, or with `block: "start"`, the hit test fails. Sending `book_id` instead of `bookId` fails the two remove tests. Renaming the `get_book_chapters` route fails the four reader tests. Editing a chapter title in the fixture fails `ui_fixtures_are_current` with the regenerate message.
+- The browser check ran once on this branch against `npm run dev:mock` (see README). Two screenshot captures timed out mid-run, so the "back to library" step was checked through the DOM instead.
+- The Tauri window wasn't clicked through.
