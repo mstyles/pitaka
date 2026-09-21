@@ -18,9 +18,15 @@ members, sharing one `Cargo.lock`/`target/`.
 
 - `ebook_research_core/src/epub.rs` — unzips an EPUB, walks
   `META-INF/container.xml` → the OPF manifest/spine → each chapter's
-  XHTML, and splits it into paragraphs (`p`, `h1`-`h6`, `li`,
-  `blockquote`) with char offsets. Each chapter's title is its first
-  `<h1>`/`<h2>`, falling back to the internal file path.
+  XHTML, and splits it into paragraphs (`p`, `div`, `h1`-`h6`, `li`,
+  `blockquote`) with char offsets. A block that directly contains text
+  is one paragraph, nested blocks included; a block that only wraps
+  other blocks is split into them. Text split across inline tags is
+  joined as written, so a drop cap like `<b>B</b>EFORE` reads
+  "BEFORE". Each chapter's title is its first `<h1>`/`<h2>`, falling
+  back to the internal file path. Checked against *Understanding Our
+  Mind* (div-based) by running the parser directly: drop-cap words are
+  no longer split, and each footnote is one paragraph with its number.
 - `ebook_research_core/src/db.rs` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
   imports books (each in one transaction, skipping any whose file
@@ -52,7 +58,8 @@ members, sharing one `Cargo.lock`/`target/`.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
-words" toggle was added). The build needs the Linux system webview libs
+words" toggle was added, and not since the paragraph-extraction rewrite:
+re-imported books haven't been checked in the reader). The build needs the Linux system webview libs
 (webkit2gtk, dbus, appindicator, etc.):
 
 ```
@@ -114,32 +121,30 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 
 ## Known limitations (same order of priority as the Python version)
 
-1. Nested block tags (e.g. `<li><p>...</p></li>`) will currently produce
-   one paragraph per tag, so nested cases get duplicated text — walk
-   top-level children instead of tracking a flat depth stack once you
-   hit this.
-2. No distinct handling of footnotes/endnotes.
-3. Chapter titles come from the first `<h1>`/`<h2>`, but there's no
+1. No distinct handling of footnotes/endnotes.
+2. Chapter titles come from the first `<h1>`/`<h2>`, but there's no
    migration: books imported before that change keep file-path titles
    until re-imported. Books that style headings as `<div>`s (e.g.
    `<div class="ct">`) instead of `<h1>`/`<h2>` also get file-path
    titles. Spine items like `nav.xhtml` also show up as chapters in the
    reader.
-4. Images, tables, and other non-text content are silently dropped, and
+3. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
-5. No re-index logic: if a book's file changes after it was imported,
+   A paragraph that contains a nested block (e.g. a lead-in sentence
+   wrapping a numbered list of `<div>`s) is kept as one paragraph, and
+   a heading nested inside a paragraph isn't treated as a heading.
+4. No re-index logic: if a book's file changes after it was imported,
    importing it again from the same path fails with an error (remove the
    book first, then import it), and a changed copy at a new path is added
-   as a separate book.
-6. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
-   first parse error rather than trying to recover — real-world EPUBs
+   as a separate book. Parser changes likewise only apply on import:
+   books imported before the paragraph-extraction rewrite keep their old
+   paragraph splits (and drop-cap spaces) until removed and re-imported.
+5. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
+   first parse error (keeping the text read so far) rather than trying
+   to recover — real-world EPUBs
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
    before shipping.
-7. `extract_paragraphs` adds a space after every text node, so text
-   split across inline tags gains spaces that weren't there. Drop caps
-   like `<b>B</b>EFORE` become "B EFORE", which a search for "before"
-   won't match, and the reader shows `(<i>dhatu</i>)` as "( dhatu )".
 
 ## Roadmap
 
@@ -156,20 +161,22 @@ Done:
       row
 - [x] Import paragraphs from books that use `<div>` instead of `<p>`
 - [x] Remove a book from the library, so it can be re-imported
+- [x] Emit one paragraph per content block, so nested tags neither
+      duplicate nor chop up text
+- [x] Join text split across inline tags without adding spaces, so
+      drop caps like "B EFORE" are searchable
 
 Next up (fixes for the known limitations above):
 
-- [ ] Walk top-level block children so nested tags don't duplicate
-      text (limitation 1)
-- [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
+- [ ] Skip non-content spine items like `nav.xhtml` (limitation 2)
 - [ ] Recover from malformed XHTML instead of bailing on the first
-      parse error (limitation 6)
+      parse error (limitation 5)
 
 Later:
 
 - [ ] Highlights, notes and bookmarks UI (the `highlights`, `notes` and
       `bookmarks` tables already exist in the schema)
 - [ ] Export bookmarks, notes and highlights
-- [ ] Footnote/endnote handling (limitation 2)
+- [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
-      rendering every block as a plain `<p>` (limitation 4)
+      rendering every block as a plain `<p>` (limitation 3)
