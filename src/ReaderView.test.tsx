@@ -1,7 +1,7 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { fixtures } from "./test/mockBackend";
-import { renderApp, resultItems, search } from "./test/renderApp";
+import { goTo, renderApp, resultItems, search } from "./test/renderApp";
 
 const HIT = fixtures.search["stemmed:quincunx"][0];
 
@@ -12,6 +12,7 @@ function paragraphs() {
 describe("reader", () => {
   it("opens a book at its first chapter", async () => {
     const { user, callsTo } = renderApp();
+    await goTo(user, "Books");
     await user.click(await screen.findByText("A Long Book for Scrolling"));
 
     const partOne = await screen.findByRole("button", { name: "Part One" });
@@ -25,6 +26,7 @@ describe("reader", () => {
 
   it("centres and briefly flashes a search hit", async () => {
     const { user, callsTo } = renderApp({ fakeTimers: true });
+    await goTo(user, "Search");
     await search(user, "quincunx");
     await waitFor(() => expect(resultItems()).toHaveLength(1));
     await user.click(resultItems()[0]);
@@ -50,6 +52,7 @@ describe("reader", () => {
 
   it("switches chapters from the sidebar without flashing", async () => {
     const { user } = renderApp();
+    await goTo(user, "Search");
     await search(user, "quincunx");
     await waitFor(() => expect(resultItems()).toHaveLength(1));
     await user.click(resultItems()[0]);
@@ -60,22 +63,9 @@ describe("reader", () => {
     expect(document.querySelector(".flash")).toBeNull();
   });
 
-  it("goes back to the library with the search kept", async () => {
-    const { user } = renderApp();
-    await search(user, "quincunx");
-    await waitFor(() => expect(resultItems()).toHaveLength(1));
-    await user.click(resultItems()[0]);
-    await user.click(await screen.findByRole("button", { name: "← Library" }));
-
-    expect(document.querySelector(".reader")).toBeNull();
-    expect(screen.getByPlaceholderText<HTMLInputElement>("Search your library…").value).toBe(
-      "quincunx",
-    );
-    expect(resultItems()).toHaveLength(1);
-  });
-
   it("shows an error when a chapter can't be loaded", async () => {
     const { user } = renderApp({ fail: { get_chapter_content: "chapter is gone" } });
+    await goTo(user, "Books");
     await user.click(await screen.findByText("A Long Book for Scrolling"));
     expect(await screen.findByText("Loading chapter failed: chapter is gone")).toBeTruthy();
   });

@@ -7,10 +7,12 @@ type Props = {
   bookId: number;
   initialChapterId?: number;
   focusBlockId?: number;
+  /** e.g. "← Search results": where the book was opened from. */
+  backLabel: string;
   onBack: () => void;
 };
 
-function ReaderView({ bookId, initialChapterId, focusBlockId, onBack }: Props) {
+function ReaderView({ bookId, initialChapterId, focusBlockId, backLabel, onBack }: Props) {
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [activeChapterId, setActiveChapterId] = useState<number | null>(initialChapterId ?? null);
   const [content, setContent] = useState<ChapterContent | null>(null);
@@ -109,7 +111,9 @@ function ReaderView({ bookId, initialChapterId, focusBlockId, onBack }: Props) {
   return (
     <main className="reader">
       <nav className="reader-sidebar">
-        <button onClick={onBack}>← Library</button>
+        <button className="reader-back" onClick={onBack} title={backLabel}>
+          {backLabel}
+        </button>
         <ul className="reader-chapter-list">
           {chapters.map((c) => (
             <li key={c.id}>

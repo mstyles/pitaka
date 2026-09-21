@@ -61,26 +61,40 @@ members, sharing one `Cargo.lock`/`target/`.
   folder, reading back its book, chapter and text, then checks removing
   the book empties the folder but keeps it. `cargo test -p ebook_research_core` passes.
 - The frontend typechecks (`npx tsc --noEmit`):
-  - `src/LibraryView.tsx` — native file-picker → `import_book`, a book
-    list from `list_books`, and a search box with an "Exact words"
-    toggle → `search_library` rendering highlighted snippets, and a
-    "Bookmarks" list of folders with counts. `src/FolderView.tsx` shows
-    a folder's passages (click to open in the reader, Remove), with
-    Rename and Delete.
+  - `src/HomeView.tsx` — the launch screen: Books, Bookmarks and
+    Search cards with counts from `list_books` and
+    `list_bookmark_folders` ("2 books", "1 folder · 2 passages"). An
+    empty library points at importing and disables Search.
+    `src/NavBar.tsx` is the `Home · Books · Bookmarks · Search` header
+    on every other screen except the reader.
+  - `src/BooksView.tsx` — native file-picker → `import_book`, and a
+    book list from `list_books` with Remove.
+  - `src/SearchView.tsx` — a search box with an "Exact words" toggle →
+    `search_library` rendering highlighted snippets. It stays mounted,
+    so the query and results survive leaving the screen, and re-runs
+    the last search when books were imported or removed meanwhile.
+  - `src/BookmarksView.tsx` — the list of folders with counts and a
+    new-folder form. `src/FolderView.tsx` shows a folder's passages
+    (click to open in the reader, Remove), with Rename and Delete.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
     sidebar. Clicking a book opens it at the first chapter; clicking a
     search hit opens its chapter, centres the matching paragraph and
     briefly flashes it. A bookmark icon in each paragraph's margin
     (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
-    to tick it into folders or into a new one.
+    to tick it into folders or into a new one. The back button returns
+    to where the book was opened: `← Books`, `← Search results` or
+    `← <folder name>`.
 
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
-  using Tauri's `mockIPC`). They cover importing (new, duplicate,
+  using Tauri's `mockIPC`). They cover the home screen (counts, the
+  empty-library state, moving between screens from the cards and the
+  header), importing (new, duplicate,
   cancelled), searching in both modes with highlighted snippets,
   removing a book (confirmed or not), opening the reader, centring and
-  flashing a search hit, switching chapters, going back with the search
-  kept, error messages, and bookmark folders: creating, renaming,
+  flashing a search hit, switching chapters, going back to the screen
+  the book was opened from, keeping the search across screens and
+  re-running it after a book is removed, error messages, and bookmark folders: creating, renaming,
   deleting (confirmed or not), removing passages, opening a passage in
   the reader and coming back to its folder, the Remove-book warning
   with its bookmark count, and bookmarking from the reader's popover
@@ -142,8 +156,12 @@ pitaka/
 │                                    get_book_chapters / get_chapter_content /
 │                                    bookmark folder + bookmark commands
 ├── src/                         <- React + TS frontend
-│   ├── App.tsx                  <- switches between library and reader
-│   ├── LibraryView.tsx          <- import, book list, bookmark folders, search
+│   ├── App.tsx                  <- current screen, reader target and back label
+│   ├── HomeView.tsx             <- launch screen: Books / Bookmarks / Search cards
+│   ├── NavBar.tsx               <- header for switching between screens
+│   ├── BooksView.tsx            <- import, book list, remove
+│   ├── SearchView.tsx           <- search box and results (kept mounted)
+│   ├── BookmarksView.tsx        <- folder list, new folder
 │   ├── FolderView.tsx           <- one folder's passages
 │   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
 │   ├── BookmarkPopover.tsx      <- tick a paragraph into folders
@@ -232,6 +250,7 @@ Done:
 - [x] Skip the EPUB 3 navigation document (e.g. `nav.xhtml`) in the
       spine (limitation 2)
 - [x] Bookmark paragraphs into named folders
+- [x] Launch screen with separate Books, Bookmarks and Search screens
 
 Next up (fixes for the known limitations above):
 
