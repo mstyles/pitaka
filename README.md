@@ -187,3 +187,25 @@ Later:
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
       rendering every block as a plain `<p>` (limitation 3)
+
+## Workflow roadmap
+
+Work goes `/plan` → branch → `/ship` → `/pr` → review → `/merge` (see
+CLAUDE.md). Gaps in that workflow, most important first:
+
+- [ ] Run a feature through the whole flow, including `/pr` and the
+      review step (neither has been used yet; bookmark folders is next)
+- [ ] Verify the UI automatically: only the core crate has tests, and
+      the Tauri window hasn't been clicked through since the reader
+      view. Options: frontend tests, the `/run` skill, or a browser
+      check against mocked `invoke` responses
+- [ ] Run `/code-review` in `/pr` before opening the PR, so the diff
+      gets a first review pass
+- [ ] Decide whether plans should go through a PR too, instead of
+      `/plan` committing them straight to `main`
+- [ ] Enforce the review step: `main` isn't protected (branch
+      protection needs GitHub Pro on a private repo), so PRs are a
+      convention kept by the skills and CLAUDE.md
+- [ ] Pre-approve the routine commands `/pr` and `/merge` still prompt
+      for (`git push`, `gh`), e.g. with `/fewer-permission-prompts`
+      after a PR cycle or two
