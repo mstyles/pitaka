@@ -325,6 +325,24 @@ button.button-danger:hover:not(:disabled) {
   font-weight: 400;
 }
 
+.home-recent-more {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0.6em 1em;
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.home-recent-more:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 600px) {
   .home-cards {
     grid-template-columns: 1fr;

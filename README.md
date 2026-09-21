@@ -66,7 +66,8 @@ members, sharing one `Cargo.lock`/`target/`.
     `list_bookmark_folders` ("2 books", "1 folder · 2 passages"). An
     empty library points at importing and disables Search. Under the
     cards, "Your library" lists the 3 most recently imported books,
-    each opening the reader with `← Home`.
+    each opening the reader with `← Home`, and links to the Books
+    screen ("All 5 books →") when there are more.
     `src/NavBar.tsx` is the `Home · Books · Bookmarks · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
@@ -96,7 +97,8 @@ members, sharing one `Cargo.lock`/`target/`.
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
   using Tauri's `mockIPC`). They cover the home screen (counts, the
-  recent-books list and opening a book from it, the
+  recent-books list, opening a book from it and its link to the
+  rest of a larger library, the
   empty-library state, moving between screens from the cards and the
   header), importing (new, duplicate,
   cancelled), searching in both modes with highlighted snippets,

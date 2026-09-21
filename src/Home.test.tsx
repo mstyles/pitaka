@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { fixtures } from "./test/mockBackend";
 import { goTo, renderApp, type Section } from "./test/renderApp";
 
 function card(title: string) {
@@ -30,6 +31,22 @@ describe("home", () => {
       "Test Book of Research",
     ]);
     expect(rows[0].querySelector(".book-meta")!.textContent).toBe("Fixture Author · 3 chapters");
+    expect(within(list).queryByRole("button", { name: /^All \d+ books/ })).toBeNull();
+  });
+
+  it("links to the rest of the library when it has more than 3 books", async () => {
+    // list_books is newest first, so the extra books go at the front.
+    const extra = [7, 6, 5].map((id) => ({ ...fixtures.books[1], id, title: `Extra Book ${id}` }));
+    const { user } = renderApp({ books: [...extra, ...fixtures.books] });
+    const list = await screen.findByRole("region", { name: "Your library" });
+    expect(Array.from(list.querySelectorAll(".book-title"), (t) => t.textContent)).toEqual([
+      "Extra Book 7",
+      "Extra Book 6",
+      "Extra Book 5",
+    ]);
+
+    await user.click(within(list).getByRole("button", { name: "All 5 books →" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Books" })).toBeTruthy();
   });
 
   it("opens a book from home and comes back", async () => {

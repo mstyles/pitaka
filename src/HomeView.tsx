@@ -8,6 +8,9 @@ type Props = {
   onOpenBook: (bookId: number) => void;
 };
 
+/** How many of the newest books "Your library" lists before linking to the rest. */
+const RECENT_COUNT = 3;
+
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
@@ -102,7 +105,7 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
           </h2>
           <ul className="home-recent-list">
             {/* list_books is newest first. */}
-            {books.slice(0, 3).map((b) => (
+            {books.slice(0, RECENT_COUNT).map((b) => (
               <li key={b.id}>
                 <button className="home-recent-row" onClick={() => onOpenBook(b.id)}>
                   <span className="book-title">{b.title ?? "Untitled"}</span>
@@ -112,6 +115,13 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
                 </button>
               </li>
             ))}
+            {books.length > RECENT_COUNT && (
+              <li>
+                <button className="home-recent-more" onClick={() => onNavigate("books")}>
+                  All {books.length} books →
+                </button>
+              </li>
+            )}
           </ul>
         </section>
       )}
