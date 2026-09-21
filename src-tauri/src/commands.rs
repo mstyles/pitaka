@@ -4,8 +4,8 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, BookSummary, ChapterContent, ChapterSummary, ImportOutcome, SearchMode,
-    SearchResult,
+    db, open_db, BlockBookmark, BookSummary, BookmarkFolder, ChapterContent, ChapterSummary,
+    FolderBookmark, ImportOutcome, SearchMode, SearchResult,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -90,6 +90,87 @@ pub fn get_chapter_content(
 ) -> Result<ChapterContent, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::get_chapter_content(&conn, chapter_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("create_bookmark_folder", { name: "Know your limit" })`
+/// (the name is trimmed, and must be unique ignoring case).
+#[tauri::command]
+pub fn create_bookmark_folder(
+    name: String,
+    state: State<AppState>,
+) -> Result<BookmarkFolder, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::create_bookmark_folder(&conn, &name).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("rename_bookmark_folder", { folderId: 1, name: "Talk" })`
+#[tauri::command]
+pub fn rename_bookmark_folder(
+    folder_id: i64,
+    name: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::rename_bookmark_folder(&conn, folder_id, &name).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("delete_bookmark_folder", { folderId: 1 })`. Deletes
+/// the folder's bookmarks too; the passages stay in their books.
+#[tauri::command]
+pub fn delete_bookmark_folder(folder_id: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::delete_bookmark_folder(&conn, folder_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("list_bookmark_folders")` (newest first)
+#[tauri::command]
+pub fn list_bookmark_folders(state: State<AppState>) -> Result<Vec<BookmarkFolder>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_bookmark_folders(&conn).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("add_bookmark", { folderId: 1, contentBlockId: 42 })`
+/// (returns the bookmark's id; adding a passage twice is a no-op).
+#[tauri::command]
+pub fn add_bookmark(
+    folder_id: i64,
+    content_block_id: i64,
+    state: State<AppState>,
+) -> Result<i64, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::add_bookmark(&conn, folder_id, content_block_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("remove_bookmark", { folderId: 1, contentBlockId: 42 })`
+#[tauri::command]
+pub fn remove_bookmark(
+    folder_id: i64,
+    content_block_id: i64,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::remove_bookmark(&conn, folder_id, content_block_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("list_folder_bookmarks", { folderId: 1 })` (in the
+/// order they were added)
+#[tauri::command]
+pub fn list_folder_bookmarks(
+    folder_id: i64,
+    state: State<AppState>,
+) -> Result<Vec<FolderBookmark>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_folder_bookmarks(&conn, folder_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("get_chapter_bookmarks", { chapterId: 1 })`
+#[tauri::command]
+pub fn get_chapter_bookmarks(
+    chapter_id: i64,
+    state: State<AppState>,
+) -> Result<Vec<BlockBookmark>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_chapter_bookmarks(&conn, chapter_id).map_err(|e| e.to_string())
 }
 
 pub fn register(app: &mut tauri::App) {

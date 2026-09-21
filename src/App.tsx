@@ -1,7 +1,7 @@
 import { useState } from "react";
 import LibraryView from "./LibraryView";
 import ReaderView from "./ReaderView";
-import type { SearchResult } from "./types";
+import type { FolderBookmark, SearchResult } from "./types";
 import "./App.css";
 
 type ReaderTarget = {
@@ -18,9 +18,13 @@ function App() {
       {/* Kept mounted while reading so the search query/results survive a round trip. */}
       <div hidden={reader != null}>
         <LibraryView
+          active={reader == null}
           onOpenBook={(bookId) => setReader({ bookId })}
           onOpenSearchResult={(r: SearchResult) =>
             setReader({ bookId: r.book_id, chapterId: r.chapter_id, focusBlockId: r.content_block_id })
+          }
+          onOpenBookmark={(b: FolderBookmark) =>
+            setReader({ bookId: b.book_id, chapterId: b.chapter_id, focusBlockId: b.content_block_id })
           }
         />
       </div>

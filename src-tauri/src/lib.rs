@@ -16,6 +16,14 @@ pub fn run() {
             commands::list_books,
             commands::get_book_chapters,
             commands::get_chapter_content,
+            commands::create_bookmark_folder,
+            commands::rename_bookmark_folder,
+            commands::delete_bookmark_folder,
+            commands::list_bookmark_folders,
+            commands::add_bookmark,
+            commands::remove_bookmark,
+            commands::list_folder_bookmarks,
+            commands::get_chapter_bookmarks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
