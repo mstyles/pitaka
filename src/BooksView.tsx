@@ -71,7 +71,7 @@ function BooksView({ onOpenBook, onLibraryChanged }: Props) {
       <h1>Books</h1>
 
       <div className="row">
-        <button onClick={importBook}>Import EPUB…</button>
+        <button className="button-primary" onClick={importBook}>Import EPUB…</button>
         <span>{importStatus}</span>
       </div>
 

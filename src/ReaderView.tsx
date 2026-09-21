@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import BookmarkPopover from "./BookmarkPopover";
-import type { BlockBookmark, BookmarkFolder, ChapterContent, ChapterSummary } from "./types";
+import type {
+  BlockBookmark,
+  BookmarkFolder,
+  BookSummary,
+  ChapterContent,
+  ChapterSummary,
+} from "./types";
 
 type Props = {
   bookId: number;
@@ -13,6 +19,7 @@ type Props = {
 };
 
 function ReaderView({ bookId, initialChapterId, focusBlockId, backLabel, onBack }: Props) {
+  const [book, setBook] = useState<BookSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [activeChapterId, setActiveChapterId] = useState<number | null>(initialChapterId ?? null);
   const [content, setContent] = useState<ChapterContent | null>(null);
@@ -33,6 +40,20 @@ function ReaderView({ bookId, initialChapterId, focusBlockId, backLabel, onBack 
         setActiveChapterId((prev) => prev ?? chs[0]?.id ?? null);
       })
       .catch((err) => setError(`Loading chapters failed: ${err}`));
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId]);
+
+  // Search results and bookmarks don't carry the author, so look the book up.
+  // A failure just leaves the header out; the chapter error covers a broken backend.
+  useEffect(() => {
+    let cancelled = false;
+    invoke<BookSummary[]>("list_books")
+      .then((books) => {
+        if (!cancelled) setBook(books.find((b) => b.id === bookId) ?? null);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -110,10 +131,16 @@ function ReaderView({ bookId, initialChapterId, focusBlockId, backLabel, onBack 
 
   return (
     <main className="reader">
-      <nav className="reader-sidebar">
+      <nav className="reader-sidebar" aria-label="Chapters">
         <button className="reader-back" onClick={onBack} title={backLabel}>
           {backLabel}
         </button>
+        {book && (
+          <div className="reader-book">
+            <div className="reader-book-title">{book.title ?? "Untitled"}</div>
+            <div className="reader-book-author">{book.author ?? "Unknown author"}</div>
+          </div>
+        )}
         <ul className="reader-chapter-list">
           {chapters.map((c) => (
             <li key={c.id}>

@@ -17,7 +17,16 @@ describe("search", () => {
     expect(callsTo("search_library")).toEqual([{ query: "neural networks", mode: "stemmed" }]);
     const marks = resultItems()[0].querySelectorAll("mark");
     expect(Array.from(marks, (m) => m.textContent)).toEqual(["Neural", "networks"]);
-    expect(resultItems()[0].textContent).toContain(`${TEST_BOOK} — chapter 1`);
+    expect(resultItems()[0].textContent).toContain(`${TEST_BOOK} · chapter 1`);
+    expect(screen.getByText("2 results")).toBeTruthy();
+  });
+
+  it("says when a search finds nothing", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Search");
+    expect(screen.queryByText("No results")).toBeNull();
+    await search(user, "zzzz");
+    expect(await screen.findByText("No results")).toBeTruthy();
   });
 
   it("re-runs the search in exact mode when Exact words is ticked", async () => {
@@ -55,7 +64,7 @@ describe("search", () => {
     await waitFor(() => expect(resultItems()).toHaveLength(2));
 
     await goTo(user, "Books");
-    const row = (await screen.findByText(TEST_BOOK)).closest("li")!;
+    const row = (await screen.findByText(TEST_BOOK, { selector: ".book-title" })).closest("li")!;
     await user.click(within(row).getByRole("button", { name: "Remove" }));
     await screen.findByText(`Removed "${TEST_BOOK}"`);
 

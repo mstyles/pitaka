@@ -87,7 +87,9 @@ function BookmarksView({ openFolderId, onOpenFolder, onOpenBookmark }: Props) {
             onChange={(e) => setNewFolderName(e.currentTarget.value)}
             placeholder="New folder name"
           />
-          <button type="submit">Create</button>
+          <button type="submit" className="button-primary">
+            Create
+          </button>
         </form>
         {status && <p className="status">{status}</p>}
       </section>

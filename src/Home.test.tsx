@@ -21,6 +21,28 @@ describe("home", () => {
     expect(document.querySelector(".reader")).toBeNull();
   });
 
+  it("lists the most recent books", async () => {
+    renderApp();
+    const list = await screen.findByRole("region", { name: "Your library" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.querySelector(".book-title")!.textContent)).toEqual([
+      "A Long Book for Scrolling",
+      "Test Book of Research",
+    ]);
+    expect(rows[0].querySelector(".book-meta")!.textContent).toBe("Fixture Author · 3 chapters");
+  });
+
+  it("opens a book from home and comes back", async () => {
+    const { user, callsTo } = renderApp();
+    const list = await screen.findByRole("region", { name: "Your library" });
+    await user.click(within(list).getByRole("button", { name: /^A Long Book for Scrolling/ }));
+    await waitFor(() => expect(callsTo("get_book_chapters")).toEqual([{ bookId: 2 }]));
+
+    await user.click(await screen.findByRole("button", { name: "← Home" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Pitaka" })).toBeTruthy();
+    expect(document.querySelector(".reader")).toBeNull();
+  });
+
   it.each<Section>(["Books", "Bookmarks", "Search"])(
     "opens %s from its card and returns home from the header",
     async (section) => {
@@ -54,6 +76,7 @@ describe("home", () => {
     await waitFor(() => expect(detail("Books")).toBe("Import your first EPUB"));
     expect(detail("Search")).toBe("Import a book to search");
     expect((card("Search") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText("Your library")).toBeNull();
     // The folder outlives its passages.
     expect(detail("Bookmarks")).toBe("1 folder · 0 passages");
   });
