@@ -1,11 +1,30 @@
+/* Paper: every colour and shape is a token here; dark mode only swaps colours. */
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+  --bg: #f6f1e7;
+  --surface: #fffcf6;
+  --text: #2a241d;
+  --muted: #6b6152;
+  --border: #e2d8c5;
+  --accent: #9a4a1c;
+  --on-accent: #fffcf6;
+  --danger: #a33a2b;
+  --mark: #f2d8a2;
+  --flash: rgba(214, 160, 60, 0.22);
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  --radius: 6px;
+  --content: 880px;
+
+  --font-display: "Fraunces", Georgia, serif;
+  --font-read: "Literata", Georgia, serif;
+  --font-ui: "Source Sans 3", system-ui, sans-serif;
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background-color: var(--bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -14,71 +33,314 @@
   -webkit-text-size-adjust: 100%;
 }
 
-.container {
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1814;
+    --surface: #25201a;
+    --text: #ede4d3;
+    --muted: #b0a48f;
+    --border: #3a3228;
+    --accent: #e0995e;
+    --on-accent: #1c1814;
+    --danger: #e07a67;
+    --mark: rgba(224, 153, 94, 0.35);
+    --flash: rgba(224, 153, 94, 0.16);
+
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
   margin: 0;
-  padding-top: 10vh;
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: 2.25em;
+  margin: 0 0 0.6em;
+}
+
+.container {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+/* Controls */
+
+input:not([type="checkbox"]),
+button {
+  min-height: 40px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: 0.45em 1em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text);
+  background-color: var(--surface);
+  transition: border-color 0.2s;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+input:not([type="checkbox"])::placeholder {
+  color: var(--muted);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.button-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.button-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+button.button-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background-color: var(--bg);
+}
+
+.row {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0.75em 0;
+}
+
+.section-empty,
+.status {
+  color: var(--muted);
+}
+
+.status {
+  font-size: 0.9em;
+}
+
+.section-label {
+  font-family: var(--font-ui);
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 0.75em;
+}
+
+/* Header */
+
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header-inner {
+  max-width: var(--content);
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .app-nav {
   display: flex;
-  justify-content: center;
-  gap: 0.5em;
-  padding: 0.75em 1em;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  gap: 0.25em;
+  align-self: stretch;
 }
 
 .app-nav button {
+  min-height: 0;
+  height: 100%;
+  padding: 0 0.75em;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: none;
-  box-shadow: none;
-  padding: 0.4em 0.9em;
+  color: var(--muted);
+  transition: none;
+}
+
+/* Only the current section is underlined, so hover doesn't borrow the accent. */
+.app-nav button:hover {
+  color: var(--text);
+  border-bottom-color: transparent;
 }
 
 .app-nav button[aria-current="page"] {
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.3em;
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* Home */
+
+.home h1 {
+  text-align: center;
+  font-size: 56px;
+  margin-bottom: 0.6em;
 }
 
 .home-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 1em;
-  width: 100%;
-  max-width: 720px;
-  margin: 1em auto 0;
-  padding: 0 1em;
-  box-sizing: border-box;
+  gap: 16px;
 }
 
 .home-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.5em;
-  padding: 2em 1em;
+  align-items: flex-start;
+  gap: 0.35em;
+  padding: 20px;
+  text-align: left;
 }
 
 .home-card:disabled {
   opacity: 0.5;
-  cursor: default;
-  border-color: transparent;
+}
+
+.home-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 0.5em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--accent);
+}
+
+.home-card-icon svg,
+.search-field svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .home-card-title {
+  font-family: var(--font-display);
   font-size: 1.4em;
   font-weight: 600;
 }
 
 /* min-height keeps the cards from jumping when the counts arrive. */
 .home-card-detail {
-  font-size: 0.85em;
+  font-size: 0.9em;
   font-weight: 400;
-  opacity: 0.7;
+  color: var(--muted);
   min-height: 1.5em;
+}
+
+.home-recent {
+  margin-top: 40px;
+}
+
+.home-recent-list,
+.book-list,
+.folder-list {
+  list-style: none;
+  margin: 1em 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.home-recent-list {
+  margin: 0;
+}
+
+.home-recent-list li + li,
+.book-row + .book-row,
+.folder-row + .folder-row {
+  border-top: 1px solid var(--border);
+}
+
+.home-recent-row {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1em;
+  padding: 0.75em 1em;
+  border: none;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  font-weight: 400;
+}
+
+.home-recent-more {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0.6em 1em;
+  border: none;
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.home-recent-more:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 600px) {
@@ -87,125 +349,141 @@
   }
 }
 
-.row {
-  display: flex;
-  justify-content: center;
-  gap: 0.5em;
-  margin: 0.75em 0;
-}
+/* Lists: books, folders, results, passages */
 
-.search-mode {
-  display: flex;
-  align-items: center;
-  gap: 0.25em;
-  white-space: nowrap;
-}
-
-.results {
-  list-style: none;
-  margin: 1em auto 0;
-  padding: 0;
-  max-width: 640px;
-  text-align: left;
-}
-
-.results li {
-  padding: 0.75em 0;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-}
-
-.result-meta {
-  font-size: 0.85em;
-  opacity: 0.7;
-  margin-bottom: 0.25em;
-}
-
-.result-snippet mark {
-  background: #ffe08a;
-  color: inherit;
-  border-radius: 2px;
-}
-
-.results li {
-  cursor: pointer;
-}
-
-.book-list {
-  list-style: none;
-  margin: 1em auto;
-  padding: 0;
-  max-width: 640px;
-  width: 100%;
-  text-align: left;
-}
-
-.book-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1em;
-  padding: 0.75em 0.5em;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-  cursor: pointer;
-}
-
-.book-row:hover,
-.folder-row:hover,
-.folder-passage:hover,
-.results li:hover {
-  background: rgba(128, 128, 128, 0.08);
-}
-
-.book-meta {
-  font-size: 0.85em;
-  opacity: 0.7;
-}
-
-.book-title {
-  flex: 1;
-}
-
-.folders {
-  margin: 1em auto;
-  max-width: 640px;
-  width: 100%;
-}
-
-.section-empty {
-  opacity: 0.7;
-}
-
-.status {
-  font-size: 0.9em;
-}
-
-.folder-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  text-align: left;
-}
-
+.book-row,
 .folder-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1em;
-  padding: 0.75em 0.5em;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  padding: 0.75em 1em;
   cursor: pointer;
+}
+
+.book-row:hover,
+.folder-row:hover,
+.home-recent-row:hover {
+  background: var(--bg);
+}
+
+.book-title {
+  flex: 1;
+  font-family: var(--font-read);
+  font-size: 1.05em;
+}
+
+.book-meta {
+  font-size: 0.9em;
+  color: var(--muted);
 }
 
 .folder-row-name {
   flex: 1;
 }
 
-.folder-view {
-  padding-top: 2em;
-  max-width: 720px;
-  margin: 0 auto;
-  text-align: left;
+.book-remove,
+.folder-passage-remove {
+  min-height: 32px;
+  padding: 0.2em 0.8em;
+  font-size: 0.85em;
 }
+
+/* Shown on hover, and on keyboard focus so it can still be reached. */
+.book-remove,
+.folder-passage-remove {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.book-row:hover .book-remove,
+.book-row:focus-within .book-remove,
+.folder-passage:hover .folder-passage-remove,
+.folder-passage:focus-within .folder-passage-remove {
+  opacity: 1;
+}
+
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.search-field svg {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+}
+
+.search-field input {
+  width: 100%;
+  padding-left: 38px;
+}
+
+.search-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+
+.result-count {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin: 0.5em 0 1em;
+}
+
+.results,
+.folder-passages {
+  list-style: none;
+  margin: 1em 0 0;
+  padding: 0;
+}
+
+.results li,
+.folder-passage {
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.results li:hover,
+.folder-passage:hover {
+  border-color: var(--accent);
+}
+
+.result-meta {
+  font-size: 0.9em;
+  color: var(--muted);
+  margin-bottom: 0.35em;
+}
+
+.result-meta b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.result-snippet,
+.folder-passage-text {
+  font-family: var(--font-read);
+  line-height: 1.7;
+}
+
+.result-snippet mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+
+/* Bookmarks and folders */
 
 .folder-header {
   display: flex;
@@ -216,7 +494,7 @@
 .folder-name {
   flex: 1;
   margin: 0;
-  font-size: 1.3em;
+  font-size: 1.6em;
 }
 
 .folder-rename {
@@ -230,21 +508,13 @@
 }
 
 .folder-status {
-  margin: 0.5em 0 1em;
-  font-size: 0.85em;
-  opacity: 0.7;
+  margin: 0.75em 0 1em;
+  font-size: 0.9em;
+  color: var(--muted);
 }
 
-.folder-passages {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.folder-passage {
-  padding: 0.75em 0.5em;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-  cursor: pointer;
+.folder-empty {
+  color: var(--muted);
 }
 
 .folder-passage-meta {
@@ -252,39 +522,28 @@
   justify-content: space-between;
   align-items: center;
   gap: 1em;
-  font-size: 0.85em;
-  opacity: 0.8;
-  margin-bottom: 0.25em;
+  font-size: 0.9em;
+  color: var(--muted);
+  margin-bottom: 0.35em;
 }
 
-.folder-passage-text {
-  line-height: 1.7;
-}
+/* Reader: fixed so it fills the window. */
 
-.folder-passage-remove {
-  padding: 0.2em 0.7em;
-  font-size: 0.85em;
-}
-
-.book-remove {
-  padding: 0.3em 0.8em;
-  font-size: 0.85em;
-}
-
-/* Fixed so it fills the window regardless of the default body margin. */
 .reader {
   position: fixed;
   inset: 0;
   display: flex;
   text-align: left;
+  background: var(--bg);
 }
 
 .reader-sidebar {
-  width: 240px;
+  width: 272px;
   flex-shrink: 0;
   overflow-y: auto;
-  padding: 1em;
-  border-right: 1px solid rgba(128, 128, 128, 0.3);
+  padding: 20px 16px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
 .reader-back {
@@ -294,49 +553,72 @@
   white-space: nowrap;
 }
 
+.reader-book {
+  margin: 20px 8px 0;
+}
+
+.reader-book-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.reader-book-author {
+  margin-top: 0.2em;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .reader-chapter-list {
   list-style: none;
-  margin: 1em 0 0;
+  margin: 16px 0 0;
   padding: 0;
 }
 
 .reader-chapter-list button {
   display: block;
   width: 100%;
-  text-align: left;
-  background: none;
-  box-shadow: none;
+  min-height: 0;
   padding: 0.4em 0.5em;
+  text-align: left;
+  border: none;
+  background: none;
   font-weight: 400;
 }
 
+.reader-chapter-list button:hover {
+  background: var(--bg);
+}
+
 .reader-chapter-list button.active {
-  font-weight: 700;
-  background: rgba(128, 128, 128, 0.15);
+  font-weight: 600;
+  background: var(--bg);
 }
 
 .reader-content {
   flex: 1;
   overflow-y: auto;
   /* Room on the left for the bookmark icons in narrow windows. */
-  padding: 2em 2em 2em 3em;
+  padding: 48px 32px 48px 48px;
 }
 
 .reader-text {
-  max-width: 720px;
+  max-width: 640px;
   margin: 0 auto;
+  font-family: var(--font-read);
+  font-size: 19px;
+  line-height: 1.75;
 }
 
 .reader-paragraph {
   margin: 0 0 1em;
-  line-height: 1.7;
   border-radius: 4px;
   transition: background-color 1.5s ease;
 }
 
-/* Translucent so it stays legible under dark-mode text too. */
 .reader-paragraph.flash {
-  background-color: rgba(255, 208, 0, 0.35);
+  background-color: var(--flash);
 }
 
 /* Positions the bookmark icon in the left margin and its popover below it. */
@@ -348,11 +630,12 @@
   position: absolute;
   top: 0.35em;
   left: -2.25em;
+  min-height: 0;
   padding: 0.2em 0.35em;
   line-height: 0;
+  border: none;
   background: none;
-  box-shadow: none;
-  color: inherit;
+  color: var(--muted);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -365,7 +648,7 @@
 
 .reader-block:hover .bookmark-toggle,
 .reader-block:focus-within .bookmark-toggle {
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 .bookmark-toggle:hover,
@@ -375,7 +658,7 @@
 
 .bookmark-toggle.bookmarked {
   opacity: 1;
-  color: #396cd8;
+  color: var(--accent);
 }
 
 .bookmark-toggle.bookmarked svg {
@@ -383,7 +666,6 @@
 }
 
 .bookmark-popover {
-  --popover-bg: #ffffff;
   position: absolute;
   top: 2.25em;
   left: -2.25em;
@@ -391,16 +673,19 @@
   min-width: 240px;
   max-width: 320px;
   padding: 0.75em;
-  border: 1px solid rgba(128, 128, 128, 0.4);
-  border-radius: 8px;
-  background: var(--popover-bg);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
 }
 
 .bookmark-popover-heading {
   font-size: 0.85em;
   font-weight: 600;
-  opacity: 0.7;
+  color: var(--muted);
   margin-bottom: 0.25em;
 }
 
@@ -422,89 +707,16 @@
 
 .bookmark-popover input:not([type="checkbox"]) {
   width: 100%;
-  box-sizing: border-box;
-  padding: 0.4em 0.6em;
+  min-height: 36px;
+  padding: 0.35em 0.6em;
 }
 
 .bookmark-popover-error {
-  color: #d33;
+  color: var(--danger);
   font-size: 0.85em;
   margin-top: 0.4em;
 }
 
 .reader-error {
-  color: #d33;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-
-  .bookmark-popover {
-    --popover-bg: #3a3a3a;
-  }
-
-  .bookmark-toggle.bookmarked {
-    color: #7aa2f7;
-  }
+  color: var(--danger);
 }

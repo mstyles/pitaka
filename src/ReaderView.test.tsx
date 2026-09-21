@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { fixtures } from "./test/mockBackend";
 import { goTo, renderApp, resultItems, search } from "./test/renderApp";
@@ -22,6 +22,16 @@ describe("reader", () => {
     await waitFor(() => expect(paragraphs()).toHaveLength(40));
     expect(paragraphs()[0].textContent).toMatch(/^Part One, paragraph 1:/);
     expect(callsTo("get_book_chapters")).toEqual([{ bookId: 2 }]);
+  });
+
+  it("shows the book's title and author in the sidebar", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await user.click(await screen.findByText("A Long Book for Scrolling"));
+
+    const sidebar = await screen.findByRole("navigation", { name: "Chapters" });
+    expect(await within(sidebar).findByText("A Long Book for Scrolling")).toBeTruthy();
+    expect(within(sidebar).getByText("Fixture Author")).toBeTruthy();
   });
 
   it("centres and briefly flashes a search hit", async () => {

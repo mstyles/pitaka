@@ -32,6 +32,8 @@ export type MockOptions = {
   openPath?: string | null;
   /** Whether confirmation dialogs (remove book, delete folder) are accepted. */
   confirm?: boolean;
+  /** The library to start with, in place of the fixture books. */
+  books?: BookSummary[];
   /** Commands that should reject, with the error message to reject with. */
   fail?: Partial<Record<string, string>>;
 };
@@ -47,9 +49,10 @@ export function installMockBackend({
   openPath = "/books/test.epub",
   confirm = true,
   fail = {},
+  books: initialBooks = fixtures.books,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
-  let books = fixtures.books.map((b) => ({ ...b }));
+  let books = initialBooks.map((b) => ({ ...b }));
   const imported = fixtures.books.find((b) => b.id === fixtures.import_new.book_id)!;
 
   // Bookmark state, seeded from the fixtures and kept consistent the way the

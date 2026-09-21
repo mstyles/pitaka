@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { fixtures } from "./test/mockBackend";
 import { goTo, renderApp, type Section } from "./test/renderApp";
 
 function card(title: string) {
@@ -18,6 +19,44 @@ describe("home", () => {
     expect(detail("Search")).toBe("Search across 2 books");
     expect(screen.getByRole("heading", { level: 1, name: "Pitaka" })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
+    expect(document.querySelector(".reader")).toBeNull();
+  });
+
+  it("lists the most recent books", async () => {
+    renderApp();
+    const list = await screen.findByRole("region", { name: "Your library" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.querySelector(".book-title")!.textContent)).toEqual([
+      "A Long Book for Scrolling",
+      "Test Book of Research",
+    ]);
+    expect(rows[0].querySelector(".book-meta")!.textContent).toBe("Fixture Author · 3 chapters");
+    expect(within(list).queryByRole("button", { name: /^All \d+ books/ })).toBeNull();
+  });
+
+  it("links to the rest of the library when it has more than 3 books", async () => {
+    // list_books is newest first, so the extra books go at the front.
+    const extra = [7, 6, 5].map((id) => ({ ...fixtures.books[1], id, title: `Extra Book ${id}` }));
+    const { user } = renderApp({ books: [...extra, ...fixtures.books] });
+    const list = await screen.findByRole("region", { name: "Your library" });
+    expect(Array.from(list.querySelectorAll(".book-title"), (t) => t.textContent)).toEqual([
+      "Extra Book 7",
+      "Extra Book 6",
+      "Extra Book 5",
+    ]);
+
+    await user.click(within(list).getByRole("button", { name: "All 5 books →" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Books" })).toBeTruthy();
+  });
+
+  it("opens a book from home and comes back", async () => {
+    const { user, callsTo } = renderApp();
+    const list = await screen.findByRole("region", { name: "Your library" });
+    await user.click(within(list).getByRole("button", { name: /^A Long Book for Scrolling/ }));
+    await waitFor(() => expect(callsTo("get_book_chapters")).toEqual([{ bookId: 2 }]));
+
+    await user.click(await screen.findByRole("button", { name: "← Home" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Pitaka" })).toBeTruthy();
     expect(document.querySelector(".reader")).toBeNull();
   });
 
@@ -54,6 +93,7 @@ describe("home", () => {
     await waitFor(() => expect(detail("Books")).toBe("Import your first EPUB"));
     expect(detail("Search")).toBe("Import a book to search");
     expect((card("Search") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText("Your library")).toBeNull();
     // The folder outlives its passages.
     expect(detail("Bookmarks")).toBe("1 folder · 0 passages");
   });

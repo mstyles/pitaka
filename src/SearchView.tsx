@@ -18,6 +18,8 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
   const [searching, setSearching] = useState(false);
   const [exactWords, setExactWords] = useState(false);
   const [status, setStatus] = useState("");
+  // False until the first search returns, so the count line doesn't say "No results" up front.
+  const [searched, setSearched] = useState(false);
   const lastSearch = useRef<LastSearch | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +31,7 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
     try {
       setResults(await invoke<SearchResult[]>("search_library", { query: q, mode }));
       setStatus("");
+      setSearched(true);
     } catch (err) {
       setStatus(`Search failed: ${err}`);
     } finally {
@@ -61,13 +64,19 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
           runSearch(query, exactWords);
         }}
       >
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search your library…"
-        />
-        <button type="submit" disabled={searching}>
+        <div className="search-field">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6" />
+            <path d="M15 15l5.5 5.5" />
+          </svg>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            placeholder="Search your library…"
+          />
+        </div>
+        <button type="submit" className="button-primary" disabled={searching}>
           {searching ? "Searching…" : "Search"}
         </button>
         <label
@@ -82,13 +91,23 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
           Exact words
         </label>
       </form>
-      {status && <p className="status">{status}</p>}
+      {status ? (
+        <p className="status">{status}</p>
+      ) : (
+        searched && (
+          <p className="result-count">
+            {results.length === 0
+              ? "No results"
+              : `${results.length} result${results.length === 1 ? "" : "s"}`}
+          </p>
+        )
+      )}
 
       <ul className="results">
         {results.map((r) => (
           <li key={r.content_block_id} onClick={() => onOpenResult(r)}>
             <div className="result-meta">
-              {r.book_title ?? "Untitled"} — chapter {r.chapter_idx}
+              <b>{r.book_title ?? "Untitled"}</b> · chapter {r.chapter_idx}
             </div>
             <div
               className="result-snippet"

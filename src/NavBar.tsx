@@ -15,17 +15,22 @@ type Props = {
 /** The header on every section screen, for switching without going through home. */
 function NavBar({ current, onNavigate }: Props) {
   return (
-    <nav className="app-nav" aria-label="Sections">
-      {SECTIONS.map(({ screen, label }) => (
-        <button
-          key={screen}
-          aria-current={screen === current ? "page" : undefined}
-          onClick={() => onNavigate(screen)}
-        >
-          {label}
-        </button>
-      ))}
-    </nav>
+    <header className="app-header">
+      <div className="app-header-inner">
+        <span className="wordmark">Pitaka</span>
+        <nav className="app-nav" aria-label="Sections">
+          {SECTIONS.map(({ screen, label }) => (
+            <button
+              key={screen}
+              aria-current={screen === current ? "page" : undefined}
+              onClick={() => onNavigate(screen)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+    </header>
   );
 }
 

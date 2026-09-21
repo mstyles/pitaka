@@ -30,7 +30,12 @@ function App() {
   return (
     <>
       {!reader && screen !== "home" && <NavBar current={screen} onNavigate={navigate} />}
-      {!reader && screen === "home" && <HomeView onNavigate={navigate} />}
+      {!reader && screen === "home" && (
+        <HomeView
+          onNavigate={navigate}
+          onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Home" })}
+        />
+      )}
       {!reader && screen === "books" && (
         <BooksView
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Books" })}

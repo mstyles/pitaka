@@ -64,7 +64,10 @@ members, sharing one `Cargo.lock`/`target/`.
   - `src/HomeView.tsx` — the launch screen: Books, Bookmarks and
     Search cards with counts from `list_books` and
     `list_bookmark_folders` ("2 books", "1 folder · 2 passages"). An
-    empty library points at importing and disables Search.
+    empty library points at importing and disables Search. Under the
+    cards, "Your library" lists the 3 most recently imported books,
+    each opening the reader with `← Home`, and links to the Books
+    screen ("All 5 books →") when there are more.
     `src/NavBar.tsx` is the `Home · Books · Bookmarks · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
@@ -77,17 +80,25 @@ members, sharing one `Cargo.lock`/`target/`.
     new-folder form. `src/FolderView.tsx` shows a folder's passages
     (click to open in the reader, Remove), with Rename and Delete.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
-    sidebar. Clicking a book opens it at the first chapter; clicking a
+    sidebar headed by the book's title and author. Clicking a book opens it at the first chapter; clicking a
     search hit opens its chapter, centres the matching paragraph and
     briefly flashes it. A bookmark icon in each paragraph's margin
     (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
     `← <folder name>`.
+  - `src/fonts.css` — the Paper style's bundled OFL fonts (Fraunces,
+    Literata, Source Sans 3), latin and latin-ext subsets, so Pali
+    diacritics (ā ṃ ṭ ḍ ṅ ṇ ḷ) render in them rather than a fallback.
+    Colours are tokens in `src/App.css` with a dark variant that follows
+    the system theme; checked in the browser in light and dark, with
+    muted text at 5.4:1 (light) and 7.2:1 (dark) contrast.
 
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
   using Tauri's `mockIPC`). They cover the home screen (counts, the
+  recent-books list, opening a book from it and its link to the
+  rest of a larger library, the
   empty-library state, moving between screens from the cards and the
   header), importing (new, duplicate,
   cancelled), searching in both modes with highlighted snippets,
@@ -167,6 +178,9 @@ pitaka/
 │   ├── BookmarkPopover.tsx      <- tick a paragraph into folders
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
+│   ├── fonts.css                <- @font-face rules for the bundled fonts
+│   ├── assets/fonts/            <- woff2 files + their OFL licences
+│   ├── App.css                  <- Paper colour tokens and all styles
 │   └── types.ts                 <- TS mirrors of the Rust command types
 └── package.json
 ```
@@ -251,6 +265,8 @@ Done:
       spine (limitation 2)
 - [x] Bookmark paragraphs into named folders
 - [x] Launch screen with separate Books, Bookmarks and Search screens
+- [x] Paper visual style: bundled serif fonts, colour tokens with a
+      matching dark mode
 
 Next up (fixes for the known limitations above):
 

@@ -72,7 +72,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
   }
 
   return (
-    <main className="container folder-view">
+    <main className="container">
       <div className="folder-header">
         <button onClick={onBack}>← Bookmarks</button>
         {renaming ? (
@@ -111,7 +111,9 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
             >
               Rename
             </button>
-            <button onClick={deleteFolder}>Delete</button>
+            <button className="button-danger" onClick={deleteFolder}>
+              Delete
+            </button>
           </>
         )}
       </div>
