@@ -158,6 +158,7 @@ pub struct SearchResult {
     pub book_title: Option<String>,
     pub chapter_id: i64,
     pub chapter_idx: i64,
+    pub chapter_title: Option<String>,
     pub block_idx: i64,
     pub content_block_id: i64,
     pub snippet: String,
@@ -270,7 +271,7 @@ pub fn search(
     // The table name comes from the enum, never from user input.
     let fts = mode.fts_table();
     let mut stmt = conn.prepare(&format!(
-        "SELECT b.id, b.title, ch.id, ch.idx, cb.block_idx, cb.id,
+        "SELECT b.id, b.title, ch.id, ch.idx, ch.title, cb.block_idx, cb.id,
                 snippet({fts}, 0, '[', ']', '...', 12) AS snip,
                 bm25({fts}) AS rank
          FROM {fts}
@@ -288,10 +289,11 @@ pub fn search(
             book_title: row.get(1)?,
             chapter_id: row.get(2)?,
             chapter_idx: row.get(3)?,
-            block_idx: row.get(4)?,
-            content_block_id: row.get(5)?,
-            snippet: row.get(6)?,
-            rank: row.get(7)?,
+            chapter_title: row.get(4)?,
+            block_idx: row.get(5)?,
+            content_block_id: row.get(6)?,
+            snippet: row.get(7)?,
+            rank: row.get(8)?,
         })
     })?;
 

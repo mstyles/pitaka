@@ -107,7 +107,8 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
         {results.map((r) => (
           <li key={r.content_block_id} onClick={() => onOpenResult(r)}>
             <div className="result-meta">
-              <b>{r.book_title ?? "Untitled"}</b> · chapter {r.chapter_idx}
+              <b>{r.book_title ?? "Untitled"}</b> ·{" "}
+              {r.chapter_title ?? `Chapter ${r.chapter_idx + 1}`}
             </div>
             <div
               className="result-snippet"
