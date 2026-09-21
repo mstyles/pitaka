@@ -3,9 +3,10 @@
 //!
 //! EPUB is a zip file. The steps are:
 //!   1. Read META-INF/container.xml to find the path to the OPF file.
-//!   2. Parse the OPF: manifest (id -> href) + spine (reading order of ids)
-//!      + Dublin Core metadata (title, creator).
-//!   3. For each spine item, read its XHTML and split it into paragraphs
+//!   2. Parse the OPF: manifest (id -> href, properties) + spine (reading
+//!      order of ids) + Dublin Core metadata (title, creator).
+//!   3. For each spine item except the EPUB 3 navigation document, read its
+//!      XHTML and split it into paragraphs
 //!      by block-level tag, tracking char offsets within the chapter.
 
 use anyhow::{anyhow, Context, Result};
@@ -69,9 +70,17 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
     // --- Step 3: walk spine, extract paragraphs per chapter ---
     let mut chapters = Vec::new();
     for id in spine_ids {
-        let Some(href) = manifest.get(&id) else {
+        let Some(item) = manifest.get(&id) else {
             continue;
         };
+        // The nav document is the book's table of contents, not reading
+        // content: as a chapter it clutters the reader's chapter list and
+        // its entries produce search hits. `linear="no"` items and cover
+        // pages are kept, since they can hold real text (notes etc.).
+        if item.is_nav() {
+            continue;
+        }
+        let href = &item.href;
         let full_path = if opf_dir.is_empty() {
             href.clone()
         } else {
@@ -144,9 +153,24 @@ fn extract_opf_path(container_xml: &str) -> Result<String> {
     ))
 }
 
-/// (manifest id->href, spine idrefs in order, title, author)
+/// A manifest `<item>`: its path relative to the OPF, and its
+/// space-separated `properties` (empty if absent).
+struct ManifestItem {
+    href: String,
+    properties: String,
+}
+
+impl ManifestItem {
+    /// True for the EPUB 3 navigation document (`properties` contains the
+    /// `nav` token).
+    fn is_nav(&self) -> bool {
+        self.properties.split_ascii_whitespace().any(|p| p == "nav")
+    }
+}
+
+/// (manifest id->item, spine idrefs in order, title, author)
 type Opf = (
-    HashMap<String, String>,
+    HashMap<String, ManifestItem>,
     Vec<String>,
     Option<String>,
     Option<String>,
@@ -173,15 +197,17 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                     "item" => {
                         let mut id = None;
                         let mut href = None;
+                        let mut properties = String::new();
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"id" => id = Some(attr.unescape_value()?.to_string()),
                                 b"href" => href = Some(attr.unescape_value()?.to_string()),
+                                b"properties" => properties = attr.unescape_value()?.to_string(),
                                 _ => {}
                             }
                         }
                         if let (Some(id), Some(href)) = (id, href) {
-                            manifest.insert(id, href);
+                            manifest.insert(id, ManifestItem { href, properties });
                         }
                     }
                     "itemref" => {
@@ -222,6 +248,30 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
     }
 
     Ok((manifest, spine, title, author))
+}
+
+#[cfg(test)]
+mod opf_tests {
+    use super::parse_opf;
+
+    #[test]
+    fn only_the_nav_properties_token_marks_the_nav_document() {
+        let opf = r#"<package><manifest>
+            <item id="nav" href="nav.xhtml" properties="nav scripted"/>
+            <item id="toc" href="toc.xhtml" properties="scripted  nav"/>
+            <item id="cover" href="cover.xhtml" properties="cover-image"/>
+            <item id="navish" href="navish.xhtml" properties="navigation"/>
+            <item id="ch1" href="ch1.xhtml"/>
+        </manifest></package>"#;
+        let (manifest, ..) = parse_opf(opf).unwrap();
+        let is_nav = |id: &str| manifest[id].is_nav();
+        assert!(is_nav("nav"));
+        assert!(is_nav("toc"));
+        assert!(!is_nav("cover"));
+        assert!(!is_nav("navish"));
+        assert!(!is_nav("ch1"));
+        assert_eq!(manifest["ch1"].href, "ch1.xhtml");
+    }
 }
 
 /// Strips an XML namespace prefix, e.g. "dc:title" -> "title".
