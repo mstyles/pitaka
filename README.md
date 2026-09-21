@@ -255,8 +255,8 @@ Later:
 Work goes `/plan` → branch → `/ship` → `/pr` → review → `/merge` (see
 CLAUDE.md). Gaps in that workflow, most important first:
 
-- [ ] Run a feature through the whole flow, including `/pr` and the
-      review step (neither has been used yet; bookmark folders is next)
+- [x] Run a feature through the whole flow, including `/pr` and the
+      review step (bookmark folders, PR #2, reviewed outside GitHub)
 - [x] Verify the UI automatically: frontend tests against a mocked
       backend in CI, and a browser check in `/ship`
 - [ ] End-to-end tests of the real Tauri window (`tauri-driver` +
