@@ -504,4 +504,98 @@ mod tests {
         assert_eq!(fts("*"), None);
         assert_eq!(fts("AND"), Some(r#""AND""#.into()));
     }
+
+    /// A book long enough to scroll, with one hit ("quincunx") deep in its
+    /// second chapter, so the UI can show a search hit being centred.
+    fn long_book() -> ParsedBook {
+        let chapters = ["Part One", "Part Two", "Part Three"]
+            .iter()
+            .enumerate()
+            .map(|(c, title)| {
+                let paragraphs = (1..=40)
+                    .map(|n| {
+                        let text = if c == 1 && n == 30 {
+                            format!("{title}, paragraph {n}: the trees were planted in a quincunx.")
+                        } else {
+                            format!(
+                                "{title}, paragraph {n}: filler text that is long enough to \
+                                 wrap onto a second line in the reader, so the chapter scrolls."
+                            )
+                        };
+                        (0, text.len(), text)
+                    })
+                    .collect();
+                crate::epub::ParsedChapter {
+                    file_name: format!("part{}.xhtml", c + 1),
+                    title: title.to_string(),
+                    paragraphs,
+                }
+            })
+            .collect();
+        ParsedBook {
+            title: Some("A Long Book for Scrolling".to_string()),
+            author: Some("Fixture Author".to_string()),
+            chapters,
+        }
+    }
+
+    /// The frontend tests and `npm run dev:mock` replay this file instead of
+    /// calling Rust, so it must match what the core functions really return.
+    #[test]
+    fn ui_fixtures_are_current() {
+        use serde_json::{json, to_value, Value};
+        use std::collections::BTreeMap;
+
+        let mut conn = open_db(":memory:").unwrap();
+        let import_new = import_book(&mut conn, "test.epub").unwrap();
+        let import_again = import_book(&mut conn, "test.epub").unwrap();
+        load_book(&mut conn, "/books/long.epub", "long", &long_book()).unwrap();
+
+        let books = list_books(&conn).unwrap();
+        let mut chapters = BTreeMap::new();
+        let mut chapter_content = BTreeMap::new();
+        for book in &books {
+            let chs = get_book_chapters(&conn, book.id).unwrap();
+            for ch in &chs {
+                let content = get_chapter_content(&conn, ch.id).unwrap();
+                chapter_content.insert(ch.id.to_string(), to_value(content).unwrap());
+            }
+            chapters.insert(book.id.to_string(), to_value(chs).unwrap());
+        }
+        let mut searches = BTreeMap::new();
+        for (mode, name, query) in [
+            (SearchMode::Stemmed, "stemmed", "neural networks"),
+            (SearchMode::Exact, "exact", "neural networks"),
+            (SearchMode::Stemmed, "stemmed", "quincunx"),
+            (SearchMode::Stemmed, "stemmed", "zzzz"),
+        ] {
+            let hits = search(&conn, query, mode, 50).unwrap();
+            searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
+        }
+
+        let fixtures: Value = json!({
+            "import_new": import_new,
+            "import_again": import_again,
+            "books": books,
+            "chapters": chapters,
+            "chapter_content": chapter_content,
+            "search": searches,
+        });
+        let actual = serde_json::to_string_pretty(&fixtures).unwrap() + "\n";
+
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/test/fixtures/library.json"
+        );
+        if std::env::var("UPDATE_UI_FIXTURES").as_deref() == Ok("1") {
+            std::fs::write(path, &actual).unwrap();
+            return;
+        }
+        let committed = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(
+            committed == actual,
+            "src/test/fixtures/library.json is out of date: run \
+             UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures"
+        );
+    }
 }

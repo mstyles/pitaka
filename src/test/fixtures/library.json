@@ -1,0 +1,791 @@
+{
+  "books": [
+    {
+      "author": "Fixture Author",
+      "chapter_count": 3,
+      "id": 2,
+      "title": "A Long Book for Scrolling"
+    },
+    {
+      "author": "A. Tester",
+      "chapter_count": 2,
+      "id": 1,
+      "title": "Test Book of Research"
+    }
+  ],
+  "chapter_content": {
+    "1": {
+      "blocks": [
+        {
+          "block_idx": 0,
+          "id": 1,
+          "text": "Chapter One: Beginnings"
+        },
+        {
+          "block_idx": 1,
+          "id": 2,
+          "text": "This is the first paragraph about neural networks and machine learning."
+        },
+        {
+          "block_idx": 2,
+          "id": 3,
+          "text": "Here is a second paragraph discussing gradient descent optimization."
+        }
+      ],
+      "book_id": 1,
+      "chapter_id": 1,
+      "chapter_idx": 0,
+      "chapter_title": "Chapter One: Beginnings"
+    },
+    "2": {
+      "blocks": [
+        {
+          "block_idx": 0,
+          "id": 4,
+          "text": "Chapter Two: Deeper Waters"
+        },
+        {
+          "block_idx": 1,
+          "id": 5,
+          "text": "Neural networks can be combined with reinforcement learning techniques."
+        },
+        {
+          "block_idx": 2,
+          "id": 6,
+          "text": "First bullet point about transformers"
+        },
+        {
+          "block_idx": 3,
+          "id": 7,
+          "text": "Second bullet point about attention"
+        }
+      ],
+      "book_id": 1,
+      "chapter_id": 2,
+      "chapter_idx": 1,
+      "chapter_title": "Chapter Two: Deeper Waters"
+    },
+    "3": {
+      "blocks": [
+        {
+          "block_idx": 0,
+          "id": 8,
+          "text": "Part One, paragraph 1: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 1,
+          "id": 9,
+          "text": "Part One, paragraph 2: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 2,
+          "id": 10,
+          "text": "Part One, paragraph 3: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 3,
+          "id": 11,
+          "text": "Part One, paragraph 4: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 4,
+          "id": 12,
+          "text": "Part One, paragraph 5: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 5,
+          "id": 13,
+          "text": "Part One, paragraph 6: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 6,
+          "id": 14,
+          "text": "Part One, paragraph 7: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 7,
+          "id": 15,
+          "text": "Part One, paragraph 8: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 8,
+          "id": 16,
+          "text": "Part One, paragraph 9: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 9,
+          "id": 17,
+          "text": "Part One, paragraph 10: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 10,
+          "id": 18,
+          "text": "Part One, paragraph 11: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 11,
+          "id": 19,
+          "text": "Part One, paragraph 12: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 12,
+          "id": 20,
+          "text": "Part One, paragraph 13: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 13,
+          "id": 21,
+          "text": "Part One, paragraph 14: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 14,
+          "id": 22,
+          "text": "Part One, paragraph 15: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 15,
+          "id": 23,
+          "text": "Part One, paragraph 16: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 16,
+          "id": 24,
+          "text": "Part One, paragraph 17: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 17,
+          "id": 25,
+          "text": "Part One, paragraph 18: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 18,
+          "id": 26,
+          "text": "Part One, paragraph 19: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 19,
+          "id": 27,
+          "text": "Part One, paragraph 20: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 20,
+          "id": 28,
+          "text": "Part One, paragraph 21: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 21,
+          "id": 29,
+          "text": "Part One, paragraph 22: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 22,
+          "id": 30,
+          "text": "Part One, paragraph 23: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 23,
+          "id": 31,
+          "text": "Part One, paragraph 24: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 24,
+          "id": 32,
+          "text": "Part One, paragraph 25: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 25,
+          "id": 33,
+          "text": "Part One, paragraph 26: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 26,
+          "id": 34,
+          "text": "Part One, paragraph 27: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 27,
+          "id": 35,
+          "text": "Part One, paragraph 28: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 28,
+          "id": 36,
+          "text": "Part One, paragraph 29: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 29,
+          "id": 37,
+          "text": "Part One, paragraph 30: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 30,
+          "id": 38,
+          "text": "Part One, paragraph 31: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 31,
+          "id": 39,
+          "text": "Part One, paragraph 32: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 32,
+          "id": 40,
+          "text": "Part One, paragraph 33: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 33,
+          "id": 41,
+          "text": "Part One, paragraph 34: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 34,
+          "id": 42,
+          "text": "Part One, paragraph 35: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 35,
+          "id": 43,
+          "text": "Part One, paragraph 36: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 36,
+          "id": 44,
+          "text": "Part One, paragraph 37: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 37,
+          "id": 45,
+          "text": "Part One, paragraph 38: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 38,
+          "id": 46,
+          "text": "Part One, paragraph 39: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 39,
+          "id": 47,
+          "text": "Part One, paragraph 40: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        }
+      ],
+      "book_id": 2,
+      "chapter_id": 3,
+      "chapter_idx": 0,
+      "chapter_title": "Part One"
+    },
+    "4": {
+      "blocks": [
+        {
+          "block_idx": 0,
+          "id": 48,
+          "text": "Part Two, paragraph 1: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 1,
+          "id": 49,
+          "text": "Part Two, paragraph 2: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 2,
+          "id": 50,
+          "text": "Part Two, paragraph 3: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 3,
+          "id": 51,
+          "text": "Part Two, paragraph 4: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 4,
+          "id": 52,
+          "text": "Part Two, paragraph 5: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 5,
+          "id": 53,
+          "text": "Part Two, paragraph 6: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 6,
+          "id": 54,
+          "text": "Part Two, paragraph 7: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 7,
+          "id": 55,
+          "text": "Part Two, paragraph 8: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 8,
+          "id": 56,
+          "text": "Part Two, paragraph 9: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 9,
+          "id": 57,
+          "text": "Part Two, paragraph 10: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 10,
+          "id": 58,
+          "text": "Part Two, paragraph 11: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 11,
+          "id": 59,
+          "text": "Part Two, paragraph 12: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 12,
+          "id": 60,
+          "text": "Part Two, paragraph 13: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 13,
+          "id": 61,
+          "text": "Part Two, paragraph 14: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 14,
+          "id": 62,
+          "text": "Part Two, paragraph 15: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 15,
+          "id": 63,
+          "text": "Part Two, paragraph 16: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 16,
+          "id": 64,
+          "text": "Part Two, paragraph 17: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 17,
+          "id": 65,
+          "text": "Part Two, paragraph 18: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 18,
+          "id": 66,
+          "text": "Part Two, paragraph 19: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 19,
+          "id": 67,
+          "text": "Part Two, paragraph 20: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 20,
+          "id": 68,
+          "text": "Part Two, paragraph 21: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 21,
+          "id": 69,
+          "text": "Part Two, paragraph 22: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 22,
+          "id": 70,
+          "text": "Part Two, paragraph 23: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 23,
+          "id": 71,
+          "text": "Part Two, paragraph 24: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 24,
+          "id": 72,
+          "text": "Part Two, paragraph 25: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 25,
+          "id": 73,
+          "text": "Part Two, paragraph 26: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 26,
+          "id": 74,
+          "text": "Part Two, paragraph 27: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 27,
+          "id": 75,
+          "text": "Part Two, paragraph 28: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 28,
+          "id": 76,
+          "text": "Part Two, paragraph 29: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 29,
+          "id": 77,
+          "text": "Part Two, paragraph 30: the trees were planted in a quincunx."
+        },
+        {
+          "block_idx": 30,
+          "id": 78,
+          "text": "Part Two, paragraph 31: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 31,
+          "id": 79,
+          "text": "Part Two, paragraph 32: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 32,
+          "id": 80,
+          "text": "Part Two, paragraph 33: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 33,
+          "id": 81,
+          "text": "Part Two, paragraph 34: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 34,
+          "id": 82,
+          "text": "Part Two, paragraph 35: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 35,
+          "id": 83,
+          "text": "Part Two, paragraph 36: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 36,
+          "id": 84,
+          "text": "Part Two, paragraph 37: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 37,
+          "id": 85,
+          "text": "Part Two, paragraph 38: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 38,
+          "id": 86,
+          "text": "Part Two, paragraph 39: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 39,
+          "id": 87,
+          "text": "Part Two, paragraph 40: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        }
+      ],
+      "book_id": 2,
+      "chapter_id": 4,
+      "chapter_idx": 1,
+      "chapter_title": "Part Two"
+    },
+    "5": {
+      "blocks": [
+        {
+          "block_idx": 0,
+          "id": 88,
+          "text": "Part Three, paragraph 1: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 1,
+          "id": 89,
+          "text": "Part Three, paragraph 2: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 2,
+          "id": 90,
+          "text": "Part Three, paragraph 3: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 3,
+          "id": 91,
+          "text": "Part Three, paragraph 4: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 4,
+          "id": 92,
+          "text": "Part Three, paragraph 5: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 5,
+          "id": 93,
+          "text": "Part Three, paragraph 6: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 6,
+          "id": 94,
+          "text": "Part Three, paragraph 7: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 7,
+          "id": 95,
+          "text": "Part Three, paragraph 8: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 8,
+          "id": 96,
+          "text": "Part Three, paragraph 9: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 9,
+          "id": 97,
+          "text": "Part Three, paragraph 10: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 10,
+          "id": 98,
+          "text": "Part Three, paragraph 11: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 11,
+          "id": 99,
+          "text": "Part Three, paragraph 12: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 12,
+          "id": 100,
+          "text": "Part Three, paragraph 13: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 13,
+          "id": 101,
+          "text": "Part Three, paragraph 14: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 14,
+          "id": 102,
+          "text": "Part Three, paragraph 15: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 15,
+          "id": 103,
+          "text": "Part Three, paragraph 16: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 16,
+          "id": 104,
+          "text": "Part Three, paragraph 17: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 17,
+          "id": 105,
+          "text": "Part Three, paragraph 18: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 18,
+          "id": 106,
+          "text": "Part Three, paragraph 19: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 19,
+          "id": 107,
+          "text": "Part Three, paragraph 20: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 20,
+          "id": 108,
+          "text": "Part Three, paragraph 21: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 21,
+          "id": 109,
+          "text": "Part Three, paragraph 22: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 22,
+          "id": 110,
+          "text": "Part Three, paragraph 23: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 23,
+          "id": 111,
+          "text": "Part Three, paragraph 24: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 24,
+          "id": 112,
+          "text": "Part Three, paragraph 25: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 25,
+          "id": 113,
+          "text": "Part Three, paragraph 26: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 26,
+          "id": 114,
+          "text": "Part Three, paragraph 27: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 27,
+          "id": 115,
+          "text": "Part Three, paragraph 28: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 28,
+          "id": 116,
+          "text": "Part Three, paragraph 29: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 29,
+          "id": 117,
+          "text": "Part Three, paragraph 30: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 30,
+          "id": 118,
+          "text": "Part Three, paragraph 31: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 31,
+          "id": 119,
+          "text": "Part Three, paragraph 32: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 32,
+          "id": 120,
+          "text": "Part Three, paragraph 33: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 33,
+          "id": 121,
+          "text": "Part Three, paragraph 34: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 34,
+          "id": 122,
+          "text": "Part Three, paragraph 35: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 35,
+          "id": 123,
+          "text": "Part Three, paragraph 36: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 36,
+          "id": 124,
+          "text": "Part Three, paragraph 37: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 37,
+          "id": 125,
+          "text": "Part Three, paragraph 38: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 38,
+          "id": 126,
+          "text": "Part Three, paragraph 39: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        },
+        {
+          "block_idx": 39,
+          "id": 127,
+          "text": "Part Three, paragraph 40: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls."
+        }
+      ],
+      "book_id": 2,
+      "chapter_id": 5,
+      "chapter_idx": 2,
+      "chapter_title": "Part Three"
+    }
+  },
+  "chapters": {
+    "1": [
+      {
+        "id": 1,
+        "idx": 0,
+        "title": "Chapter One: Beginnings"
+      },
+      {
+        "id": 2,
+        "idx": 1,
+        "title": "Chapter Two: Deeper Waters"
+      }
+    ],
+    "2": [
+      {
+        "id": 3,
+        "idx": 0,
+        "title": "Part One"
+      },
+      {
+        "id": 4,
+        "idx": 1,
+        "title": "Part Two"
+      },
+      {
+        "id": 5,
+        "idx": 2,
+        "title": "Part Three"
+      }
+    ]
+  },
+  "import_again": {
+    "already_imported": true,
+    "book_id": 1
+  },
+  "import_new": {
+    "already_imported": false,
+    "book_id": 1
+  },
+  "search": {
+    "exact:neural networks": [
+      {
+        "block_idx": 1,
+        "book_id": 1,
+        "book_title": "Test Book of Research",
+        "chapter_id": 2,
+        "chapter_idx": 1,
+        "content_block_id": 5,
+        "rank": -10.328889770690349,
+        "snippet": "[Neural] [networks] can be combined with reinforcement learning techniques."
+      },
+      {
+        "block_idx": 1,
+        "book_id": 1,
+        "book_title": "Test Book of Research",
+        "chapter_id": 1,
+        "chapter_idx": 0,
+        "content_block_id": 2,
+        "rank": -9.845980638554177,
+        "snippet": "This is the first paragraph about [neural] [networks] and machine learning."
+      }
+    ],
+    "stemmed:neural networks": [
+      {
+        "block_idx": 1,
+        "book_id": 1,
+        "book_title": "Test Book of Research",
+        "chapter_id": 2,
+        "chapter_idx": 1,
+        "content_block_id": 5,
+        "rank": -10.328889770690349,
+        "snippet": "[Neural] [networks] can be combined with reinforcement learning techniques."
+      },
+      {
+        "block_idx": 1,
+        "book_id": 1,
+        "book_title": "Test Book of Research",
+        "chapter_id": 1,
+        "chapter_idx": 0,
+        "content_block_id": 2,
+        "rank": -9.845980638554177,
+        "snippet": "This is the first paragraph about [neural] [networks] and machine learning."
+      }
+    ],
+    "stemmed:quincunx": [
+      {
+        "block_idx": 29,
+        "book_id": 2,
+        "book_title": "A Long Book for Scrolling",
+        "chapter_id": 4,
+        "chapter_idx": 1,
+        "content_block_id": 77,
+        "rank": -5.575148480074688,
+        "snippet": "Part Two, paragraph 30: the trees were planted in a [quincunx]."
+      }
+    ],
+    "stemmed:zzzz": []
+  }
+}

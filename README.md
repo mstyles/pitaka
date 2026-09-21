@@ -61,6 +61,29 @@ members, sharing one `Cargo.lock`/`target/`.
     search hit opens its chapter, centres the matching paragraph and
     briefly flashes it.
 
+- Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
+  the whole app against a mocked backend (`src/test/mockBackend.ts`,
+  using Tauri's `mockIPC`). They cover importing (new, duplicate,
+  cancelled), searching in both modes with highlighted snippets,
+  removing a book (confirmed or not), opening the reader, centring and
+  flashing a search hit, switching chapters, going back with the search
+  kept, and error messages. The mock replays
+  `src/test/fixtures/library.json`, which the core test
+  `ui_fixtures_are_current` writes from real `db.rs` output for
+  `test.epub` plus a synthetic 3×40-paragraph book. That test fails when
+  the committed file is out of date, so a changed Rust type can't
+  silently drift from what the tests feed the UI. What they can't catch: argument names the real
+  Tauri layer expects (`bookId` → `book_id`) and anything in
+  `commands.rs`, since neither runs.
+- `npm run dev:mock` serves the same mocked UI on :1430 for a browser
+  check; `/ship` walks it in Chrome with screenshots. Real layout and
+  scrolling, but still not the Tauri window or the Rust side. Walked
+  once when this was added: the "quincunx" hit opened Part Two scrolled
+  so the paragraph sat within 1px of the viewport's centre, flashing;
+  switching chapters reset the scroll with no flash; going back kept the
+  search; Exact words re-ran it; removing a book dropped its row and
+  hits. No console errors.
+
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
 words" toggle was added, and not since `nav.xhtml` started being
@@ -97,6 +120,8 @@ pitaka/
 │   ├── App.tsx                  <- switches between library and reader
 │   ├── LibraryView.tsx          <- import, book list, search
 │   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
+│   ├── *.test.tsx               <- component tests (npm test)
+│   ├── test/                    <- mocked backend, fixtures, test setup
 │   └── types.ts                 <- TS mirrors of the Rust command types
 └── package.json
 ```
@@ -124,6 +149,8 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 2. `npm install` at the repo root.
 3. `npm run tauri dev` — opens the app with hot-reload.
 4. `npm run tauri build` — produces a release bundle.
+5. `npm test` — frontend tests; `npm run dev:mock` — the UI in a
+   browser on :1430 against the mocked backend.
 
 ## Known limitations (same order of priority as the Python version)
 
@@ -195,10 +222,11 @@ CLAUDE.md). Gaps in that workflow, most important first:
 
 - [ ] Run a feature through the whole flow, including `/pr` and the
       review step (neither has been used yet; bookmark folders is next)
-- [ ] Verify the UI automatically: only the core crate has tests, and
-      the Tauri window hasn't been clicked through since the reader
-      view. Options: frontend tests, the `/run` skill, or a browser
-      check against mocked `invoke` responses
+- [x] Verify the UI automatically: frontend tests against a mocked
+      backend in CI, and a browser check in `/ship`
+- [ ] End-to-end tests of the real Tauri window (`tauri-driver` +
+      WebKitWebDriver), which would also cover `commands.rs` and
+      argument names — worth it once the command layer grows
 - [ ] Run `/code-review` in `/pr` before opening the PR, so the diff
       gets a first review pass
 - [ ] Decide whether plans should go through a PR too, instead of

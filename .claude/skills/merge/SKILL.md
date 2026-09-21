@@ -17,8 +17,8 @@ user has reviewed the PR opened by `/pr`.
 3. Check CI with `gh pr checks <number>`. Stop if a check failed or is
    still pending, and say which.
 4. Run `cargo clippy --workspace --all-targets`, `cargo test -p
-   ebook_research_core` and `npx tsc --noEmit` on the branch. Stop if any
-   fail.
+   ebook_research_core`, `npx tsc --noEmit` and `npm test` on the branch.
+   Stop if any fail.
 5. Build the message — titles only, never commit bodies, oldest first:
 
    ```
