@@ -20,7 +20,11 @@ members, sharing one `Cargo.lock`/`target/`.
   `META-INF/container.xml` → the OPF manifest/spine → each chapter's
   XHTML, and splits it into paragraphs (`p`, `h1`-`h6`, `li`,
   `blockquote`) with char offsets. Each chapter's title is its first
-  `<h1>`/`<h2>`, falling back to the internal file path.
+  `<h1>`/`<h2>`, falling back to the internal file path. The EPUB 3
+  navigation document (the manifest item whose `properties` include
+  `nav`) is skipped, so the table of contents isn't a chapter or a
+  source of search hits; `linear="no"` items and cover pages are kept,
+  since they can hold real text such as notes.
 - `ebook_research_core/src/db.rs` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
   imports books (each in one transaction, skipping any whose file
@@ -35,10 +39,11 @@ members, sharing one `Cargo.lock`/`target/`.
   `self-aware`) is searched as text. "Quoted phrases", `prefix*` and
   uppercase `AND`/`OR`/`NOT` still work.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
-  2-chapter) EPUB, loads it into a fresh DB, and asserts search returns
-  correct, ranked hits in both modes, chapter titles round-trip, and
-  search hits point at the right chapter content, and that duplicate
-  imports return the existing book. It also upgrades a
+  2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
+  2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
+  search returns correct, ranked hits in both modes, chapter titles
+  round-trip, and search hits point at the right chapter content, and
+  that duplicate imports return the existing book. It also upgrades a
   library created before migrations existed and checks both indexes
   were rebuilt from its text. `cargo test -p ebook_research_core` passes.
 - The frontend typechecks (`npx tsc --noEmit`):
@@ -52,7 +57,8 @@ members, sharing one `Cargo.lock`/`target/`.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
-words" toggle was added). The build needs the Linux system webview libs
+words" toggle was added, and not since `nav.xhtml` started being
+skipped). The build needs the Linux system webview libs
 (webkit2gtk, dbus, appindicator, etc.):
 
 ```
@@ -123,8 +129,8 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
    migration: books imported before that change keep file-path titles
    until re-imported. Books that style headings as `<div>`s (e.g.
    `<div class="ct">`) instead of `<h1>`/`<h2>` also get file-path
-   titles. Spine items like `nav.xhtml` also show up as chapters in the
-   reader.
+   titles. Books imported before the EPUB 3 nav document was skipped
+   keep it as a chapter until they're removed and re-imported.
 4. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
 5. No re-index logic: if a book's file changes after it was imported,
@@ -156,12 +162,13 @@ Done:
       row
 - [x] Import paragraphs from books that use `<div>` instead of `<p>`
 - [x] Remove a book from the library, so it can be re-imported
+- [x] Skip the EPUB 3 navigation document (e.g. `nav.xhtml`) in the
+      spine (limitation 3)
 
 Next up (fixes for the known limitations above):
 
 - [ ] Walk top-level block children so nested tags don't duplicate
       text (limitation 1)
-- [ ] Skip non-content spine items like `nav.xhtml` (limitation 3)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 6)
 

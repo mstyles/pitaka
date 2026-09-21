@@ -10,9 +10,11 @@ fn parses_and_indexes_and_searches() {
 
     let parsed = parse_epub("test.epub").expect("parse failed");
     assert_eq!(parsed.title.as_deref(), Some("Test Book of Research"));
-    assert!(
-        parsed.chapters.len() >= 2,
-        "expected at least 2 chapters, got {}",
+    // The spine is nav.xhtml + 2 chapters; the nav document is skipped.
+    assert_eq!(
+        parsed.chapters.len(),
+        2,
+        "expected 2 chapters, got {}",
         parsed.chapters.len()
     );
 
@@ -119,6 +121,10 @@ fn parses_and_indexes_and_searches() {
         parsed_titles.contains(&"Chapter Two: Deeper Waters"),
         "titles: {parsed_titles:?}"
     );
+    assert!(
+        !parsed_titles.contains(&"Test Book of Research"),
+        "the nav document shouldn't be a chapter: {parsed_titles:?}"
+    );
 
     let books = db::list_books(&conn).expect("list_books failed");
     assert_eq!(books.len(), 1);
@@ -133,6 +139,12 @@ fn parses_and_indexes_and_searches() {
     assert_eq!(
         db_titles, parsed_titles,
         "chapter titles should round-trip in idx order"
+    );
+    let idxs: Vec<i64> = chapters.iter().map(|c| c.idx).collect();
+    assert_eq!(
+        idxs,
+        vec![0, 1],
+        "idx should stay contiguous after skipping nav"
     );
 
     for (ch, parsed_ch) in chapters.iter().zip(&parsed.chapters) {
