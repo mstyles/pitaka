@@ -111,3 +111,13 @@ Checked by parsing SuttaCentral's CC0 EPUBs (`github.com/suttacentral/editions`,
 2. `npx tsc --noEmit`, `npm test`, `npm run build:demo`
 3. The browser check above, against mocks and the demo build. The Tauri window isn't affected apart from the chapter-title fallback, which the unit tests cover.
 4. After going public: `pages.yml` succeeds, and `https://mstyles.github.io/pitaka/` and `/pitaka/demo/` load. A search and a bookmark work on the live demo.
+
+## Implementation notes (differences from this plan)
+- The demo fixture test is `ui_fixtures_for_demo_are_current`, so the existing `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures` regenerates both. The two tests share `library_fixtures` and `check_fixture`.
+- The sample queries changed from the plan's list: `"the deathless"` found nothing and `free*` hit the 50-result limit, so they became `"senior nuns"` and `delight*`. `craving OR mara`, `cast-off`, `mind* desire` and `nuns NOT senior OR sorrow` were added. The parity test compares whole results (ids, order, snippets, ranks to 1e-9) for all 34 cases, not only the top 3.
+- The search port follows the SQLite 3.53.2 source bundled with `libsqlite3-sys`, including FTS5's precedence (adjacent terms, then NOT, AND, OR) and its rules for empty phrases. The demo's mock takes `search(books, query, mode)` so removing the book empties the index.
+- `DemoBanner` is rendered by `main.tsx` in demo mode, not by `App`, so `App` has no demo check. `src/demo/installDemo.ts` holds the wiring; `demoOptions()` is also what `Demo.test.tsx` passes to `renderApp`.
+- The seeded folder is "Paṭācārā", not "Paṭācārā's verses". Taking the screenshots showed Fraunces drawing its macrons beside the letters; that was fixed separately in `fix/fraunces-macrons` (a `unicode-range` overlap in `fonts.css`), and this branch was rebased onto it.
+- Screenshots are JPEGs cropped with ffmpeg (the browser tool captures JPEG). There's no dark-mode screenshot: the system theme couldn't be switched from the browser tool, so dark mode wasn't checked.
+- `npm run build:site` assembles `site-build/` (site, fonts, screenshots, demo) for both Pages and local preview; CI runs it instead of only `build:demo`. The Pages actions are `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`.
+- `src-tauri/Cargo.toml`'s placeholder description and author were replaced along with adding the licence.

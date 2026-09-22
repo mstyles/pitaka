@@ -1,11 +1,15 @@
 {
   "name": "pitaka",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock --port 1430",
+    "dev:demo": "vite --mode demo --port 1431",
+    "build:demo": "tsc && vite build --mode demo --base /pitaka/demo/ --outDir dist-demo",
+    "build:site": "npm run build:demo && rm -rf site-build && mkdir -p site-build/fonts site-build/screenshots && cp -r site/. site-build/ && cp src/assets/fonts/*.woff2 site-build/fonts/ && cp docs/screenshots/* site-build/screenshots/ && cp -r dist-demo site-build/demo",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",

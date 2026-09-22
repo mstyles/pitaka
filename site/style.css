@@ -1,0 +1,230 @@
+/* The project page. Colours and fonts follow the app's Paper style
+   (src/App.css); the woff2 files are copied in by `npm run build:site`. */
+
+/* As in src/fonts.css, the latin ranges leave out U+0304 so "ā" comes
+   precomposed from the latin-ext file instead of being built from parts. */
+
+@font-face {
+  font-family: "Fraunces";
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(fonts/fraunces-latin-ext-opsz-normal.woff2) format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  font-display: swap;
+  font-weight: 100 900;
+  src: url(fonts/fraunces-latin-opsz-normal.woff2) format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-display: swap;
+  font-weight: 200 900;
+  src: url(fonts/source-sans-3-latin-ext-wght-normal.woff2) format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-display: swap;
+  font-weight: 200 900;
+  src: url(fonts/source-sans-3-latin-wght-normal.woff2) format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F;
+}
+
+:root {
+  --bg: #f6f1e7;
+  --surface: #fffcf6;
+  --text: #2a241d;
+  --muted: #6b6152;
+  --border: #e2d8c5;
+  --accent: #9a4a1c;
+  --on-accent: #fffcf6;
+  --mark: #f2d8a2;
+  --radius: 6px;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-ui: "Source Sans 3", system-ui, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1814;
+    --surface: #25201a;
+    --text: #ede4d3;
+    --muted: #b0a48f;
+    --border: #3a3228;
+    --accent: #e0995e;
+    --on-accent: #1c1814;
+    --mark: rgba(224, 153, 94, 0.35);
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2,
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: 0.9em;
+  padding: 0 0.35em;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.hero,
+main,
+footer {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.hero {
+  padding-top: 56px;
+  padding-bottom: 32px;
+}
+
+.hero > * {
+  max-width: 720px;
+}
+
+.wordmark {
+  font-size: 22px;
+  margin: 0 0 32px;
+}
+
+.hero h1 {
+  font-size: clamp(32px, 6vw, 48px);
+  margin: 0 0 16px;
+}
+
+.lede {
+  font-size: 20px;
+  margin: 0 0 24px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.button {
+  display: inline-block;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.button:hover {
+  border-color: var(--accent);
+}
+
+.note {
+  color: var(--muted);
+  font-size: 16px;
+  margin: 0;
+}
+
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 32px;
+  align-items: center;
+  padding: 40px 0;
+  border-top: 1px solid var(--border);
+}
+
+.feature h2,
+.get h2 {
+  font-size: 28px;
+  margin: 0 0 12px;
+}
+
+.feature p {
+  margin: 0 0 12px;
+}
+
+.feature img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.get {
+  padding: 40px 0;
+  border-top: 1px solid var(--border);
+  max-width: 760px;
+}
+
+footer {
+  padding-top: 24px;
+  padding-bottom: 48px;
+  color: var(--muted);
+  font-size: 15px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 760px) {
+  body {
+    font-size: 17px;
+  }
+
+  .hero,
+  main,
+  footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .hero {
+    padding-top: 32px;
+  }
+
+  .feature {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+}

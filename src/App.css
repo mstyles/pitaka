@@ -169,6 +169,26 @@ button.button-danger:hover:not(:disabled) {
   margin: 0 0 0.75em;
 }
 
+/* Browser demo banner (DemoBanner.tsx) */
+
+.demo-banner {
+  background: var(--mark);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.demo-banner p {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 8px 24px;
+}
+
+.demo-banner a {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Header */
 
 .app-header {

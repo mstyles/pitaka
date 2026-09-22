@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pitaka — search and bookmark your EPUB library</title>
+    <meta
+      name="description"
+      content="A desktop app for reading and researching your EPUB library: full-text search across every book, and bookmark folders for the passages you want to keep."
+    />
+    <link rel="icon" type="image/svg+xml" href="demo/favicon.svg" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <p class="wordmark">Pitaka</p>
+      <h1>Search every book you own, and keep the passages that matter.</h1>
+      <p class="lede">
+        Pitaka is a desktop app for reading and researching your EPUB library. Import your books,
+        search them all at once, and collect passages into bookmark folders.
+      </p>
+      <p class="actions">
+        <a class="button primary" href="demo/">Try it in your browser</a>
+        <a class="button" href="https://github.com/mstyles/pitaka">View on GitHub</a>
+      </p>
+      <p class="note">
+        The demo runs entirely in your browser with one built-in book, the Therīgāthā (<em>Verses
+        of the Senior Nuns</em>). Try searching for <kbd>patacara</kbd> or <kbd>craving</kbd>.
+      </p>
+    </header>
+
+    <main>
+      <section class="feature">
+        <div class="copy">
+          <h2>Search across your whole library</h2>
+          <p>
+            Full-text search over every paragraph of every book, ranked by relevance, with the
+            matching words highlighted. Search finds other forms of a word ("learn" also finds
+            "learning"), or tick <em>Exact words</em> to match them exactly.
+          </p>
+          <p>
+            Case and diacritics are ignored, so <kbd>samsara</kbd> finds “saṃsāra” and
+            <kbd>patacara</kbd> finds “Paṭācārā”. Quoted phrases, <kbd>prefix*</kbd> and
+            <kbd>AND</kbd>/<kbd>OR</kbd>/<kbd>NOT</kbd> work too.
+          </p>
+        </div>
+        <img src="screenshots/search.jpg" alt="Search results for patacara, with the name highlighted in each passage" width="720" height="812" loading="lazy" />
+      </section>
+
+      <section class="feature">
+        <div class="copy">
+          <h2>Read with the hit in context</h2>
+          <p>
+            Open a result and the reader jumps straight to that paragraph and highlights it,
+            with the book's chapters alongside, so you can read on from where the search
+            landed.
+          </p>
+        </div>
+        <img src="screenshots/reader.jpg" alt="The reader showing a chapter list and a highlighted paragraph" width="1110" height="812" loading="lazy" />
+      </section>
+
+      <section class="feature">
+        <div class="copy">
+          <h2>Keep passages in folders</h2>
+          <p>
+            Bookmark any paragraph into as many named folders as you like, one per topic or
+            project, and come back to them later, each linked to its place in the book.
+          </p>
+        </div>
+        <img src="screenshots/bookmarks.jpg" alt="A bookmark folder holding two passages" width="720" height="390" loading="lazy" />
+      </section>
+
+      <section class="get">
+        <h2>Get Pitaka</h2>
+        <p>
+          Pitaka is built with Tauri, Rust and SQLite. So far it has only been run on Linux,
+          though Tauri also targets macOS and Windows. There are no prebuilt downloads yet, so
+          for now it's built from source. The
+          <a href="https://github.com/mstyles/pitaka#install">install steps</a> are in the README.
+        </p>
+        <p>
+          It's early software: footnotes aren't handled specially yet, and the reader shows
+          text without images or formatting. The
+          <a href="https://github.com/mstyles/pitaka#known-limitations">known limitations</a>
+          are listed in full.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Pitaka is open source under the MIT or Apache 2.0 licence. The demo's book is
+        <em>Verses of the Senior Nuns</em>, translated by Bhikkhu Sujato and dedicated to the
+        public domain (CC0) by <a href="https://suttacentral.net">SuttaCentral</a>. Fonts:
+        Fraunces, Literata and Source Sans 3, under the SIL Open Font License.
+      </p>
+    </footer>
+  </body>
+</html>
