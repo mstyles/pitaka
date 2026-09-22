@@ -1,6 +1,13 @@
 /* Bundled from fontsource 5.3.0 (@fontsource-variable/*), latin and latin-ext
    subsets only. SIL Open Font License 1.1; the licences sit next to the files
-   in assets/fonts/. */
+   in assets/fonts/.
+
+   The latin subsets' unicode-range leaves out U+0304 (combining macron),
+   which fontsource/Google list in both subsets. With it in, Chrome shapes
+   "ā" with the latin file: that file has no "ā" but has "a" and U+0304, so
+   HarfBuzz decomposes the letter and Fraunces then draws the macron beside
+   the "a" instead of over it ("Paṭa¯ca¯ra¯"). Without it, "ā", "ī" and "ū"
+   fall through to the latin-ext file, which has them precomposed. */
 
 @font-face {
   font-family: "Fraunces";
@@ -17,7 +24,7 @@
   font-display: swap;
   font-weight: 100 900;
   src: url(./assets/fonts/fraunces-latin-opsz-normal.woff2) format("woff2-variations");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
 @font-face {
@@ -35,7 +42,7 @@
   font-display: swap;
   font-weight: 200 900;
   src: url(./assets/fonts/literata-latin-wght-normal.woff2) format("woff2-variations");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
 @font-face {
@@ -53,5 +60,5 @@
   font-display: swap;
   font-weight: 200 900;
   src: url(./assets/fonts/source-sans-3-latin-wght-normal.woff2) format("woff2-variations");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }

@@ -93,6 +93,13 @@ members, sharing one `Cargo.lock`/`target/`.
   - `src/fonts.css` — the Paper style's bundled OFL fonts (Fraunces,
     Literata, Source Sans 3), latin and latin-ext subsets, so Pali
     diacritics (ā ṃ ṭ ḍ ṅ ṇ ḷ) render in them rather than a fallback.
+    The latin subsets' `unicode-range` leaves out the combining macron
+    (U+0304), which the upstream CSS includes: with it, Chrome split
+    "ā" into "a" + macron from the latin file and Fraunces drew the
+    macron beside the letter ("Paṭa¯ca¯ra¯"). Checked in Chrome that
+    folder headings like "Paṭācārā and Therīgāthā" now render
+    correctly, NFD input too; `src/fonts.test.ts` keeps U+0304 out of
+    the latin ranges. Not checked in the Tauri window (WebKitGTK).
     Colours are tokens in `src/App.css` with a dark variant that follows
     the system theme; checked in the browser in light and dark, with
     muted text at 5.4:1 (light) and 7.2:1 (dark) contrast.
