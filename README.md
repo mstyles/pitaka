@@ -12,7 +12,8 @@ to keep.
 - **Search your whole library at once.** Every paragraph of every book is
   indexed, results are ranked with the matching words highlighted, and
   "learn" also finds "learning" (or tick *Exact words*). Case and
-  diacritics are ignored, so `samsara` finds "saṃsāra". Quoted phrases,
+  diacritics are ignored, so `samsara` finds "saṃsāra", and `dharma`
+  also finds a text that only writes "dhamma". Quoted phrases,
   `prefix*` and `AND`/`OR`/`NOT` work too.
 - **Read with the hit in context.** Opening a result jumps the reader to
   that paragraph, with the book's chapters alongside.
@@ -117,6 +118,21 @@ members, sharing one `Cargo.lock`/`target/`.
   query is quoted before it reaches FTS5, so punctuation (`don't`,
   `self-aware`) is searched as text. "Quoted phrases", `prefix*` and
   uppercase `AND`/`OR`/`NOT` still work.
+  A word with a known transliteration variant is expanded into an FTS5
+  `OR` group from the curated list in
+  `ebook_research_core/data/term_variants.txt`, so `dharma` also finds a
+  text that only ever writes "dhamma", ranked together by one `bm25()`
+  call rather than offered as a separate "did you mean". It applies in
+  both modes and skips phrases and prefix terms. A query whose words
+  aren't listed builds exactly the FTS5 string it built before, which
+  the unit tests assert. Checked against the bundled SQLite 3.53.2:
+  FTS5's implicit AND is a syntax error beside a parenthesised group, so
+  the `AND` is written out there; a duplicate group member would double
+  its score, so each term is emitted once; and a member that matches
+  nothing leaves ranks and snippets untouched, which is why the recorded
+  demo searches didn't move. `search()` uses the bundled list and
+  `search_with_variants()` takes one, so the tests don't depend on what
+  the shipped file holds.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
@@ -127,7 +143,10 @@ members, sharing one `Cargo.lock`/`target/`.
   library created before migrations existed and checks both indexes
   were rebuilt from its text, and bookmarks a real paragraph into a
   folder, reading back its book, chapter and text, then checks removing
-  the book empties the folder but keeps it. `cargo test -p ebook_research_core` passes.
+  the book empties the folder but keeps it. A variant test searches
+  "neuronal", a word the book never uses, and gets back exactly the
+  blocks "neural" returns, in both modes, while an unlisted term's hits
+  and ranks are unchanged. `cargo test -p ebook_research_core` passes.
 - The frontend typechecks (`npx tsc --noEmit`):
   - `src/HomeView.tsx` — the launch screen: Books, Bookmarks and
     Search cards with counts from `list_books` and
@@ -202,7 +221,8 @@ members, sharing one `Cargo.lock`/`target/`.
   `ui_fixtures_for_demo_are_current` imports it (24 chapters, none with
   a file-path title) and writes `src/demo/library.json`, plus the core's
   real `search()` results for 17 queries in both modes (diacritics,
-  stemming, a phrase, prefixes, a hyphenated word, `OR` and `NOT`) to
+  stemming, a phrase, prefixes, a hyphenated word, `OR`, `NOT`, and four
+  transliteration variants the book never spells the Sanskrit way) to
   `src/test/fixtures/demo-search.json`. The demo searches with
   `src/demo/search.ts`, a TypeScript port of `to_fts_query` and of
   FTS5's unicode61 and porter tokenizers, `bm25()` and `snippet()` from
@@ -340,6 +360,16 @@ In the same order of priority as the Python version, then newer ones.
    re-import it after a parser fix) deletes its bookmarks from every
    folder; the Remove dialog only warns with a count. Bookmarks cover
    whole paragraphs, and passages can't be reordered within a folder.
+7. Transliteration variants are a curated list only: unlisted pairs
+   aren't inferred, so `nibbāna`/`nirvana` matches because it's in
+   `data/term_variants.txt`, not because anything spotted the
+   similarity. The file is embedded at compile time, so adding a pair
+   needs a rebuild (no Rust change), and there's no UI for editing it.
+   Expansion is invisible in the app: results that matched only through
+   a variant aren't marked, and the search box doesn't say the query was
+   widened. Looking a term up folds only the Indic diacritics in
+   `fold_term`'s table, so a term spelled with some other accent won't
+   be expanded (it still matches literally, as FTS5 folds the text).
 
 ## Roadmap
 
@@ -369,6 +399,8 @@ Done:
 - [x] Public showcase: MIT/Apache-2.0 licence, a project page on GitHub
       Pages, and a browser demo with a CC0 book and a search checked
       against the core's
+- [x] Expand a search term to its curated transliteration variants, so
+      `dharma` finds "dhamma"
 
 Next up (fixes for the known limitations above):
 
@@ -388,6 +420,11 @@ Later:
       rendering every block as a plain `<p>` (limitation 3)
 - [ ] Release builds for Linux, macOS and Windows, so the app can be
       installed without building it
+- [ ] Semantic search, so related terms match without being on a
+      curated list (and variant pairs could be inferred rather than
+      listed)
+- [ ] A UI for the transliteration variant list, so pairs can be added
+      without a rebuild
 
 ## Workflow roadmap
 

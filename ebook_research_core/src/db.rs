@@ -4,6 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Schema migrations, applied in order. The DB's `PRAGMA user_version` records
 /// how many have run. Never edit one that has shipped — add a new file.
@@ -183,15 +185,133 @@ impl SearchMode {
     }
 }
 
+/// Folds a term to the form the variant list is written in: lowercase ASCII.
+/// Combining marks (so decomposed input folds too) are dropped, and the
+/// precomposed letters used to transliterate Pali and Sanskrit are mapped to
+/// their plain letter.
+///
+/// This is deliberately a small table rather than full Unicode normalisation:
+/// it only decides whether a term *has* a variant group. A letter it doesn't
+/// know means the query isn't expanded, never that the search breaks — FTS5
+/// folds the text itself with `remove_diacritics 2`.
+fn fold_term(term: &str) -> String {
+    term.to_lowercase()
+        .chars()
+        .filter(|c| !('\u{0300}'..='\u{036F}').contains(c))
+        .map(|c| match c {
+            'ā' => 'a',
+            'ī' => 'i',
+            'ū' => 'u',
+            'ṛ' | 'ṝ' => 'r',
+            'ḷ' | 'ḹ' => 'l',
+            'ē' => 'e',
+            'ō' => 'o',
+            'ṅ' | 'ñ' | 'ṇ' => 'n',
+            'ṭ' => 't',
+            'ḍ' => 'd',
+            'ś' | 'ṣ' => 's',
+            'ṃ' | 'ṁ' => 'm',
+            'ḥ' => 'h',
+            c => c,
+        })
+        .collect()
+}
+
+/// Curated groups of terms that mean the same thing but are spelled
+/// differently across traditions ("dhamma" in Pali, "dharma" in Sanskrit).
+/// Searching any term in a group also searches the rest of it.
+#[derive(Debug)]
+pub struct VariantIndex {
+    groups: Vec<Vec<String>>,
+    /// Folded term -> its index in `groups`.
+    by_term: HashMap<String, usize>,
+}
+
+impl VariantIndex {
+    /// Parses the variant list: one group per line, terms separated by
+    /// commas, `#` starting a comment, blank lines ignored. Terms are folded
+    /// with [`fold_term`], and a line with fewer than two of them is skipped
+    /// since it can't expand to anything.
+    pub fn parse(text: &str) -> Result<Self> {
+        let mut groups: Vec<Vec<String>> = Vec::new();
+        let mut by_term = HashMap::new();
+        for (n, line) in text.lines().enumerate() {
+            let line = line.split('#').next().unwrap_or_default();
+            let terms: Vec<String> = line
+                .split(',')
+                .map(|t| fold_term(t.trim()))
+                .filter(|t| !t.is_empty())
+                .collect();
+            if terms.len() < 2 {
+                continue;
+            }
+            for term in &terms {
+                if by_term.insert(term.clone(), groups.len()).is_some() {
+                    bail!("line {}: \"{term}\" appears in two variant groups", n + 1);
+                }
+            }
+            groups.push(terms);
+        }
+        Ok(Self { groups, by_term })
+    }
+
+    /// The list shipped with the app, `data/term_variants.txt`. It's embedded
+    /// at compile time and parsed by `bundled_variants_parse`, so a malformed
+    /// file fails the build's tests rather than reaching a user.
+    pub fn bundled() -> &'static VariantIndex {
+        static BUNDLED: OnceLock<VariantIndex> = OnceLock::new();
+        BUNDLED.get_or_init(|| {
+            VariantIndex::parse(include_str!("../data/term_variants.txt"))
+                .expect("bundled data/term_variants.txt is malformed")
+        })
+    }
+
+    /// The group `term` belongs to, including `term` itself, or `None`.
+    fn group_for(&self, term: &str) -> Option<&[String]> {
+        let idx = *self.by_term.get(&fold_term(term))?;
+        Some(&self.groups[idx])
+    }
+
+    /// Every group, for mirroring the list into the browser demo.
+    pub fn groups(&self) -> &[Vec<String>] {
+        &self.groups
+    }
+}
+
+/// One operand or operator of a built FTS5 query.
+enum Part {
+    /// A quoted term or phrase, e.g. `"dharma"` or `"neural nets"*`.
+    Term(String),
+    /// A parenthesised variant group, e.g. `("dhamma" OR "dharma")`.
+    Group(String),
+    /// `AND`, `OR` or `NOT`, as the user typed it.
+    Op(String),
+}
+
+impl Part {
+    fn text(&self) -> &str {
+        match self {
+            Part::Term(s) | Part::Group(s) | Part::Op(s) => s,
+        }
+    }
+}
+
 /// Turns a user's search box text into a valid FTS5 query. Every word is
 /// wrapped in double quotes, so punctuation (`don't`, `self-aware`, `a.b`)
 /// is left to the tokenizer instead of being parsed as FTS5 syntax. Kept:
 /// "quoted phrases", a trailing `*` for prefix search, and uppercase
 /// AND/OR/NOT between two terms. Anything else FTS5 would treat as syntax
 /// (parentheses, `NEAR`, `column:`) is searched as text.
+///
+/// A plain word listed in `variants` becomes a parenthesised `OR` group of
+/// its whole group, so "dharma" also matches "dhamma" and both are ranked by
+/// one `bm25()` call. Phrases and prefix terms are left alone: a prefix would
+/// need its `*` on every member and can't be known to mean the whole word,
+/// and a phrase has no single term to look up.
+///
 /// Returns `None` if there's nothing to search for.
-fn to_fts_query(query: &str) -> Option<String> {
-    let mut parts: Vec<String> = Vec::new();
+fn to_fts_query(query: &str, variants: &VariantIndex) -> Option<String> {
+    let mut parts: Vec<Part> = Vec::new();
     let mut last_is_term = false;
     let mut chars = query.chars().peekable();
 
@@ -218,7 +338,7 @@ fn to_fts_query(query: &str) -> Option<String> {
         };
 
         if !is_phrase && matches!(text.as_str(), "AND" | "OR" | "NOT") && last_is_term {
-            parts.push(text);
+            parts.push(Part::Op(text));
             last_is_term = false;
             continue;
         }
@@ -238,18 +358,52 @@ fn to_fts_query(query: &str) -> Option<String> {
             continue;
         }
 
-        parts.push(format!(
-            "\"{}\"{}",
-            term.replace('"', "\"\""),
-            if prefix { "*" } else { "" }
-        ));
+        // A plain word gets its variant group; everything else stays literal.
+        let group = (!is_phrase && !prefix)
+            .then(|| variants.group_for(term))
+            .flatten();
+        parts.push(match group {
+            Some(group) => Part::Group(format!(
+                "({})",
+                group
+                    .iter()
+                    .map(|t| format!("\"{t}\""))
+                    .collect::<Vec<_>>()
+                    .join(" OR ")
+            )),
+            None => Part::Term(format!(
+                "\"{}\"{}",
+                term.replace('"', "\"\""),
+                if prefix { "*" } else { "" }
+            )),
+        });
         last_is_term = true;
     }
 
     if !last_is_term {
         parts.pop(); // a trailing operator, e.g. "neural OR"
     }
-    (!parts.is_empty()).then(|| parts.join(" "))
+    if parts.is_empty() {
+        return None;
+    }
+
+    // FTS5's implicit AND (two operands with only a space between them) is a
+    // syntax error next to a parenthesised group, so write the AND out there.
+    // Everywhere else keep the spacing as it was, which leaves a query with
+    // no expansion byte-identical to what it built before.
+    let mut out = String::new();
+    let mut prev: Option<&Part> = None;
+    for part in &parts {
+        out.push_str(match (prev, part) {
+            (None, _) => "",
+            (Some(Part::Group(_)), Part::Term(_) | Part::Group(_))
+            | (Some(Part::Term(_)), Part::Group(_)) => " AND ",
+            _ => " ",
+        });
+        out.push_str(part.text());
+        prev = Some(part);
+    }
+    Some(out)
 }
 
 /// Whether a `"` at the front of `chars` has a matching closing quote.
@@ -258,14 +412,27 @@ fn query_has_closing_quote(chars: &std::iter::Peekable<std::str::Chars>) -> bool
 }
 
 /// Searches the whole library. `query` is what the user typed; see
-/// `to_fts_query` for how it's interpreted.
+/// `to_fts_query` for how it's interpreted. Terms with a known
+/// transliteration variant also match it, in both modes.
 pub fn search(
     conn: &Connection,
     query: &str,
     mode: SearchMode,
     limit: i64,
 ) -> Result<Vec<SearchResult>> {
-    let Some(fts_query) = to_fts_query(query) else {
+    search_with_variants(conn, query, mode, limit, VariantIndex::bundled())
+}
+
+/// [`search`], against a given variant list instead of the bundled one, so
+/// tests don't depend on what `data/term_variants.txt` happens to hold.
+pub fn search_with_variants(
+    conn: &Connection,
+    query: &str,
+    mode: SearchMode,
+    limit: i64,
+    variants: &VariantIndex,
+) -> Result<Vec<SearchResult>> {
+    let Some(fts_query) = to_fts_query(query, variants) else {
         return Ok(Vec::new());
     };
     // The table name comes from the enum, never from user input.
@@ -866,8 +1033,17 @@ mod tests {
         }
     }
 
+    /// No variants, so these assertions also pin down that a query with
+    /// nothing to expand builds exactly the string it always did.
     fn fts(q: &str) -> Option<String> {
-        to_fts_query(q)
+        to_fts_query(q, &VariantIndex::parse("").unwrap())
+    }
+
+    /// Two small groups, so the expansion tests don't depend on what
+    /// `data/term_variants.txt` happens to hold.
+    fn fts_v(q: &str) -> Option<String> {
+        let variants = VariantIndex::parse("dhamma, dharma\nkamma, karma\n").unwrap();
+        to_fts_query(q, &variants)
     }
 
     #[test]
@@ -904,6 +1080,168 @@ mod tests {
         assert_eq!(fts("a OR AND b").unwrap(), r#""a" OR "AND" "b""#);
         assert_eq!(fts("a or b").unwrap(), r#""a" "or" "b""#);
         assert_eq!(fts(r#"a "OR" b"#).unwrap(), r#""a" "OR" "b""#);
+    }
+
+    #[test]
+    fn fold_term_folds_iast() {
+        assert_eq!(fold_term("Dhamma"), "dhamma");
+        assert_eq!(fold_term("nibbāna"), "nibbana");
+        assert_eq!(fold_term("saṃsāra"), "samsara");
+        assert_eq!(fold_term("paṭicca"), "paticca");
+        assert_eq!(fold_term("ṝṣi"), "rsi");
+        // Decomposed input: "a" + a combining macron.
+        assert_eq!(fold_term("nibba\u{0304}na"), "nibbana");
+    }
+
+    #[test]
+    fn variant_index_parses_and_rejects_duplicates() {
+        let v = VariantIndex::parse(
+            "# a comment\n\n dhamma , dharma \nkamma, karma  # trailing comment\nlonely\n",
+        )
+        .unwrap();
+        assert_eq!(v.groups().len(), 2, "a one-term line can't expand");
+        assert_eq!(v.group_for("DHARMA").unwrap(), ["dhamma", "dharma"]);
+        assert_eq!(v.group_for("dhamma").unwrap(), ["dhamma", "dharma"]);
+        assert!(v.group_for("lonely").is_none());
+        assert!(v.group_for("cats").is_none());
+
+        let err = VariantIndex::parse("dhamma, dharma\ndharma, dhrama\n").unwrap_err();
+        assert!(err.to_string().contains("two variant groups"), "{err}");
+    }
+
+    #[test]
+    fn bundled_variants_parse() {
+        let v = VariantIndex::bundled();
+        assert!(v.groups().len() > 20);
+        assert_eq!(v.group_for("dharma").unwrap(), ["dhamma", "dharma"]);
+        // Typed with diacritics, the way the books spell it.
+        assert_eq!(v.group_for("nibbāna").unwrap(), ["nibbana", "nirvana"]);
+        for group in v.groups() {
+            for term in group {
+                assert!(
+                    term.is_ascii() && term == &term.to_lowercase(),
+                    "variant terms are written lowercase ASCII: {term}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fts_query_expands_known_variants() {
+        let group = r#"("dhamma" OR "dharma")"#;
+        assert_eq!(fts_v("dharma").unwrap(), group);
+        assert_eq!(fts_v("DHARMA").unwrap(), group, "case folded");
+        assert_eq!(fts_v("dhamma").unwrap(), group, "either way round");
+        assert_eq!(fts_v("cats").unwrap(), r#""cats""#, "no group, no change");
+    }
+
+    #[test]
+    fn fts_query_writes_and_out_next_to_a_group() {
+        // FTS5's implicit AND is a syntax error beside a parenthesised group.
+        assert_eq!(
+            fts_v("dharma monks").unwrap(),
+            r#"("dhamma" OR "dharma") AND "monks""#
+        );
+        assert_eq!(
+            fts_v("monks dharma").unwrap(),
+            r#""monks" AND ("dhamma" OR "dharma")"#
+        );
+        assert_eq!(
+            fts_v("dharma kamma").unwrap(),
+            r#"("dhamma" OR "dharma") AND ("kamma" OR "karma")"#
+        );
+        // Operators the user typed are left exactly as they were: `NOT` is
+        // the operator FTS5 wants, `AND NOT` is a syntax error.
+        assert_eq!(
+            fts_v("dharma NOT monks").unwrap(),
+            r#"("dhamma" OR "dharma") NOT "monks""#
+        );
+        assert_eq!(
+            fts_v("dharma OR cats").unwrap(),
+            r#"("dhamma" OR "dharma") OR "cats""#
+        );
+        // Unexpanded terms keep the implicit AND they have always had.
+        assert_eq!(fts_v("monks cats").unwrap(), r#""monks" "cats""#);
+    }
+
+    #[test]
+    fn fts_query_leaves_phrases_and_prefixes_alone() {
+        assert_eq!(fts_v("dharm*").unwrap(), r#""dharm"*"#);
+        assert_eq!(fts_v("dharma*").unwrap(), r#""dharma"*"#);
+        assert_eq!(fts_v(r#""the dharma""#).unwrap(), r#""the dharma""#);
+    }
+
+    /// Every expanded query above has to be one FTS5 actually accepts, so
+    /// a syntax error fails here rather than reaching a user's search box.
+    #[test]
+    fn expanded_queries_are_valid_fts5() {
+        let mut conn = open_db(":memory:").unwrap();
+        let book = one_chapter_book(
+            "Variants",
+            &[
+                "He explained the dhamma to the monks.",
+                "The dharma as taught in the Sanskrit tradition.",
+                "Kamma ripens in its own time.",
+            ],
+        );
+        load_book(&mut conn, "/v.epub", "hv", &book).unwrap();
+        let variants = VariantIndex::parse("dhamma, dharma\nkamma, karma\n").unwrap();
+
+        for query in [
+            "dharma",
+            "dharma monks",
+            "monks dharma",
+            "dharma kamma",
+            "dharma NOT monks",
+            "dharma OR cats",
+            "dharma AND monks",
+            r#""the dharma""#,
+            "dharm*",
+            "dharma explained monks",
+        ] {
+            for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+                search_with_variants(&conn, query, mode, 50, &variants)
+                    .unwrap_or_else(|e| panic!("{query:?} in {mode:?} is not valid FTS5: {e}"));
+            }
+        }
+    }
+
+    /// The point of the feature: the Sanskrit spelling finds the Pali text.
+    #[test]
+    fn search_finds_the_other_spelling() {
+        let mut conn = open_db(":memory:").unwrap();
+        let book = one_chapter_book(
+            "Variants",
+            &[
+                "He explained the dhamma to the monks.",
+                "Kamma ripens in its own time.",
+                "Nothing relevant here at all.",
+            ],
+        );
+        load_book(&mut conn, "/v.epub", "hv", &book).unwrap();
+        let variants = VariantIndex::parse("dhamma, dharma\nkamma, karma\n").unwrap();
+        let empty = VariantIndex::parse("").unwrap();
+
+        for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+            // "dharma" appears nowhere in the book.
+            assert!(search_with_variants(&conn, "dharma", mode, 50, &empty)
+                .unwrap()
+                .is_empty());
+            let hits = search_with_variants(&conn, "dharma", mode, 50, &variants).unwrap();
+            assert_eq!(hits.len(), 1, "{mode:?}");
+            assert!(hits[0].snippet.contains("[dhamma]"), "{}", hits[0].snippet);
+
+            // A term with a group ranks and highlights exactly as it did
+            // before, since the other member matches nothing here.
+            let plain = search_with_variants(&conn, "dhamma", mode, 50, &empty).unwrap();
+            let expanded = search_with_variants(&conn, "dhamma", mode, 50, &variants).unwrap();
+            assert_eq!(plain.len(), expanded.len());
+            for (a, b) in plain.iter().zip(&expanded) {
+                assert_eq!(a.content_block_id, b.content_block_id);
+                assert_eq!(a.rank, b.rank, "expansion must not shift ranking");
+                assert_eq!(a.snippet, b.snippet);
+            }
+        }
     }
 
     #[test]
@@ -1049,6 +1387,12 @@ mod tests {
             "mind* desire",
             "nuns NOT senior OR sorrow",
             "zzzz",
+            // Transliteration variants: the book writes "dhamma", "kamma"
+            // and "nibbāna", never the Sanskrit spellings searched here.
+            "dharma",
+            "karma",
+            "nirvana",
+            "nibbāna",
         ] {
             for (mode, name) in [
                 (SearchMode::Stemmed, "stemmed"),
@@ -1063,12 +1407,46 @@ mod tests {
             .iter()
             .any(|hit| hit["snippet"].as_str().unwrap().contains("[Nibbāna]")));
 
+        // The Sanskrit spellings appear nowhere in the book, so every one of
+        // these hits came from the variant list.
+        // The book varies the capitalisation ("kamma" and "Kamma" both
+        // occur), so match the spelling, not the case.
+        for (query, spelled) in [
+            ("dharma", "dhamma"),
+            ("karma", "kamma"),
+            ("nirvana", "nibbāna"),
+        ] {
+            for mode in ["stemmed", "exact"] {
+                let hits = searches[&format!("{mode}:{query}")].as_array().unwrap();
+                assert!(!hits.is_empty(), "{mode}:{query} found nothing");
+                assert!(
+                    hits.iter().any(|hit| hit["snippet"]
+                        .as_str()
+                        .unwrap()
+                        .to_lowercase()
+                        .contains(&format!("[{spelled}]"))),
+                    "{mode}:{query} should highlight {spelled}"
+                );
+            }
+        }
+        // Typed with its macron, "nibbāna" still reaches "nirvana"'s group.
+        assert_eq!(
+            searches["exact:nibbāna"].as_array().unwrap().len(),
+            searches["exact:nirvana"].as_array().unwrap().len()
+        );
+
         let mut library = library_fixtures(&conn, &[folder.id]);
         library["search"] = Value::Object(Default::default());
         check_fixture("src/demo/library.json", &library);
         check_fixture(
             "src/test/fixtures/demo-search.json",
             &to_value(searches).unwrap(),
+        );
+        // The demo's TypeScript search expands terms the same way, so it
+        // reads the same groups rather than keeping its own copy.
+        check_fixture(
+            "src/demo/variants.json",
+            &to_value(VariantIndex::bundled().groups()).unwrap(),
         );
     }
 

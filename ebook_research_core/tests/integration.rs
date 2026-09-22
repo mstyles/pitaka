@@ -1,5 +1,6 @@
 use ebook_research_core::{
-    db, import_book, open_db, parse_epub, search, ImportOutcome, SearchMode,
+    db, import_book, open_db, parse_epub, search, search_with_variants, ImportOutcome, SearchMode,
+    VariantIndex,
 };
 use rusqlite::Connection;
 
@@ -356,4 +357,74 @@ fn bookmarks_a_passage_into_a_folder() {
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].name, "Know your limit - Oct 10 2026");
     assert_eq!(folders[0].bookmark_count, 0);
+}
+
+/// A query term with a curated transliteration variant also finds the other
+/// spelling. Uses its own variant list rather than the shipped one, so these
+/// assertions don't move when `data/term_variants.txt` is edited.
+#[test]
+fn expands_transliteration_variants() {
+    let db_path = "/tmp/test_library_variants.db";
+    let _ = std::fs::remove_file(db_path);
+    let mut conn = open_db(db_path).expect("open_db failed");
+    import_book(&mut conn, "test.epub").expect("import failed");
+
+    // "neuronal" appears nowhere in the book; "neural" does.
+    let variants = VariantIndex::parse("neural, neuronal\n").unwrap();
+    let empty = VariantIndex::parse("").unwrap();
+
+    for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+        assert!(
+            search_with_variants(&conn, "neuronal", mode, 10, &empty)
+                .unwrap()
+                .is_empty(),
+            "{mode:?}: the book really doesn't contain \"neuronal\""
+        );
+
+        let neural = search_with_variants(&conn, "neural", mode, 10, &empty).unwrap();
+        let neuronal = search_with_variants(&conn, "neuronal", mode, 10, &variants).unwrap();
+        assert!(!neural.is_empty(), "{mode:?}");
+        assert_eq!(
+            neural
+                .iter()
+                .map(|r| r.content_block_id)
+                .collect::<Vec<_>>(),
+            neuronal
+                .iter()
+                .map(|r| r.content_block_id)
+                .collect::<Vec<_>>(),
+            "{mode:?}: the variant should find what the literal spelling finds"
+        );
+
+        // A term whose group matches nothing extra ranks exactly as before.
+        let expanded = search_with_variants(&conn, "neural", mode, 10, &variants).unwrap();
+        for (plain, exp) in neural.iter().zip(&expanded) {
+            assert_eq!(plain.content_block_id, exp.content_block_id, "{mode:?}");
+            assert_eq!(plain.rank, exp.rank, "{mode:?}: ranking must not shift");
+            assert_eq!(plain.snippet, exp.snippet, "{mode:?}");
+        }
+
+        // A term with no group is untouched.
+        let a = search_with_variants(&conn, "quincunx", mode, 10, &empty).unwrap();
+        let b = search_with_variants(&conn, "quincunx", mode, 10, &variants).unwrap();
+        assert_eq!(a.len(), b.len(), "{mode:?}");
+        for (x, y) in a.iter().zip(&b) {
+            assert_eq!(x.content_block_id, y.content_block_id, "{mode:?}");
+            assert_eq!(x.rank, y.rank, "{mode:?}");
+        }
+    }
+
+    // The same through the public `search`, against the shipped list: a term
+    // that isn't listed behaves exactly as it always has.
+    assert_eq!(
+        search(&conn, "neural networks", SearchMode::Stemmed, 10)
+            .unwrap()
+            .len(),
+        search_with_variants(&conn, "neural networks", SearchMode::Stemmed, 10, &empty)
+            .unwrap()
+            .len()
+    );
+
+    drop(conn);
+    let _ = std::fs::remove_file(db_path);
 }

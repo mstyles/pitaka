@@ -5,6 +5,7 @@
 // results the core wrote to `src/test/fixtures/demo-search.json`.
 import type { BookSummary, ChapterContent, ContentBlockRow, SearchMode, SearchResult } from "../types";
 import { porterStem } from "./porter";
+import variantGroups from "./variants.json";
 
 /** snippet()'s last argument in `db::search`: the most tokens to show. */
 const SNIPPET_TOKENS = 12;
@@ -20,6 +21,30 @@ function fold(text: string) {
   return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+// --- Transliteration variants ---------------------------------------------
+
+/**
+ * A port of `fold_term`: the key a term is looked up by in the variant list.
+ * Deliberately the same small IAST table as the Rust side rather than the
+ * NFD-based `fold()` above, so both agree on exactly which terms expand.
+ */
+const IAST: Record<string, string> = {
+  ā: "a", ī: "i", ū: "u", ṛ: "r", ṝ: "r", ḷ: "l", ḹ: "l", ē: "e", ō: "o",
+  ṅ: "n", ñ: "n", ṇ: "n", ṭ: "t", ḍ: "d", ś: "s", ṣ: "s", ṃ: "m", ṁ: "m", ḥ: "h",
+};
+
+function foldVariantKey(term: string) {
+  return Array.from(term.toLowerCase())
+    .filter((c) => !(c >= "\u0300" && c <= "\u036F"))
+    .map((c) => IAST[c] ?? c)
+    .join("");
+}
+
+/** Folded term -> its whole variant group, mirroring `VariantIndex`. */
+const VARIANTS = new Map<string, string[]>(
+  (variantGroups as string[][]).flatMap((group) => group.map((term) => [term, group] as const)),
+);
+
 function tokenize(text: string, mode: SearchMode): Token[] {
   return Array.from(text.matchAll(TOKEN), (m) => {
     const folded = fold(m[0]);
@@ -34,7 +59,7 @@ function tokenize(text: string, mode: SearchMode): Token[] {
 // --- Query parsing --------------------------------------------------------
 
 type Operator = "AND" | "OR" | "NOT";
-type QueryPart = { op: Operator } | { text: string; prefix: boolean };
+type QueryPart = { op: Operator } | { text: string; prefix: boolean; phrase: boolean };
 
 /**
  * A port of `to_fts_query`: every word is a quoted term; "quoted phrases",
@@ -81,7 +106,7 @@ function parseQuery(query: string): QueryPart[] {
       text = text.replace(/\*+$/, "");
     }
     if (!text.trim()) continue;
-    parts.push({ text, prefix });
+    parts.push({ text, prefix, phrase: isPhrase });
     lastIsTerm = true;
   }
   if (!lastIsTerm) parts.pop(); // a trailing operator, e.g. "neural OR"
@@ -128,12 +153,25 @@ function buildExpr(parts: QueryPart[], mode: SearchMode): { expr: Expr; phrases:
       while (operators.length && PRECEDENCE[operators[operators.length - 1]] >= PRECEDENCE[part.op]) reduce();
       operators.push(part.op);
     } else {
-      const terms = tokenize(part.text, mode).map((t) => t.term);
-      if (terms.length === 0) {
+      // A plain word with a listed transliteration variant becomes an OR of
+      // its whole group, the way `to_fts_query` writes ("dhamma" OR "dharma").
+      // Phrases and prefixes are left alone, as they are in the core, and the
+      // members are registered in file order because bm25() weights phrases
+      // by their index.
+      const group =
+        part.prefix || part.phrase ? undefined : VARIANTS.get(foldVariantKey(part.text));
+      const members = group ?? [part.text];
+      const children: Expr[] = [];
+      for (const member of members) {
+        const terms = tokenize(member, mode).map((t) => t.term);
+        if (terms.length === 0) continue;
+        phrases.push({ terms, prefix: part.prefix });
+        children.push({ kind: "phrase", phrase: phrases.length - 1 });
+      }
+      if (children.length === 0) {
         run.push({ kind: "none" });
       } else {
-        phrases.push({ terms, prefix: part.prefix });
-        run.push({ kind: "phrase", phrase: phrases.length - 1 });
+        run.push(children.length === 1 ? children[0] : { kind: "or", children });
       }
     }
   }
