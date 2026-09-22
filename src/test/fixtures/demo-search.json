@@ -669,6 +669,527 @@
       "snippet": "...futility of the world’s [delights]. She opens the door, only to..."
     }
   ],
+  "exact:dharma": [
+    {
+      "block_idx": 37,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 8,
+      "chapter_idx": 7,
+      "chapter_title": "The Book of the Ones",
+      "content_block_id": 190,
+      "rank": -4.757277070698183,
+      "snippet": "Thig 1.17 [Dhammā] Dhammātherīgāthā"
+    },
+    {
+      "block_idx": 12,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 410,
+      "rank": -4.681161581635092,
+      "snippet": "...They don’t understand the [Dhamma], for they’re no experts in..."
+    },
+    {
+      "block_idx": 13,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 353,
+      "rank": -3.83591484755784,
+      "snippet": "...Out of compassion Gotama taught me the [Dhamma]."
+    },
+    {
+      "block_idx": 35,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 375,
+      "rank": -3.774988334476006,
+      "snippet": "Out of compassion, Gotama taught me the [Dhamma]. While sitting in that..."
+    },
+    {
+      "block_idx": 53,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 393,
+      "rank": -3.774988334476006,
+      "snippet": "...She taught me the [Dhamma]: the elements and sense fields,"
+    },
+    {
+      "block_idx": 7,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 15,
+      "chapter_idx": 14,
+      "chapter_title": "The Book of the Eights",
+      "content_block_id": 430,
+      "rank": -3.774988334476006,
+      "snippet": "The Buddha taught me the [Dhamma], unshakable, incomparable, not frequented by ordinary..."
+    },
+    {
+      "block_idx": 74,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 563,
+      "rank": -3.71596697464665,
+      "snippet": "...He taught him the [Dhamma], the sage gone beyond suffering:"
+    },
+    {
+      "block_idx": 46,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 75,
+      "rank": -3.658762783366077,
+      "snippet": "...is serene, and knowledge is present as you rightly discern the [Dhamma]."
+    },
+    {
+      "block_idx": 7,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 10,
+      "chapter_idx": 9,
+      "chapter_title": "The Book of the Threes",
+      "content_block_id": 234,
+      "rank": -3.658762783366077,
+      "snippet": "...She taught me the [Dhamma]: the aggregates, sense fields, and elements."
+    },
+    {
+      "block_idx": 31,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 10,
+      "chapter_idx": 9,
+      "chapter_title": "The Book of the Threes",
+      "content_block_id": 258,
+      "rank": -3.658762783366077,
+      "snippet": "...is serene, and knowledge is present as you rightly discern the [Dhamma]."
+    },
+    {
+      "block_idx": 4,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 270,
+      "rank": -3.658762783366077,
+      "snippet": "...She taught me the [Dhamma]: the aggregates, sense fields, and elements."
+    },
+    {
+      "block_idx": 21,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 419,
+      "rank": -3.658762783366077,
+      "snippet": "...He taught me the [Dhamma] for transcending rebirth:"
+    },
+    {
+      "block_idx": 13,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 411,
+      "rank": -3.603293111595041,
+      "snippet": "...the unrivaled Buddha; he taught me the [Dhamma] for going beyond views."
+    },
+    {
+      "block_idx": 71,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 560,
+      "rank": -3.603293111595041,
+      "snippet": "...city of Mithilā, teaches the [Dhamma] so that living creatures may abandon..."
+    },
+    {
+      "block_idx": 6,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 22,
+      "chapter_idx": 21,
+      "chapter_title": "The Book of the Forties",
+      "content_block_id": 653,
+      "rank": -3.603293111595041,
+      "snippet": "Being pressed like this in private, Isidāsī, skilled in teaching [Dhamma], voiced..."
+    },
+    {
+      "block_idx": 28,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 368,
+      "rank": -3.549480247535182,
+      "snippet": "...Right there I found the stainless [Dhamma], the state free of death."
+    },
+    {
+      "block_idx": 38,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 304,
+      "rank": -3.497251053381311,
+      "snippet": "...I saw the stainless [Dhamma], extinguishment, the state that does not pass."
+    },
+    {
+      "block_idx": 27,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 367,
+      "rank": -3.497251053381311,
+      "snippet": "...Out of compassion the Clear-eyed One taught me the [Dhamma]."
+    },
+    {
+      "block_idx": 32,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 22,
+      "chapter_idx": 21,
+      "chapter_title": "The Book of the Forties",
+      "content_block_id": 679,
+      "rank": -3.497251053381311,
+      "snippet": "But my dad said to me: ‘Child, practice [Dhamma] right here then..."
+    },
+    {
+      "block_idx": 45,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 311,
+      "rank": -3.4465366336789183,
+      "snippet": "She taught me the [Dhamma]: the aggregates, sense fields, and elements. When..."
+    },
+    {
+      "block_idx": 11,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 17,
+      "chapter_idx": 16,
+      "chapter_title": "The Book of the Elevens",
+      "content_block_id": 455,
+      "rank": -3.4465366336789183,
+      "snippet": "...I’ve realized extinguishment, as seen in the mirror of the [Dhamma]."
+    },
+    {
+      "block_idx": 113,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 142,
+      "rank": -3.0486537454031586,
+      "snippet": "...Book of Verses of Elder Bhikkhunīs was published in 2017 through [Dhamma]..."
+    },
+    {
+      "block_idx": 59,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 548,
+      "rank": -2.899865800609372,
+      "snippet": "...the Nerañjara River, teaches the [Dhamma] so that living creatures may abandon..."
+    },
+    {
+      "block_idx": 1,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 7,
+      "chapter_idx": 6,
+      "chapter_title": "Acknowledgements",
+      "content_block_id": 148,
+      "rank": -2.864910685296121,
+      "snippet": "...whom I have learned the [Dhamma], especially Ajahn Brahm and Bhikkhu Bodhi..."
+    },
+    {
+      "block_idx": 79,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 108,
+      "rank": -2.370273146609419,
+      "snippet": "...Nonetheless, anyone who has ever given a [Dhamma] talk has, in some..."
+    },
+    {
+      "block_idx": 75,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 104,
+      "rank": -2.1812847266391047,
+      "snippet": "Only Sakulā reports learning the [Dhamma] from a monk, and that was..."
+    },
+    {
+      "block_idx": 8,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 37,
+      "rank": -1.901990232018943,
+      "snippet": "...The verses express the [Dhamma] through images that are immediate and personal..."
+    },
+    {
+      "block_idx": 63,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 92,
+      "rank": -1.8010963087009955,
+      "snippet": "...rightful daughter of the Buddha. [Dhammā] (Thig 1.17), Cittā (Thig 2..."
+    },
+    {
+      "block_idx": 93,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 122,
+      "rank": -1.6509629307850597,
+      "snippet": "...to understand and practice the [Dhamma]. And so have we. The real..."
+    },
+    {
+      "block_idx": 48,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 77,
+      "rank": -1.595546500840891,
+      "snippet": "...who have taught them the [Dhamma], yet Mahāpajāpati somehow never comes up..."
+    },
+    {
+      "block_idx": 18,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 47,
+      "rank": -1.5437294823505079,
+      "snippet": "...nuns, what mattered was the [Dhamma], not their own lives. If we..."
+    },
+    {
+      "block_idx": 66,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 95,
+      "rank": -1.4951722221025838,
+      "snippet": "...Rather, as a young woman she immediately understood the [Dhamma] as soon..."
+    },
+    {
+      "block_idx": 35,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 64,
+      "rank": -1.3061800357184274,
+      "snippet": "...to deepen her insight into [Dhamma] and reject sensual desires. After this..."
+    }
+  ],
+  "exact:karma": [
+    {
+      "block_idx": 94,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 123,
+      "rank": -4.855327977065934,
+      "snippet": "The second fallacy is to think that [kamma] determines the choices of..."
+    },
+    {
+      "block_idx": 89,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 118,
+      "rank": -4.710767476413204,
+      "snippet": "The depiction of [kamma] and its effects here is subtly different from..."
+    },
+    {
+      "block_idx": 95,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 124,
+      "rank": -4.541737731313265,
+      "snippet": "This misunderstanding of [kamma] is very prevalent in the Buddhist community today..."
+    },
+    {
+      "block_idx": 91,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 120,
+      "rank": -4.413671305604746,
+      "snippet": "First, the fact that [kamma] creates some results does not mean that..."
+    },
+    {
+      "block_idx": 104,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 133,
+      "rank": -3.8529166332585167,
+      "snippet": "In the story of Isidāsī, she committed bad [kamma] as a man..."
+    },
+    {
+      "block_idx": 93,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 122,
+      "rank": -3.397044514842068,
+      "snippet": "...She must have performed good [kamma] in the past to be born..."
+    },
+    {
+      "block_idx": 85,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 114,
+      "rank": -3.3930873012067333,
+      "snippet": "...And it is indeed true that the wearing away of past [kamma]..."
+    },
+    {
+      "block_idx": 97,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 126,
+      "rank": -3.1664888194973297,
+      "snippet": "In this light, the casual reference to the “wearing away” of [kamma]..."
+    },
+    {
+      "block_idx": 82,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 111,
+      "rank": -2.5071251046525007,
+      "snippet": "...the specific results of past [kamma] over many lifetimes, which again is..."
+    },
+    {
+      "block_idx": 86,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 115,
+      "rank": -2.5071251046525007,
+      "snippet": "...she had picked up about [kamma] without a clear understanding of the..."
+    },
+    {
+      "block_idx": 88,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 117,
+      "rank": -2.263823373519569,
+      "snippet": "...This was the root bad [kamma] that drove her to a series..."
+    },
+    {
+      "block_idx": 92,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 121,
+      "rank": -1.8163730466411858,
+      "snippet": "...is a result of bad [kamma], a belief that is commonly held..."
+    },
+    {
+      "block_idx": 96,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 125,
+      "rank": -1.7432836386220747,
+      "snippet": "...the more deterministic understanding of [kamma] that was already evolving a century..."
+    },
+    {
+      "block_idx": 103,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 132,
+      "rank": -1.5880895206568668,
+      "snippet": "...Unlike Isidāsī, here she is not speaking of any bad [kamma]. On..."
+    }
+  ],
   "exact:mara": [
     {
       "block_idx": 113,
@@ -1217,6 +1738,32 @@
     }
   ],
   "exact:nibbana": [
+    {
+      "block_idx": 102,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 131,
+      "rank": -6.6305473457264,
+      "snippet": "...She did so and rapidly attained [Nibbāna]."
+    }
+  ],
+  "exact:nibbāna": [
+    {
+      "block_idx": 102,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 131,
+      "rank": -6.6305473457264,
+      "snippet": "...She did so and rapidly attained [Nibbāna]."
+    }
+  ],
+  "exact:nirvana": [
     {
       "block_idx": 102,
       "book_id": 1,
@@ -2410,6 +2957,527 @@
       "snippet": "...futility of the world’s [delights]. She opens the door, only to..."
     }
   ],
+  "stemmed:dharma": [
+    {
+      "block_idx": 37,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 8,
+      "chapter_idx": 7,
+      "chapter_title": "The Book of the Ones",
+      "content_block_id": 190,
+      "rank": -4.757277070698183,
+      "snippet": "Thig 1.17 [Dhammā] Dhammātherīgāthā"
+    },
+    {
+      "block_idx": 12,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 410,
+      "rank": -4.681161581635092,
+      "snippet": "...They don’t understand the [Dhamma], for they’re no experts in..."
+    },
+    {
+      "block_idx": 13,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 353,
+      "rank": -3.83591484755784,
+      "snippet": "...Out of compassion Gotama taught me the [Dhamma]."
+    },
+    {
+      "block_idx": 35,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 375,
+      "rank": -3.774988334476006,
+      "snippet": "Out of compassion, Gotama taught me the [Dhamma]. While sitting in that..."
+    },
+    {
+      "block_idx": 53,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 393,
+      "rank": -3.774988334476006,
+      "snippet": "...She taught me the [Dhamma]: the elements and sense fields,"
+    },
+    {
+      "block_idx": 7,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 15,
+      "chapter_idx": 14,
+      "chapter_title": "The Book of the Eights",
+      "content_block_id": 430,
+      "rank": -3.774988334476006,
+      "snippet": "The Buddha taught me the [Dhamma], unshakable, incomparable, not frequented by ordinary..."
+    },
+    {
+      "block_idx": 74,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 563,
+      "rank": -3.71596697464665,
+      "snippet": "...He taught him the [Dhamma], the sage gone beyond suffering:"
+    },
+    {
+      "block_idx": 46,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 75,
+      "rank": -3.658762783366077,
+      "snippet": "...is serene, and knowledge is present as you rightly discern the [Dhamma]."
+    },
+    {
+      "block_idx": 7,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 10,
+      "chapter_idx": 9,
+      "chapter_title": "The Book of the Threes",
+      "content_block_id": 234,
+      "rank": -3.658762783366077,
+      "snippet": "...She taught me the [Dhamma]: the aggregates, sense fields, and elements."
+    },
+    {
+      "block_idx": 31,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 10,
+      "chapter_idx": 9,
+      "chapter_title": "The Book of the Threes",
+      "content_block_id": 258,
+      "rank": -3.658762783366077,
+      "snippet": "...is serene, and knowledge is present as you rightly discern the [Dhamma]."
+    },
+    {
+      "block_idx": 4,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 270,
+      "rank": -3.658762783366077,
+      "snippet": "...She taught me the [Dhamma]: the aggregates, sense fields, and elements."
+    },
+    {
+      "block_idx": 21,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 419,
+      "rank": -3.658762783366077,
+      "snippet": "...He taught me the [Dhamma] for transcending rebirth:"
+    },
+    {
+      "block_idx": 13,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 14,
+      "chapter_idx": 13,
+      "chapter_title": "The Book of the Sevens",
+      "content_block_id": 411,
+      "rank": -3.603293111595041,
+      "snippet": "...the unrivaled Buddha; he taught me the [Dhamma] for going beyond views."
+    },
+    {
+      "block_idx": 71,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 560,
+      "rank": -3.603293111595041,
+      "snippet": "...city of Mithilā, teaches the [Dhamma] so that living creatures may abandon..."
+    },
+    {
+      "block_idx": 6,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 22,
+      "chapter_idx": 21,
+      "chapter_title": "The Book of the Forties",
+      "content_block_id": 653,
+      "rank": -3.603293111595041,
+      "snippet": "Being pressed like this in private, Isidāsī, skilled in teaching [Dhamma], voiced..."
+    },
+    {
+      "block_idx": 28,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 368,
+      "rank": -3.549480247535182,
+      "snippet": "...Right there I found the stainless [Dhamma], the state free of death."
+    },
+    {
+      "block_idx": 38,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 304,
+      "rank": -3.497251053381311,
+      "snippet": "...I saw the stainless [Dhamma], extinguishment, the state that does not pass."
+    },
+    {
+      "block_idx": 27,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 13,
+      "chapter_idx": 12,
+      "chapter_title": "The Book of the Sixes",
+      "content_block_id": 367,
+      "rank": -3.497251053381311,
+      "snippet": "...Out of compassion the Clear-eyed One taught me the [Dhamma]."
+    },
+    {
+      "block_idx": 32,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 22,
+      "chapter_idx": 21,
+      "chapter_title": "The Book of the Forties",
+      "content_block_id": 679,
+      "rank": -3.497251053381311,
+      "snippet": "But my dad said to me: ‘Child, practice [Dhamma] right here then..."
+    },
+    {
+      "block_idx": 45,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 12,
+      "chapter_idx": 11,
+      "chapter_title": "The Book of the Fives",
+      "content_block_id": 311,
+      "rank": -3.4465366336789183,
+      "snippet": "She taught me the [Dhamma]: the aggregates, sense fields, and elements. When..."
+    },
+    {
+      "block_idx": 11,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 17,
+      "chapter_idx": 16,
+      "chapter_title": "The Book of the Elevens",
+      "content_block_id": 455,
+      "rank": -3.4465366336789183,
+      "snippet": "...I’ve realized extinguishment, as seen in the mirror of the [Dhamma]."
+    },
+    {
+      "block_idx": 113,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 142,
+      "rank": -3.0486537454031586,
+      "snippet": "...Book of Verses of Elder Bhikkhunīs was published in 2017 through [Dhamma]..."
+    },
+    {
+      "block_idx": 59,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 20,
+      "chapter_idx": 19,
+      "chapter_title": "The Book of the Twenties",
+      "content_block_id": 548,
+      "rank": -2.899865800609372,
+      "snippet": "...the Nerañjara River, teaches the [Dhamma] so that living creatures may abandon..."
+    },
+    {
+      "block_idx": 1,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 7,
+      "chapter_idx": 6,
+      "chapter_title": "Acknowledgements",
+      "content_block_id": 148,
+      "rank": -2.864910685296121,
+      "snippet": "...whom I have learned the [Dhamma], especially Ajahn Brahm and Bhikkhu Bodhi..."
+    },
+    {
+      "block_idx": 79,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 108,
+      "rank": -2.370273146609419,
+      "snippet": "...Nonetheless, anyone who has ever given a [Dhamma] talk has, in some..."
+    },
+    {
+      "block_idx": 75,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 104,
+      "rank": -2.1812847266391047,
+      "snippet": "Only Sakulā reports learning the [Dhamma] from a monk, and that was..."
+    },
+    {
+      "block_idx": 8,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 37,
+      "rank": -1.901990232018943,
+      "snippet": "...The verses express the [Dhamma] through images that are immediate and personal..."
+    },
+    {
+      "block_idx": 63,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 92,
+      "rank": -1.8010963087009955,
+      "snippet": "...rightful daughter of the Buddha. [Dhammā] (Thig 1.17), Cittā (Thig 2..."
+    },
+    {
+      "block_idx": 93,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 122,
+      "rank": -1.6509629307850597,
+      "snippet": "...to understand and practice the [Dhamma]. And so have we. The real..."
+    },
+    {
+      "block_idx": 48,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 77,
+      "rank": -1.595546500840891,
+      "snippet": "...who have taught them the [Dhamma], yet Mahāpajāpati somehow never comes up..."
+    },
+    {
+      "block_idx": 18,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 47,
+      "rank": -1.5437294823505079,
+      "snippet": "...nuns, what mattered was the [Dhamma], not their own lives. If we..."
+    },
+    {
+      "block_idx": 66,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 95,
+      "rank": -1.4951722221025838,
+      "snippet": "...Rather, as a young woman she immediately understood the [Dhamma] as soon..."
+    },
+    {
+      "block_idx": 35,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 64,
+      "rank": -1.3061800357184274,
+      "snippet": "...to deepen her insight into [Dhamma] and reject sensual desires. After this..."
+    }
+  ],
+  "stemmed:karma": [
+    {
+      "block_idx": 94,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 123,
+      "rank": -4.855327977065934,
+      "snippet": "The second fallacy is to think that [kamma] determines the choices of..."
+    },
+    {
+      "block_idx": 89,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 118,
+      "rank": -4.710767476413204,
+      "snippet": "The depiction of [kamma] and its effects here is subtly different from..."
+    },
+    {
+      "block_idx": 95,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 124,
+      "rank": -4.541737731313265,
+      "snippet": "This misunderstanding of [kamma] is very prevalent in the Buddhist community today..."
+    },
+    {
+      "block_idx": 91,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 120,
+      "rank": -4.413671305604746,
+      "snippet": "First, the fact that [kamma] creates some results does not mean that..."
+    },
+    {
+      "block_idx": 104,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 133,
+      "rank": -3.8529166332585167,
+      "snippet": "In the story of Isidāsī, she committed bad [kamma] as a man..."
+    },
+    {
+      "block_idx": 93,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 122,
+      "rank": -3.397044514842068,
+      "snippet": "...She must have performed good [kamma] in the past to be born..."
+    },
+    {
+      "block_idx": 85,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 114,
+      "rank": -3.3930873012067333,
+      "snippet": "...And it is indeed true that the wearing away of past [kamma]..."
+    },
+    {
+      "block_idx": 97,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 126,
+      "rank": -3.1664888194973297,
+      "snippet": "In this light, the casual reference to the “wearing away” of [kamma]..."
+    },
+    {
+      "block_idx": 82,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 111,
+      "rank": -2.5071251046525007,
+      "snippet": "...the specific results of past [kamma] over many lifetimes, which again is..."
+    },
+    {
+      "block_idx": 86,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 115,
+      "rank": -2.5071251046525007,
+      "snippet": "...she had picked up about [kamma] without a clear understanding of the..."
+    },
+    {
+      "block_idx": 88,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 117,
+      "rank": -2.263823373519569,
+      "snippet": "...This was the root bad [kamma] that drove her to a series..."
+    },
+    {
+      "block_idx": 92,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 121,
+      "rank": -1.8163730466411858,
+      "snippet": "...is a result of bad [kamma], a belief that is commonly held..."
+    },
+    {
+      "block_idx": 96,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 125,
+      "rank": -1.7432836386220747,
+      "snippet": "...the more deterministic understanding of [kamma] that was already evolving a century..."
+    },
+    {
+      "block_idx": 103,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 132,
+      "rank": -1.5880895206568668,
+      "snippet": "...Unlike Isidāsī, here she is not speaking of any bad [kamma]. On..."
+    }
+  ],
   "stemmed:mara": [
     {
       "block_idx": 113,
@@ -3541,6 +4609,32 @@
     }
   ],
   "stemmed:nibbana": [
+    {
+      "block_idx": 102,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 131,
+      "rank": -6.6305473457264,
+      "snippet": "...She did so and rapidly attained [Nibbāna]."
+    }
+  ],
+  "stemmed:nibbāna": [
+    {
+      "block_idx": 102,
+      "book_id": 1,
+      "book_title": "Verses of the Senior Nuns",
+      "chapter_id": 6,
+      "chapter_idx": 5,
+      "chapter_title": "Verses of the Senior Nuns: a reflective life",
+      "content_block_id": 131,
+      "rank": -6.6305473457264,
+      "snippet": "...She did so and rapidly attained [Nibbāna]."
+    }
+  ],
+  "stemmed:nirvana": [
     {
       "block_idx": 102,
       "book_id": 1,

@@ -1,0 +1,42 @@
+# Transliteration variants: terms that mean the same thing but are spelled
+# differently across traditions, mostly Pali (first) and Sanskrit (second).
+# A query for any term in a group also searches the rest of the group, so
+# "dharma" finds a text that only ever writes "dhamma".
+#
+# Format: one group per line, terms separated by commas. Blank lines and
+# lines starting with # are ignored. A term may appear in only one group.
+#
+# Write terms in plain ASCII, lowercase: the search index folds diacritics
+# (remove_diacritics 2), so "nibbana" already matches "nibbāna" in a book,
+# and a query typed with diacritics is folded before it is looked up here.
+#
+# Editing this file needs no Rust change, but it is embedded in the binary
+# at compile time, so a rebuild is needed for a change to take effect.
+
+dhamma, dharma
+kamma, karma
+nibbana, nirvana
+sutta, sutra
+bhikkhu, bhiksu
+bhikkhuni, bhiksuni
+sangha, samgha
+tanha, trsna                          # craving
+khandha, skandha                      # the five aggregates
+sankhara, samskara                    # conditioned formations
+sati, smrti                           # mindfulness
+vinnana, vijnana                      # consciousness
+panna, prajna                         # wisdom
+metta, maitri                         # loving-kindness
+magga, marga                          # the path
+anatta, anatman                       # not-self
+dukkha, duhkha                        # suffering
+arahant, arhat
+jhana, dhyana                         # meditative absorption
+kilesa, klesa                         # defilements
+asava, asrava                         # taints
+upekkha, upeksa                       # equanimity
+viriya, virya                         # energy
+bodhisatta, bodhisattva
+thera, sthavira                       # senior monk
+paticcasamuppada, pratityasamutpada   # dependent origination
+patimokkha, pratimoksa                # the monastic code
