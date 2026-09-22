@@ -5,6 +5,8 @@
 # Node
 /node_modules/
 /dist/
+/dist-demo/
+/site-build/
 
 # Tauri
 /src-tauri/gen/schemas

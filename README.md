@@ -1,8 +1,74 @@
 # Pitaka
 
-A desktop e-book research app: EPUB parsing + SQLite/FTS5 search, wrapped
-in a Tauri v2 shell (React + TypeScript frontend). The Rust side is split
-into two crates on purpose:
+A desktop app for reading and researching your EPUB library: full-text
+search across every book, and bookmark folders for the passages you want
+to keep.
+
+**[Try it in your browser](https://mstyles.github.io/pitaka/demo/)** ·
+[Website](https://mstyles.github.io/pitaka/)
+
+![Search results for "patacara", with "Paṭācārā" highlighted in each passage](docs/screenshots/search.jpg)
+
+- **Search your whole library at once.** Every paragraph of every book is
+  indexed, results are ranked with the matching words highlighted, and
+  "learn" also finds "learning" (or tick *Exact words*). Case and
+  diacritics are ignored, so `samsara` finds "saṃsāra". Quoted phrases,
+  `prefix*` and `AND`/`OR`/`NOT` work too.
+- **Read with the hit in context.** Opening a result jumps the reader to
+  that paragraph, with the book's chapters alongside.
+- **Keep passages in bookmark folders**, one per topic or project, each
+  passage linked back to its place in the book.
+- **Local and private.** Your books are indexed into a SQLite database on
+  your own computer; nothing is uploaded anywhere.
+
+The browser demo is the real interface with one built-in book, the
+Therīgāthā (*Verses of the Senior Nuns*), and a search that works like
+the app's. Importing your own books needs the desktop app.
+
+| Home | Reader | Bookmarks |
+| --- | --- | --- |
+| ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
+
+## Install
+
+There are no prebuilt downloads yet, so Pitaka is built from source. It
+has only been run on Linux so far; Tauri also targets macOS and Windows,
+but those builds are untested.
+
+1. Install [Rust](https://rustup.rs) and [Node.js](https://nodejs.org)
+   (24 is what CI uses), plus Tauri's system libraries. On Debian or
+   Ubuntu:
+
+   ```
+   sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev \
+     libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev \
+     libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
+   ```
+
+   Other systems: see [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/).
+2. `git clone https://github.com/mstyles/pitaka && cd pitaka && npm install`
+3. `npm run tauri build`, then install or run a bundle from
+   `target/release/bundle/`. Or `npm run tauri dev` to run it straight
+   from the checkout.
+
+The library lives in `library.db` in the app's data directory
+(`~/.local/share/com.pitaka.app/` on Linux). Imported books are indexed
+there; the EPUB files themselves are never modified.
+
+## Licence
+
+Pitaka is licensed under either of [MIT](LICENSE-MIT) or
+[Apache 2.0](LICENSE-APACHE), at your option. The bundled fonts
+(Fraunces, Literata and Source Sans 3) are under the SIL Open Font
+License; their licences are in `src/assets/fonts/`. The demo's book,
+*Verses of the Senior Nuns* translated by Bhikkhu Sujato, is dedicated to
+the public domain (CC0) by [SuttaCentral](https://suttacentral.net); see
+[`demo/README.md`](demo/README.md).
+
+## How it's built
+
+EPUB parsing + SQLite/FTS5 search, wrapped in a Tauri v2 shell (React +
+TypeScript frontend). The Rust side is split into two crates on purpose:
 
 - `ebook_research_core/` — all the real logic (EPUB parsing, offsets,
   DB schema/search ranking). No Tauri or UI dependency at all, so the
@@ -24,8 +90,9 @@ members, sharing one `Cargo.lock`/`target/`.
   other blocks is split into them. Text split across inline tags is
   joined as written, so a drop cap like `<b>B</b>EFORE` reads
   "BEFORE". Each chapter's title is its first `<h1>`/`<h2>`, falling
-  back to the internal file path. The EPUB 3 navigation document (the
-  manifest item whose `properties` include `nav`) is skipped, so the
+  back to the document's `<head><title>` (so a half-title page without
+  a heading gets the book's name) and then to the internal file path.
+  The EPUB 3 navigation document (the manifest item whose `properties` include `nav`) is skipped, so the
   table of contents isn't a chapter or a source of search hits;
   `linear="no"` items and cover pages are kept, since they can hold
   real text such as notes. Checked against *Understanding Our Mind*
@@ -128,6 +195,24 @@ members, sharing one `Cargo.lock`/`target/`.
   silently drift from what the tests feed the UI. What they can't catch: argument names the real
   Tauri layer expects (`bookId` → `book_id`) and anything in
   `commands.rs`, since neither runs.
+- The browser demo (`npm run build:demo`, published with the project page
+  by `.github/workflows/pages.yml` via `npm run build:site`) is the same
+  UI and mock with one real book: `demo/verses-of-the-senior-nuns.epub`,
+  SuttaCentral's CC0 Therīgāthā. The core test
+  `ui_fixtures_for_demo_are_current` imports it (24 chapters, none with
+  a file-path title) and writes `src/demo/library.json`, plus the core's
+  real `search()` results for 17 queries in both modes (diacritics,
+  stemming, a phrase, prefixes, a hyphenated word, `OR` and `NOT`) to
+  `src/test/fixtures/demo-search.json`. The demo searches with
+  `src/demo/search.ts`, a TypeScript port of `to_fts_query` and of
+  FTS5's unicode61 and porter tokenizers, `bm25()` and `snippet()` from
+  the bundled SQLite 3.53.2; `src/demo/search.test.ts` checks it returns
+  exactly the core's results for all 34, in the same order with the
+  same snippets and ranks. `src/Demo.test.tsx` covers the demo's start
+  state, a diacritic-free search opening the reader at the hit, and the
+  import message. Checked in Chrome from the built site: search, the
+  reader, bookmarks and the landing page, which fit a 390px-wide
+  viewport without sideways scrolling. Not checked in dark mode.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
@@ -222,14 +307,17 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 5. `npm test` — frontend tests; `npm run dev:mock` — the UI in a
    browser on :1430 against the mocked backend.
 
-## Known limitations (same order of priority as the Python version)
+## Known limitations
+
+In the same order of priority as the Python version, then newer ones.
 
 1. No distinct handling of footnotes/endnotes.
-2. Chapter titles come from the first `<h1>`/`<h2>`, but there's no
-   migration: books imported before that change keep file-path titles
-   until re-imported. Books that style headings as `<div>`s (e.g.
-   `<div class="ct">`) instead of `<h1>`/`<h2>` also get file-path
-   titles. Books imported before the EPUB 3 nav document was skipped
+2. Chapter titles come from the first `<h1>`/`<h2>`, else the page's
+   `<title>`, but there's no migration: books imported before that
+   change keep file-path titles until re-imported. Books that style
+   headings as `<div>`s (e.g. `<div class="ct">`) instead of
+   `<h1>`/`<h2>` get their page `<title>`, which is often just the
+   book's name, or a file path when it's empty. Books imported before the EPUB 3 nav document was skipped
    keep it as a chapter until they're removed and re-imported.
 3. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
@@ -278,6 +366,9 @@ Done:
 - [x] Launch screen with separate Books, Bookmarks and Search screens
 - [x] Paper visual style: bundled serif fonts, colour tokens with a
       matching dark mode
+- [x] Public showcase: MIT/Apache-2.0 licence, a project page on GitHub
+      Pages, and a browser demo with a CC0 book and a search checked
+      against the core's
 
 Next up (fixes for the known limitations above):
 
@@ -295,6 +386,8 @@ Later:
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
       rendering every block as a plain `<p>` (limitation 3)
+- [ ] Release builds for Linux, macOS and Windows, so the app can be
+      installed without building it
 
 ## Workflow roadmap
 

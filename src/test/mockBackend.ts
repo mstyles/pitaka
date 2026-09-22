@@ -11,12 +11,14 @@ import type {
   ChapterSummary,
   FolderBookmark,
   ImportOutcome,
+  SearchMode,
   SearchResult,
 } from "../types";
 
-type Fixtures = {
-  import_new: ImportOutcome;
-  import_again: ImportOutcome;
+export type Fixtures = {
+  /** What importing the fixture book returns; absent in the demo's data. */
+  import_new?: ImportOutcome;
+  import_again?: ImportOutcome;
   books: BookSummary[];
   chapters: Record<string, ChapterSummary[]>;
   chapter_content: Record<string, ChapterContent>;
@@ -28,6 +30,12 @@ type Fixtures = {
 export const fixtures = fixtureData as Fixtures;
 
 export type MockOptions = {
+  /** The library to serve, in place of the test fixtures (the browser demo's book). */
+  data?: Fixtures;
+  /** Answers `search_library`; by default, the fixtures' recorded searches. */
+  search?: (books: BookSummary[], query: string, mode: SearchMode) => SearchResult[];
+  /** When set, `import_book` always rejects with this message. */
+  importError?: string;
   /** What the "Import EPUB…" file picker returns; null means cancelled. */
   openPath?: string | null;
   /** Whether confirmation dialogs (remove book, delete folder) are accepted. */
@@ -46,19 +54,21 @@ function sqliteNow() {
 }
 
 export function installMockBackend({
+  data = fixtures,
+  search,
+  importError,
   openPath = "/books/test.epub",
   confirm = true,
   fail = {},
-  books: initialBooks = fixtures.books,
+  books: initialBooks = data.books,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
   let books = initialBooks.map((b) => ({ ...b }));
-  const imported = fixtures.books.find((b) => b.id === fixtures.import_new.book_id)!;
 
   // Bookmark state, seeded from the fixtures and kept consistent the way the
   // SQL is: counts are derived, and deletes cascade.
-  let folders = fixtures.bookmark_folders.map(({ bookmark_count: _, ...f }) => ({ ...f }));
-  let bookmarks: FolderBookmark[] = Object.values(fixtures.folder_bookmarks).flat();
+  let folders = data.bookmark_folders.map(({ bookmark_count: _, ...f }) => ({ ...f }));
+  let bookmarks: FolderBookmark[] = Object.values(data.folder_bookmarks).flat();
   let nextFolderId = Math.max(0, ...folders.map((f) => f.id)) + 1;
   let nextBookmarkId = Math.max(0, ...bookmarks.map((b) => b.id)) + 1;
 
@@ -80,7 +90,7 @@ export function installMockBackend({
     return { ...f, bookmark_count: bookmarks.filter((b) => b.folder_id === f.id).length };
   }
   function findBlock(blockId: number) {
-    for (const content of Object.values(fixtures.chapter_content)) {
+    for (const content of Object.values(data.chapter_content)) {
       const block = content.blocks.find((b) => b.id === blockId);
       if (block && books.some((b) => b.id === content.book_id)) return { content, block };
     }
@@ -98,10 +108,13 @@ export function installMockBackend({
           ...b,
           bookmark_count: bookmarks.filter((bm) => bm.book_id === b.id).length,
         }));
-      case "import_book":
-        if (books.some((b) => b.id === imported.id)) return fixtures.import_again;
+      case "import_book": {
+        if (importError) throw importError;
+        const imported = data.books.find((b) => b.id === data.import_new!.book_id)!;
+        if (books.some((b) => b.id === imported.id)) return data.import_again;
         books = [...books, { ...imported }];
-        return fixtures.import_new;
+        return data.import_new;
+      }
       case "delete_book": {
         const id = args.bookId as number;
         if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
@@ -110,13 +123,15 @@ export function installMockBackend({
         return null;
       }
       case "search_library": {
-        const hits = fixtures.search[`${args.mode}:${args.query}`] ?? [];
+        const mode = args.mode as SearchMode;
+        if (search) return search(books, String(args.query), mode);
+        const hits = data.search[`${mode}:${args.query}`] ?? [];
         return hits.filter((h) => books.some((b) => b.id === h.book_id));
       }
       case "get_book_chapters":
-        return fixtures.chapters[String(args.bookId)] ?? [];
+        return data.chapters[String(args.bookId)] ?? [];
       case "get_chapter_content": {
-        const content = fixtures.chapter_content[String(args.chapterId)];
+        const content = data.chapter_content[String(args.chapterId)];
         if (!content) throw `no chapter with id ${args.chapterId}`;
         return content;
       }
@@ -179,7 +194,7 @@ export function installMockBackend({
         return bookmarks.filter((b) => b.folder_id === id).sort((a, b) => a.id - b.id);
       }
       case "get_chapter_bookmarks": {
-        const content = fixtures.chapter_content[String(args.chapterId)];
+        const content = data.chapter_content[String(args.chapterId)];
         const order = new Map(content?.blocks.map((b) => [b.id, b.block_idx]));
         return bookmarks
           .filter((b) => b.chapter_id === args.chapterId)

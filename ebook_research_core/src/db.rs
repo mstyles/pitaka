@@ -953,7 +953,7 @@ mod tests {
     /// calling Rust, so it must match what the core functions really return.
     #[test]
     fn ui_fixtures_are_current() {
-        use serde_json::{json, to_value, Value};
+        use serde_json::to_value;
         use std::collections::BTreeMap;
 
         let mut conn = open_db(":memory:").unwrap();
@@ -975,17 +975,6 @@ mod tests {
         )
         .unwrap();
 
-        let books = list_books(&conn).unwrap();
-        let mut chapters = BTreeMap::new();
-        let mut chapter_content = BTreeMap::new();
-        for book in &books {
-            let chs = get_book_chapters(&conn, book.id).unwrap();
-            for ch in &chs {
-                let content = get_chapter_content(&conn, ch.id).unwrap();
-                chapter_content.insert(ch.id.to_string(), to_value(content).unwrap());
-            }
-            chapters.insert(book.id.to_string(), to_value(chs).unwrap());
-        }
         let mut searches = BTreeMap::new();
         for (mode, name, query) in [
             (SearchMode::Stemmed, "stemmed", "neural networks"),
@@ -997,30 +986,138 @@ mod tests {
             searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
         }
 
-        let fixtures: Value = json!({
-            "import_new": import_new,
-            "import_again": import_again,
+        let mut fixtures = library_fixtures(&conn, &[folder.id]);
+        fixtures["import_new"] = to_value(import_new).unwrap();
+        fixtures["import_again"] = to_value(import_again).unwrap();
+        fixtures["search"] = to_value(searches).unwrap();
+        check_fixture("src/test/fixtures/library.json", &fixtures);
+    }
+
+    /// The browser demo (`npm run build:demo`) replays `src/demo/library.json`
+    /// the way `npm run dev:mock` replays the test fixtures, with one real
+    /// book: the CC0 Therīgāthā in `demo/`. `demo-search.json` holds the
+    /// core's own results for a set of queries, which the demo's TypeScript
+    /// search is tested against (`src/demo/search.test.ts`).
+    #[test]
+    fn ui_fixtures_for_demo_are_current() {
+        use serde_json::{to_value, Value};
+        use std::collections::BTreeMap;
+
+        let mut conn = open_db(":memory:").unwrap();
+        let epub = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../demo/verses-of-the-senior-nuns.epub"
+        );
+        let book_id = import_book(&mut conn, epub).unwrap().book_id;
+
+        let chapters = get_book_chapters(&conn, book_id).unwrap();
+        assert_eq!(chapters.len(), 24);
+        for ch in &chapters {
+            let title = ch.title.as_deref().unwrap_or_default();
+            assert!(!title.ends_with(".xhtml"), "file-path title: {title}");
+        }
+
+        // Paṭācārā's verses, and the Thirty Nuns' closing line naming her.
+        let folder = create_bookmark_folder(&conn, "Paṭācārā").unwrap();
+        let fives = chapters
+            .iter()
+            .find(|ch| ch.title.as_deref() == Some("The Book of the Fives"))
+            .unwrap();
+        let blocks = get_chapter_content(&conn, fives.id).unwrap().blocks;
+        for start in ["Plowing the fields", "That is how thirty senior nuns"] {
+            let block = blocks.iter().find(|b| b.text.starts_with(start)).unwrap();
+            add_bookmark(&conn, folder.id, block.id).unwrap();
+        }
+        conn.execute(
+            "UPDATE bookmark_folders SET created_at = '2026-09-01 12:00:00'",
+            [],
+        )
+        .unwrap();
+
+        let mut searches = BTreeMap::new();
+        for query in [
+            "patacara",
+            "mara",
+            "nibbana",
+            "craving",
+            "minds",
+            "\"senior nuns\"",
+            "delight*",
+            "mind NOT body",
+            "craving OR mara",
+            "cast-off",
+            "mind* desire",
+            "nuns NOT senior OR sorrow",
+            "zzzz",
+        ] {
+            for (mode, name) in [
+                (SearchMode::Stemmed, "stemmed"),
+                (SearchMode::Exact, "exact"),
+            ] {
+                let hits = search(&conn, query, mode, 50).unwrap();
+                searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
+            }
+        }
+        let nibbana = searches["exact:nibbana"].as_array().unwrap();
+        assert!(nibbana
+            .iter()
+            .any(|hit| hit["snippet"].as_str().unwrap().contains("[Nibbāna]")));
+
+        let mut library = library_fixtures(&conn, &[folder.id]);
+        library["search"] = Value::Object(Default::default());
+        check_fixture("src/demo/library.json", &library);
+        check_fixture(
+            "src/test/fixtures/demo-search.json",
+            &to_value(searches).unwrap(),
+        );
+    }
+
+    /// The library as the frontend reads it: books, every chapter's content,
+    /// and the given bookmark folders.
+    fn library_fixtures(conn: &Connection, folder_ids: &[i64]) -> serde_json::Value {
+        use serde_json::{json, to_value, Map};
+        use std::collections::BTreeMap;
+
+        let books = list_books(conn).unwrap();
+        let mut chapters = BTreeMap::new();
+        let mut chapter_content = BTreeMap::new();
+        for book in &books {
+            let chs = get_book_chapters(conn, book.id).unwrap();
+            for ch in &chs {
+                let content = get_chapter_content(conn, ch.id).unwrap();
+                chapter_content.insert(ch.id.to_string(), to_value(content).unwrap());
+            }
+            chapters.insert(book.id.to_string(), to_value(chs).unwrap());
+        }
+        let folder_bookmarks: Map<_, _> = folder_ids
+            .iter()
+            .map(|id| {
+                let bookmarks = list_folder_bookmarks(conn, *id).unwrap();
+                (id.to_string(), to_value(bookmarks).unwrap())
+            })
+            .collect();
+        json!({
             "books": books,
             "chapters": chapters,
             "chapter_content": chapter_content,
-            "search": searches,
-            "bookmark_folders": list_bookmark_folders(&conn).unwrap(),
-            "folder_bookmarks": { folder.id.to_string(): list_folder_bookmarks(&conn, folder.id).unwrap() },
-        });
-        let actual = serde_json::to_string_pretty(&fixtures).unwrap() + "\n";
+            "bookmark_folders": list_bookmark_folders(conn).unwrap(),
+            "folder_bookmarks": folder_bookmarks,
+        })
+    }
 
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../src/test/fixtures/library.json"
-        );
+    /// Checks a committed JSON file (path relative to the repo root) matches
+    /// `value`, or rewrites it when `UPDATE_UI_FIXTURES=1`.
+    fn check_fixture(path: &str, value: &serde_json::Value) {
+        let actual = serde_json::to_string_pretty(value).unwrap() + "\n";
+        let full = format!("{}/../{path}", env!("CARGO_MANIFEST_DIR"));
         if std::env::var("UPDATE_UI_FIXTURES").as_deref() == Ok("1") {
-            std::fs::write(path, &actual).unwrap();
+            std::fs::write(&full, &actual).unwrap();
             return;
         }
-        let committed = std::fs::read_to_string(path).unwrap_or_default();
+        let committed = std::fs::read_to_string(&full).unwrap_or_default();
         assert!(
             committed == actual,
-            "src/test/fixtures/library.json is out of date: run \
+            "{path} is out of date: run \
              UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures"
         );
     }

@@ -96,16 +96,11 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
             s
         };
 
-        let blocks = extract_paragraphs(&xhtml);
+        let (blocks, title) = extract_chapter(&xhtml);
         if blocks.is_empty() {
             continue;
         }
-
-        let title = blocks
-            .iter()
-            .find(|(is_heading, _)| *is_heading)
-            .map(|(_, text)| text.clone())
-            .unwrap_or_else(|| full_path.clone());
+        let title = title.unwrap_or_else(|| full_path.clone());
 
         let mut paragraphs = Vec::new();
         let mut cursor = 0usize;
@@ -312,10 +307,39 @@ fn is_block(name: &str) -> bool {
 /// recursed into. This keeps `<div>Intro <div>inner</div> tail</div>` as
 /// one paragraph while still splitting a container `<div>` of paragraph
 /// `<div>`s into its children.
-fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
+///
+/// Also returns the chapter's title: its first `<h1>`/`<h2>`, else the
+/// document's `<head><title>`, else `None` (the caller falls back to the
+/// file path). Front matter such as a half-title page often has no heading
+/// but does have a `<title>`.
+fn extract_chapter(xhtml: &str) -> (Vec<(bool, String)>, Option<String>) {
+    let tree = build_tree(xhtml);
     let mut paragraphs = Vec::new();
-    collect_paragraphs(&build_tree(xhtml), &mut paragraphs);
-    paragraphs
+    collect_paragraphs(&tree, &mut paragraphs);
+    let title = paragraphs
+        .iter()
+        .find(|(is_heading, _)| *is_heading)
+        .map(|(_, text)| text.clone())
+        .or_else(|| head_title(&tree));
+    (paragraphs, title)
+}
+
+/// The non-empty text of `<html><head><title>`. Only `html` and `head` are
+/// descended into, so a `<title>` in the body (e.g. inside an SVG) is
+/// ignored.
+fn head_title(nodes: &[Node]) -> Option<String> {
+    nodes.iter().find_map(|node| match node {
+        Node::Elem { name, children } if name == "html" => head_title(children),
+        Node::Elem { name, children } if name == "head" => {
+            children.iter().find_map(|child| match child {
+                Node::Elem { name, .. } if name == "title" => {
+                    Some(normalize_whitespace(&text_of(child))).filter(|t| !t.is_empty())
+                }
+                _ => None,
+            })
+        }
+        _ => None,
+    })
 }
 
 /// Parses XHTML into a list of top-level nodes, tolerating the malformed
@@ -473,7 +497,15 @@ fn normalize_whitespace(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_paragraphs;
+    use super::extract_chapter;
+
+    fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
+        extract_chapter(xhtml).0
+    }
+
+    fn title(xhtml: &str) -> Option<String> {
+        extract_chapter(xhtml).1
+    }
 
     #[test]
     fn flags_h1_and_h2_as_headings() {
@@ -574,5 +606,38 @@ mod tests {
     fn no_headings_means_no_title_candidate() {
         let blocks = extract_paragraphs("<body><p>only text</p><li>item</li></body>");
         assert!(blocks.iter().all(|(is_heading, _)| !is_heading));
+    }
+
+    #[test]
+    fn title_falls_back_to_head_title() {
+        let xhtml = "<html><head><title> Front\n  Matter </title></head>\
+                     <body><p>text</p></body></html>";
+        assert_eq!(title(xhtml).as_deref(), Some("Front Matter"));
+    }
+
+    #[test]
+    fn heading_wins_over_head_title() {
+        let xhtml = "<html><head><title>Book</title></head>\
+                     <body><p>intro</p><h2>Chapter One</h2></body></html>";
+        assert_eq!(title(xhtml).as_deref(), Some("Chapter One"));
+    }
+
+    #[test]
+    fn empty_or_missing_head_title_gives_none() {
+        assert_eq!(
+            title("<html><head><title> </title></head><body><p>x</p></body></html>"),
+            None
+        );
+        assert_eq!(
+            title("<html><head></head><body><p>x</p></body></html>"),
+            None
+        );
+    }
+
+    #[test]
+    fn title_in_body_is_ignored() {
+        let xhtml = "<html><head></head><body><svg><title>Cover image</title></svg>\
+                     <p>text</p></body></html>";
+        assert_eq!(title(xhtml), None);
     }
 }

@@ -13,6 +13,9 @@ limitations and roadmap — read it before planning a feature.
 - `npm test` — frontend component tests (Vitest, mocked backend)
 - `npm run dev:mock` — the UI in a browser on :1430 against the mocked
   backend, no Rust needed
+- `npm run dev:demo` — the public browser demo on :1431 (one real book,
+  `src/demo/`); `npm run build:site` builds the GitHub Pages site into
+  `site-build/`
 - `npm run tauri dev` — launch the app (needs the webkit2gtk libs in README)
 
 Before calling work done, run tests, clippy, tsc and `npm test`. Say what
