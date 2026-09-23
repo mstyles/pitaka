@@ -178,6 +178,12 @@ members, sharing one `Cargo.lock`/`target/`.
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
     `← <folder name>`.
+  - `src-tauri/src/commands.rs` — if the library database can't be
+    opened at startup, the app shows the error in a dialog and quits
+    when it's dismissed, rather than panicking with nothing on screen.
+    Checked by pointing `XDG_DATA_HOME` at a folder where `library.db`
+    is a directory: the old build exited with a panic, the new one
+    stayed up with the dialog. The dialog itself wasn't looked at.
   - `src-tauri/tauri.conf.json` sets a Content Security Policy in place
     of `null`: scripts, styles, fonts and images from the app only, IPC
     via `ipc:`, no plugins, forms or framing. A looser `devCsp` allows

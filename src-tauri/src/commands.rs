@@ -10,6 +10,7 @@ use ebook_research_core::{
 use rusqlite::Connection;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 /// Holds the open DB connection for the app's lifetime.
 /// Tauri gives you `app.manage(...)` for exactly this kind of shared state.
@@ -17,28 +18,27 @@ pub struct AppState {
     pub conn: Mutex<Connection>,
 }
 
-fn db_path(app: &AppHandle) -> String {
+fn db_path(app: &AppHandle) -> Result<String, String> {
     // Store the library DB in the OS-appropriate app data directory rather
     // than next to the executable — this is the standard Tauri pattern.
     let dir = app
         .path()
         .app_data_dir()
-        .expect("app data dir should be resolvable");
-    std::fs::create_dir_all(&dir).ok();
-    dir.join("library.db").to_string_lossy().to_string()
+        .map_err(|e| format!("couldn't find the app data folder: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create {}: {e}", dir.display()))?;
+    Ok(dir.join("library.db").to_string_lossy().to_string())
 }
 
-/// Called once on app startup (see `main.rs` below) to open/create the DB
-/// and stash the connection in managed state.
-pub fn init_state(app: &AppHandle) -> AppState {
-    let path = db_path(app);
-    let conn = open_db(&path).expect("failed to open library database");
-    AppState {
+/// Called once on app startup (see `register` below) to open/create the DB.
+pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
+    let path = db_path(app)?;
+    let conn = open_db(&path).map_err(|e| format!("couldn't open {path}: {e:#}"))?;
+    Ok(AppState {
         conn: Mutex::new(conn),
-    }
+    })
 }
 
-/// Frontend calls: `invoke("import_book", { path: "/Users/matt/Books/foo.epub" })`
+/// Frontend calls: `invoke("import_book", { path: "/path/to/book.epub" })`
 /// (returns the existing book, with `already_imported: true`, for a duplicate).
 #[tauri::command]
 pub fn import_book(path: String, state: State<AppState>) -> Result<ImportOutcome, String> {
@@ -173,7 +173,22 @@ pub fn get_chapter_bookmarks(
     db::get_chapter_bookmarks(&conn, chapter_id).map_err(|e| e.to_string())
 }
 
+/// Opens the library and stashes the connection in managed state. If that
+/// fails, shows the error and quits when it's dismissed, rather than
+/// panicking with nothing on screen; commands called meanwhile return
+/// "state not managed" errors instead of running.
 pub fn register(app: &mut tauri::App) {
-    let state = init_state(app.handle());
-    app.manage(state);
+    match init_state(app.handle()) {
+        Ok(state) => {
+            app.manage(state);
+        }
+        Err(err) => {
+            let handle = app.handle().clone();
+            app.dialog()
+                .message(format!("Pitaka couldn't open its library.\n\n{err}"))
+                .title("Pitaka")
+                .kind(MessageDialogKind::Error)
+                .show(move |_| handle.exit(1));
+        }
+    }
 }
