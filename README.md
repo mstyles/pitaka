@@ -1,5 +1,7 @@
 # Pitaka
 
+[![CI](https://github.com/mstyles/pitaka/actions/workflows/ci.yml/badge.svg)](https://github.com/mstyles/pitaka/actions/workflows/ci.yml)
+
 A desktop app for reading and researching your EPUB library: full-text
 search across every book, and bookmark folders for the passages you want
 to keep.
@@ -29,6 +31,14 @@ the app's. Importing your own books needs the desktop app.
 | Home | Reader | Bookmarks |
 | --- | --- | --- |
 | ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
+
+**Contents:** [Install](#install) · [Licence](#licence) ·
+[Contributing](#contributing) · [How it's built](#how-its-built) ·
+[What's actually verified](#whats-actually-verified) ·
+[Project structure](#project-structure) ·
+[Schema migrations](#schema-migrations) · [Setup steps](#setup-steps) ·
+[Known limitations](#known-limitations) · [Roadmap](#roadmap) ·
+[Workflow roadmap](#workflow-roadmap)
 
 ## Install
 
@@ -65,6 +75,13 @@ License; their licences are in `src/assets/fonts/`. The demo's book,
 *Verses of the Senior Nuns* translated by Bhikkhu Sujato, is dedicated to
 the public domain (CC0) by [SuttaCentral](https://suttacentral.net); see
 [`demo/README.md`](demo/README.md).
+
+## Contributing
+
+Bug reports and fixes are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to set up, which checks to run, and how pull requests work, and
+[SECURITY.md](SECURITY.md) for reporting a vulnerability privately.
+Changes between versions are in [CHANGELOG.md](CHANGELOG.md).
 
 ## How it's built
 
@@ -178,6 +195,12 @@ members, sharing one `Cargo.lock`/`target/`.
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
     `← <folder name>`.
+  - `src-tauri/src/commands.rs` — if the library database can't be
+    opened at startup, the app shows the error in a dialog and quits
+    when it's dismissed, rather than panicking with nothing on screen.
+    Checked by pointing `XDG_DATA_HOME` at a folder where `library.db`
+    is a directory: the old build exited with a panic, the new one
+    stayed up with the dialog. The dialog itself wasn't looked at.
   - `src-tauri/tauri.conf.json` sets a Content Security Policy in place
     of `null`: scripts, styles, fonts and images from the app only, IPC
     via `ipc:`, no plugins, forms or framing. A looser `devCsp` allows
