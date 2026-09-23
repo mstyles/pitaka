@@ -27,11 +27,13 @@ not clicked through in the Tauri window").
 - All logic lives in `ebook_research_core`, which has no Tauri/UI
   dependency. `src-tauri/src/commands.rs` stays a thin wrapper: lock
   `state.conn`, call the core function, map `anyhow` errors to `String`.
-- New commands: core fn in `db.rs`, re-export from `lib.rs`, wrapper in
+- New commands: core fn in the matching `db/` submodule (`import.rs`,
+  `search.rs`, `library.rs`, `bookmarks.rs`, or a new one for a new
+  area), re-exported by name from `db/mod.rs` and `lib.rs`, wrapper in
   `commands.rs`, register in `generate_handler!` in `src-tauri/src/lib.rs`,
   mirror the types in `src/types.ts`.
 - Schema changes are a new numbered file in
-  `ebook_research_core/migrations/` listed in `migrations()` in `db.rs`.
+  `ebook_research_core/migrations/` listed in `migrations()` in `db/mod.rs`.
   Never edit a migration that has already shipped.
 - `rusqlite` is a dependency of both crates — bump them together, and keep
   `rusqlite_migration` on the matching release.
@@ -43,7 +45,7 @@ not clicked through in the Tauri window").
 - Frontend tests go in `src/*.test.tsx`, rendering `<App />` via
   `renderApp` against `src/test/mockBackend.ts`. Its data,
   `src/test/fixtures/library.json`, is written by the core test
-  `ui_fixtures_are_current` from real `db.rs` output; after changing a
+  `ui_fixtures_are_current` from real `db` output; after changing a
   returned type, regenerate it with
   `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures`.
   A new command needs a fixture entry there and a route in the mock,
