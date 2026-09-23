@@ -1,0 +1,31 @@
+# Weekly update PRs. Minor and patch bumps are grouped into one PR per
+# ecosystem so they don't arrive one at a time; majors come separately.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # rusqlite is a dependency of both crates and rusqlite_migration
+      # has to match its release, so they always move together.
+      rusqlite:
+        patterns: [rusqlite, rusqlite_migration]
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
