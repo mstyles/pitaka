@@ -95,4 +95,31 @@ describe("search", () => {
     await search(user, "neural");
     expect(await screen.findByText("Search failed: fts5: syntax error")).toBeTruthy();
   });
+
+  it("shows markup in a book's text as text, not HTML", async () => {
+    const { user } = renderApp({
+      search: (books) => [
+        {
+          book_id: books[0].id,
+          book_title: TEST_BOOK,
+          chapter_id: 1,
+          chapter_idx: 0,
+          chapter_title: null,
+          block_idx: 0,
+          content_block_id: 1,
+          snippet: 'if a < b then <img src=x onerror="alert(1)"> [neural] nets',
+          rank: -1,
+        },
+      ],
+    });
+    await goTo(user, "Search");
+    await search(user, "neural");
+    await waitFor(() => expect(resultItems()).toHaveLength(1));
+    const item = resultItems()[0];
+    expect(item.querySelector("img")).toBeNull();
+    expect(item.querySelector(".result-snippet")!.textContent).toBe(
+      'if a < b then <img src=x onerror="alert(1)"> neural nets',
+    );
+    expect(Array.from(item.querySelectorAll("mark"), (m) => m.textContent)).toEqual(["neural"]);
+  });
 });
