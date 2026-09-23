@@ -11,9 +11,9 @@ use std::sync::OnceLock;
 /// how many have run. Never edit one that has shipped — add a new file.
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
-        M::up(include_str!("../migrations/001_initial.sql")),
-        M::up(include_str!("../migrations/002_search_indexes.sql")),
-        M::up(include_str!("../migrations/003_bookmark_folders.sql")),
+        M::up(include_str!("../../migrations/001_initial.sql")),
+        M::up(include_str!("../../migrations/002_search_indexes.sql")),
+        M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
     ])
 }
 
@@ -261,7 +261,7 @@ impl VariantIndex {
     pub fn bundled() -> &'static VariantIndex {
         static BUNDLED: OnceLock<VariantIndex> = OnceLock::new();
         BUNDLED.get_or_init(|| {
-            VariantIndex::parse(include_str!("../data/term_variants.txt"))
+            VariantIndex::parse(include_str!("../../data/term_variants.txt"))
                 .expect("bundled data/term_variants.txt is malformed")
         })
     }
