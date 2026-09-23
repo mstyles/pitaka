@@ -32,13 +32,29 @@ A throwaway candle harness outside the workspace (scratchpad `spike/`, not commi
 - **The cascade chain works.** Applying 001–003 plus the candidate 004 to an in-memory SQLite with `PRAGMA foreign_keys = ON`, inserting a book → chapter → chunk row and deleting the book leaves zero `chunk_embeddings` rows: `books` → `chapters` → `chunk_embeddings` cascades through two hops.
 - `src/test/mockBackend.ts:217` throws `unmocked command: <cmd>`, so both new commands need mock routes and a fixture entry (§7).
 
+## Build order and check-ins
+The numbered sections below are in dependency order, which is not the same as review order — they differ enormously in how much of each can be verified. Six stages, grouped by what actually checks them:
+
+1. **Schema and pure logic** — §3's migration, plus `chunks()`, `is_indexable()`, the f32↔BLOB round-trip and `rank_chunks()` from §2 and §4, all deliberately outside the feature gate so the default `cargo test -p ebook_research_core` and clippy cover them (tests 1–7).
+2. **The model boundary** — §1's cargo feature and §2's `Embedder`, including the F32-weights guard. Checked by the sanity probe, test 10, not by CI.
+3. **Indexing** — §4's `index_book`, its per-chapter transactions and the progress callback.
+4. **Search** — the rest of §4: `search_chapters`, preview slicing and `MIN_SCORE`, with tests 8 and 9.
+5. **Tauri commands** — §5.
+6. **Frontend** — §6 and §7, with tests 11–15.
+
+**Stop for review after 1, 2, 4 and 6.** After 1 because migration 004 cannot be edited once it has run against a real library — it is the only irreversible step in this plan. After 2 because it answers "does the model load and discriminate in-tree at all", the stage most likely to fail for reasons outside this code, as gte-small did. **After 4 because it is the go/no-go**: everything before it is infrastructure, and stage 4 is where it becomes clear whether the app reproduces the spike's 7-of-10 — if it does not, stages 5 and 6 are wasted work. After 6 to ship. Stages 3 and 5 are mechanical and fall out of the stages either side of them.
+
+**Most of this feature is invisible to CI, by design.** Stage 1 runs in the normal pipeline; stages 2–4 sit behind the cargo feature and are partly `#[ignore]`d so no CI job ever downloads a model, and stage 5 is `commands.rs`, which the README already records as untested by anything. Roughly two-thirds of the feature therefore lands without automated coverage, which makes the stage-2 sanity probe and a real Tauri-window walk at the end load-bearing rather than optional extras.
+
+**Stage 6 can move earlier if that is useful.** It depends on the command *shape*, not on any of the Rust working: `src/test/mockBackend.ts` is the contract, so the frontend can be built and walked in `npm run dev:mock` against fixtures before stage 2 exists. Worth pulling forward to judge the interaction before committing to ten-minute index runs.
+
 ## 1. The feature gate: `Cargo.toml` × 2
 - A `semantic` feature on `ebook_research_core`, **off by default**, enabling `candle-core`, `candle-nn`, `candle-transformers`, `tokenizers` and `hf-hub` as optional dependencies. `src-tauri` gets a matching passthrough feature `semantic = ["ebook_research_core/semantic"]`, also off.
 - Off by default because the spike showed the score floor needs calibration and indexing needs batching before this is ready for everyone, and because it defers the whole packaging question — a ~130MB model has to reach the user somehow, and there are no release builds yet. CI keeps running `cargo test -p ebook_research_core` without the feature, so the new crates never enter the default `Cargo.lock` resolution for the shipped build or the CI job.
 - `cargo clippy --workspace --all-targets` must stay warning-free both with and without `--features semantic`; add the feature build to `.github/workflows/ci.yml` as a `cargo check -p ebook_research_core --features semantic` step only (not tests, which would download the model).
 
 ## 2. Core: chunking and embedding — new `ebook_research_core/src/semantic.rs`
-The whole module is `#![cfg(feature = "semantic")]`, declared from `lib.rs` as `#[cfg(feature = "semantic")] pub mod semantic;`.
+**The module is always compiled; only `Embedder` and its candle/tokenizers/hf-hub imports sit behind `#[cfg(feature = "semantic")]`.** Everything else here — chunking, the front-matter filter, and the f32↔BLOB encoding in §4 — is pure logic over text and bytes that needs neither the model nor the feature to be correct, so gating it would put it beyond the reach of the default CI run for no benefit. This is what makes stage 1 of the build order reviewable on its own.
 
 - `pub const MODEL_REPO: &str = "BAAI/bge-small-en-v1.5";` and `pub const QUERY_PREFIX: &str = "Represent this sentence for searching relevant passages: ";` — the prefix is applied to queries only, never to stored chunks. bge is asymmetric; omitting it degrades results for a reason that looks like model weakness.
 - `pub struct Embedder { model: BertModel, tokenizer: Tokenizer, device: Device }` with:
@@ -104,25 +120,27 @@ CREATE INDEX idx_chunk_embeddings_book ON chunk_embeddings(book_id);
 - Regenerate with `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures`. The demo fixture (`src/demo/library.json`) is untouched — the demo has no semantic mode.
 
 ## 8. Tests
-Core unit tests in `semantic.rs` and `db.rs`, all `#[cfg(feature = "semantic")]` except where noted:
+Core unit tests in `semantic.rs` and `db.rs`. **None of tests 1–7 is feature-gated** — they cover the pure logic and the schema, both of which are compiled unconditionally per §2, so all of them run in the default `cargo test -p ebook_research_core` and in CI:
 1. `chunks_cover_the_text_with_overlap` — offsets are contiguous-with-overlap, the last ends at the char length, a 1600-char text is one chunk, a 3000-char one is two, and a text with Pali diacritics (`saṃsāra`, `paṭicca`) chunks without panicking and round-trips through `chars().skip(start).take(end - start)`.
-2. `contents_pages_are_not_indexable` — `is_indexable` is false for a synthetic 20-block chapter of 25-char entries and for a 150-char dedication, true for a normal 3,000-char chapter of 200-char blocks. **Not feature-gated** if `is_indexable` is moved outside the gate, which is preferable: it is pure text logic and deserves to run in CI.
+2. `contents_pages_are_not_indexable` — `is_indexable` is false for a synthetic 20-block chapter of 25-char entries and for a 150-char dedication, true for a normal 3,000-char chapter of 200-char blocks.
 3. `vectors_round_trip_as_blobs` — a `Vec<f32>` to little-endian BLOB and back is bit-identical, and a wrong-length BLOB is a clean error not a panic.
 4. `max_over_chunks_picks_the_best_chapter` — inserts hand-written unit vectors for two chapters directly into `chunk_embeddings` and calls the scoring half of `search_chapters` with a hand-written query vector, asserting the chapter owning the single best chunk wins even when the other chapter's chunks have a higher *mean*. **No model needed**, so this runs without a download; split the scoring loop into a `fn rank_chunks(...)` taking a query vector to make it reachable.
 5. `below_the_floor_returns_nothing` — a query vector orthogonal to every stored vector returns an empty `Vec`, so "No results" is reachable.
-6. `deleting_a_book_removes_its_embeddings` — the cascade verified above, as a test rather than a claim. **Not feature-gated**; the table exists in every build.
+6. `deleting_a_book_removes_its_embeddings` — the cascade verified above, as a test rather than a claim. The table exists in every build, feature or not.
 7. `migrations_are_valid` already covers 004 by construction.
 
 Integration (`tests/integration.rs`), `#[cfg(feature = "semantic")]` **and** `#[ignore]` so it never runs in CI or a plain `cargo test`:
 8. `semantic_search_finds_a_chapter_by_meaning` — indexes `test.epub`, queries a phrase that appears nowhere in it verbatim, and asserts the right chapter comes back above `MIN_SCORE`. Found by title, not index, since the spine starts with `nav.xhtml`.
 9. `nonsense_queries_score_below_the_floor` — **this is the measurement that calibrates `MIN_SCORE`**: index the demo book and assert a deliberately off-corpus query ("quarterly earnings guidance for the fiscal year") scores below the floor while the spike's known-good queries score above it. Adjust the constant to whatever this shows and record the numbers in the README.
 
+10. `the_model_discriminates_unrelated_text` — the spike's sanity probe, kept rather than thrown away. Embeds five deliberately unrelated sentences and asserts the model separates them: "how to work with anger" must score nearer "a practice for calming anger and irritation" (spike: 0.823) than "quantum chromodynamics and the strong nuclear force" (0.495) or "the recipe calls for two cups of flour" (0.438), and the mean of the five unit vectors must have norm below 0.85 (bge: 0.78, gte-small: 0.99). **This is the only test here that would have caught gte-small**, which loads without error, passes every structural test, and returns the same five chunks for every query. Re-run it whenever `MODEL_REPO` changes.
+
 Frontend (`src/*.test.tsx`), against the mock:
-10. The scope control is absent when `semantic_status.available` is false, and existing passage-search tests are unaffected.
-11. With it available, switching to Chapters runs `search_chapters`, renders book and chapter titles with the preview as text, and hides the "Exact words" checkbox.
-12. Clicking a chapter result opens the reader at that chapter, and "← Search results" returns with the query and scope intact.
-13. The "{indexed} of {total} books indexed" line appears only when the counts differ.
-14. A chapter query returning nothing renders "No results", not an empty list.
+11. The scope control is absent when `semantic_status.available` is false, and existing passage-search tests are unaffected.
+12. With it available, switching to Chapters runs `search_chapters`, renders book and chapter titles with the preview as text, and hides the "Exact words" checkbox.
+13. Clicking a chapter result opens the reader at that chapter, and "← Search results" returns with the query and scope intact.
+14. The "{indexed} of {total} books indexed" line appears only when the counts differ.
+15. A chapter query returning nothing renders "No results", not an empty list.
 
 ## 9. README
 - **Known limitations**: a new entry — semantic chapter search covers only books imported while the feature was compiled in, with no backfill; the model is downloaded on first use and needs network once; results are chapter-level so there is no highlighting; the score floor is calibrated against one small corpus; front-matter filtering is a heuristic; and 3 of 10 spike queries were weak.
