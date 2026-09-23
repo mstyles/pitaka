@@ -16,5 +16,10 @@ anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 rusqlite_migration = "2.6"
 
+[features]
+# Semantic chapter search (docs/plans/semantic-chapter-search.md). Off by
+# default: it needs an embedding model, downloaded on first use.
+semantic = []
+
 [dev-dependencies]
 serde_json = "1"

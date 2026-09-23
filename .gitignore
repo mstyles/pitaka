@@ -10,3 +10,6 @@
 
 # Tauri
 /src-tauri/gen/schemas
+
+# Semantic search evaluation labels for the user's own books
+/ebook_research_core/tests/semantic_eval/local/

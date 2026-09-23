@@ -1,0 +1,228 @@
+{
+  "book": "demo/verses-of-the-senior-nuns.epub",
+  "labels": "silver: drafted by Claude from the text, not yet reviewed by a person",
+  "grades": "2 = the chapter is about this; 1 = it substantially discusses it",
+  "queries": [
+    {
+      "query": "a mother grieving the death of her child",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 9, "title": "The Book of the Threes", "grade": 2 },
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 2 },
+        { "chapter_idx": 16, "title": "The Book of the Elevens", "grade": 2 },
+        { "chapter_idx": 19, "title": "The Book of the Twenties", "grade": 1 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "growing old and the body losing its beauty",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 19, "title": "The Book of the Twenties", "grade": 2 },
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 1 },
+        { "chapter_idx": 22, "title": "The Great Book", "grade": 1 }
+      ]
+    },
+    {
+      "query": "meditating on the foulness of the body",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 8, "title": "The Book of the Twos", "grade": 2 },
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 2 },
+        { "chapter_idx": 22, "title": "The Great Book", "grade": 1 },
+        { "chapter_idx": 20, "title": "The Book of the Thirties", "grade": 1 }
+      ]
+    },
+    {
+      "query": "Māra tempts a nun to go back to sensual pleasures",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 9, "title": "The Book of the Threes", "grade": 2 },
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 2 },
+        { "chapter_idx": 13, "title": "The Book of the Sevens", "grade": 2 },
+        { "chapter_idx": 14, "title": "The Book of the Eights", "grade": 2 },
+        { "chapter_idx": 17, "title": "The Book of the Twelves", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "can a woman reach awakening as well as a man",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 9, "title": "The Book of the Threes", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 2 }
+      ]
+    },
+    {
+      "query": "the dangers of sensual pleasure",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 19, "title": "The Book of the Twenties", "grade": 2 },
+        { "chapter_idx": 22, "title": "The Great Book", "grade": 2 },
+        { "chapter_idx": 17, "title": "The Book of the Twelves", "grade": 1 },
+        { "chapter_idx": 9, "title": "The Book of the Threes", "grade": 1 },
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a wife rejected by one husband after another",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 21, "title": "The Book of the Forties", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "freed from a bad marriage and the drudgery of the kitchen",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 7, "title": "The Book of the Ones", "grade": 2 },
+        { "chapter_idx": 8, "title": "The Book of the Twos", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a princess refuses the king she is betrothed to and cuts off her hair",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 22, "title": "The Great Book", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "bad deeds in a past life bringing suffering in later lives",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 21, "title": "The Book of the Forties", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 2 },
+        { "chapter_idx": 22, "title": "The Great Book", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a man accosts a nun in the forest and she gives him her eye",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 20, "title": "The Book of the Thirties", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "can bathing in a river wash away evil deeds",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 18, "title": "The Book of the Sixteens", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a daughter defends the ascetics to her father who calls them lazy",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 19, "title": "The Book of the Twenties", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a husband leaves his wife and baby son to go forth",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 19, "title": "The Book of the Twenties", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a courtesan who gave up her trade and became a nun",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 2 },
+        { "chapter_idx": 8, "title": "The Book of the Twos", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "despair so deep she was about to hang herself",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "the Buddha's aunt and stepmother",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 2 }
+      ]
+    },
+    {
+      "query": "a senior nun who taught many other women the way to freedom",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 2 },
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 2 },
+        { "chapter_idx": 13, "title": "The Book of the Sevens", "grade": 1 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "did the nuns really write these poems, and can the commentary be trusted",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 2 }
+      ]
+    },
+    {
+      "query": "earlier English translations and editions of the text",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 2 },
+        { "chapter_idx": 23, "title": "Colophon", "grade": 1 },
+        { "chapter_idx": 3, "title": "The SuttaCentral Editions Series", "grade": 1 }
+      ]
+    },
+    {
+      "query": "a tender verse telling a nun to rest now that her desire is stilled",
+      "kind": "answered",
+      "note": "Chapter 2 is a one-verse chapter under 200 chars, which is_indexable drops; it counts as a miss by design.",
+      "relevant": [
+        { "chapter_idx": 2, "title": "Verses of the Senior Nuns", "grade": 2 },
+        { "chapter_idx": 7, "title": "The Book of the Ones", "grade": 2 },
+        { "chapter_idx": 5, "title": "Verses of the Senior Nuns: a reflective life", "grade": 1 }
+      ]
+    },
+    {
+      "query": "watching a wild elephant being tamed calmed her mind",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 9, "title": "The Book of the Threes", "grade": 2 }
+      ]
+    },
+    {
+      "query": "remembering past lives and gaining the divine eye through the watches of the night",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 11, "title": "The Book of the Fives", "grade": 2 },
+        { "chapter_idx": 12, "title": "The Book of the Sixes", "grade": 2 },
+        { "chapter_idx": 13, "title": "The Book of the Sevens", "grade": 2 }
+      ]
+    },
+    {
+      "query": "reading ancient texts with empathy instead of judging them",
+      "kind": "answered",
+      "relevant": [
+        { "chapter_idx": 4, "title": "Preface to the Therīgāthā", "grade": 2 }
+      ]
+    },
+    { "query": "instructions for loving-kindness meditation", "kind": "unanswered", "relevant": [] },
+    { "query": "counting the breath to calm the mind", "kind": "unanswered", "relevant": [] },
+    { "query": "Zen koans and sudden enlightenment", "kind": "unanswered", "relevant": [] },
+    { "query": "Tibetan deity visualisation practice", "kind": "unanswered", "relevant": [] },
+    { "query": "the Buddha's childhood as a prince in the palace", "kind": "unanswered", "relevant": [] },
+    { "query": "quarterly earnings guidance", "kind": "off_corpus", "relevant": [] },
+    { "query": "how to bake sourdough bread", "kind": "off_corpus", "relevant": [] },
+    { "query": "configuring a Kubernetes cluster", "kind": "off_corpus", "relevant": [] },
+    { "query": "the rules of cricket", "kind": "off_corpus", "relevant": [] },
+    { "query": "symptoms of vitamin D deficiency", "kind": "off_corpus", "relevant": [] }
+  ]
+}

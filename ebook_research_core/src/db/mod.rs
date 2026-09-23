@@ -13,6 +13,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/001_initial.sql")),
         M::up(include_str!("../../migrations/002_search_indexes.sql")),
         M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
+        M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
     ])
 }
 
@@ -43,6 +44,7 @@ mod bookmarks;
 mod import;
 mod library;
 mod search;
+mod semantic_index;
 #[cfg(test)]
 mod test_util;
 #[cfg(test)]
@@ -59,6 +61,7 @@ pub use library::{
     ChapterSummary, ContentBlockRow,
 };
 pub use search::{search, search_with_variants, SearchMode, SearchResult, VariantIndex};
+pub use semantic_index::MIN_SCORE;
 
 #[cfg(test)]
 mod tests {

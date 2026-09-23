@@ -298,7 +298,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
 
         let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
@@ -427,4 +427,31 @@ fn expands_transliteration_variants() {
 
     drop(conn);
     let _ = std::fs::remove_file(db_path);
+}
+
+/// The semantic search evaluation set for the demo book names chapters by
+/// index and title; both must match the book, so a mislabelled query fails
+/// here rather than silently scoring as a miss.
+#[test]
+fn semantic_eval_labels_name_real_chapters() {
+    let eval: serde_json::Value =
+        serde_json::from_str(include_str!("semantic_eval/demo.json")).unwrap();
+    let book = parse_epub("../demo/verses-of-the-senior-nuns.epub").expect("parse failed");
+    let queries = eval["queries"].as_array().unwrap();
+    assert!(queries.len() >= 30, "{} queries", queries.len());
+    for q in queries {
+        let query = q["query"].as_str().unwrap();
+        let relevant = q["relevant"].as_array().unwrap();
+        match q["kind"].as_str().unwrap() {
+            "answered" => assert!(!relevant.is_empty(), "{query}: no relevant chapters"),
+            "unanswered" | "off_corpus" => assert!(relevant.is_empty(), "{query}"),
+            kind => panic!("{query}: unknown kind {kind}"),
+        }
+        for chapter in relevant {
+            let idx = chapter["chapter_idx"].as_u64().unwrap() as usize;
+            let title = chapter["title"].as_str().unwrap();
+            assert_eq!(book.chapters[idx].title, title, "{query}: chapter {idx}");
+            assert!(matches!(chapter["grade"].as_u64(), Some(1 | 2)), "{query}");
+        }
+    }
 }

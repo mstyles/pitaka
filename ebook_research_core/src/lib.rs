@@ -1,5 +1,6 @@
 pub mod db;
 pub mod epub;
+pub mod semantic;
 
 pub use db::{
     add_bookmark, create_bookmark_folder, delete_book, delete_bookmark_folder, get_book_chapters,
@@ -7,6 +8,6 @@ pub use db::{
     list_folder_bookmarks, open_db, remove_bookmark, rename_bookmark_folder, search,
     search_with_variants, BlockBookmark, BookSummary, BookmarkFolder, ChapterContent,
     ChapterSummary, ContentBlockRow, FolderBookmark, ImportOutcome, SearchMode, SearchResult,
-    VariantIndex,
+    VariantIndex, MIN_SCORE,
 };
 pub use epub::{parse_epub, ParsedBook};
