@@ -370,6 +370,14 @@ In the same order of priority as the Python version, then newer ones.
    widened. Looking a term up folds only the Indic diacritics in
    `fold_term`'s table, so a term spelled with some other accent won't
    be expanded (it still matches literally, as FTS5 folds the text).
+8. Search snippets are rendered as HTML without escaping:
+   `SearchView.tsx` turns `snippet()`'s `[`/`]` delimiters into `<mark>`
+   and injects the result with `dangerouslySetInnerHTML`, while
+   `epub.rs` unescapes entities on the way in. So a paragraph whose
+   text contains a literal `<` or markup is rendered as markup rather
+   than shown, and a book could in principle inject HTML into the
+   results list. The snippet should be escaped before the delimiters
+   are replaced.
 
 ## Roadmap
 
@@ -404,6 +412,8 @@ Done:
 
 Next up (fixes for the known limitations above):
 
+- [ ] Escape search snippets before turning `[`/`]` into `<mark>`, so
+      book text can't inject HTML into the results list (limitation 8)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 5)
 
