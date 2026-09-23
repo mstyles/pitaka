@@ -25,7 +25,7 @@ Follow the shape of the existing plans (see `docs/plans/delete-book.md`):
   roadmap item it addresses, what's out of scope, and alternatives ruled
   out with the reason.
 - `## 1. <Area>: \`file.rs\`, \`other.rs\`` … one numbered section per
-  layer, in build order: core (`epub.rs`/`db.rs`/migrations), Tauri
+  layer, in build order: core (`epub.rs`/`db/`/migrations), Tauri
   command (`commands.rs`, `generate_handler!`), frontend (`types.ts`,
   views, `App.css`). Give signatures, SQL, error messages and UI copy.
 - A final numbered tests section: which `#[cfg(test)]` unit tests and

@@ -16,7 +16,7 @@ Ship the current changes. $ARGUMENTS
    - `npx tsc --noEmit`
    - `npm test`
 3. **UI check.** If the diff touches `src/`, or a type the frontend
-   reads (`src/types.ts`, the structs in `db.rs`), click through the UI in
+   reads (`src/types.ts`, the structs in `db/`), click through the UI in
    the browser against the mocked backend:
    - Start `npm run dev:mock` in the background (serves on :1430 with the
      fixtures in `src/test/fixtures/library.json` instead of Rust).

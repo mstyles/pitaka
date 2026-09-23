@@ -116,13 +116,17 @@ members, sharing one `Cargo.lock`/`target/`.
   real text such as notes. Checked against *Understanding Our Mind*
   (div-based) by running the parser directly: drop-cap words are no
   longer split, and each footnote is one paragraph with its number.
-- `ebook_research_core/src/db.rs` — opens the SQLite DB via `rusqlite`
+- `ebook_research_core/src/db/` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
   imports books (each in one transaction, skipping any whose file
   contents are already in the library from any path), runs FTS5
   full-text search with ranked, highlighted snippets, and serves the
   reader's read queries
   (`list_books`, `get_book_chapters`, `get_chapter_content`).
+  One file per job, each with its unit tests alongside and all
+  re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
+  `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
+  queries) and `bookmarks.rs`.
   Bookmark folders (migration 003): create, rename and delete folders
   (names trimmed and unique ignoring case), bookmark a paragraph into
   several folders at most once each, list a folder's passages in the
@@ -241,7 +245,7 @@ members, sharing one `Cargo.lock`/`target/`.
   with its bookmark count, and bookmarking from the reader's popover
   (tick, untick, new folder, duplicate-name error, closing it). The mock replays
   `src/test/fixtures/library.json`, which the core test
-  `ui_fixtures_are_current` writes from real `db.rs` output for
+  `ui_fixtures_are_current` writes from real `db` output for
   `test.epub` plus a synthetic 3×40-paragraph book. That test fails when
   the committed file is out of date, so a changed Rust type can't
   silently drift from what the tests feed the UI. What they can't catch: argument names the real
@@ -305,7 +309,9 @@ pitaka/
 ├── ebook_research_core/        <- core crate, no UI/Tauri dependency
 │   ├── Cargo.toml
 │   ├── migrations/             <- numbered schema migrations (001 = base schema)
-│   ├── src/{lib,epub,db}.rs
+│   ├── src/{lib,epub}.rs
+│   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
+│   │                              library / bookmarks, re-exported as db::*
 │   └── tests/integration.rs
 ├── src-tauri/
 │   ├── Cargo.toml               <- ebook_research_core = { path = "../ebook_research_core" }
@@ -341,7 +347,7 @@ The schema lives in `ebook_research_core/migrations/`, applied in order by
 runs. The DB's `PRAGMA user_version` records how many have been applied.
 
 - To change the schema, add the next numbered `.sql` file and list it in
-  `migrations()` in `db.rs`. Don't edit a migration that has already run
+  `migrations()` in `db/mod.rs`. Don't edit a migration that has already run
   against a real library.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
