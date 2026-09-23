@@ -162,7 +162,9 @@ members, sharing one `Cargo.lock`/`target/`.
   - `src/SearchView.tsx` — a search box with an "Exact words" toggle →
     `search_library` rendering highlighted snippets, each labelled with
     its book and chapter title (or "Chapter N", counting from 1, when
-    the chapter has none). It stays mounted,
+    the chapter has none). Snippets are built as React text and `<mark>`
+    nodes from `snippet()`'s `[`/`]` delimiters, never injected as HTML,
+    so a book's `<` or markup shows as text. It stays mounted,
     so the query and results survive leaving the screen, and re-runs
     the last search when books were imported or removed meanwhile.
   - `src/BookmarksView.tsx` — the list of folders with counts and a
@@ -176,6 +178,14 @@ members, sharing one `Cargo.lock`/`target/`.
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
     `← <folder name>`.
+  - `src-tauri/tauri.conf.json` sets a Content Security Policy in place
+    of `null`: scripts, styles, fonts and images from the app only, IPC
+    via `ipc:`, no plugins, forms or framing. A looser `devCsp` allows
+    Vite's inline styles and HMR websocket under `npm run tauri dev`.
+    Checked that `tauri build --no-bundle` succeeds, that the build has
+    no inline scripts or `data:` assets for the policy to block, and
+    that both policies are embedded in the binary. Not yet clicked
+    through in the Tauri window under the policy.
   - `src/fonts.css` — the Paper style's bundled OFL fonts (Fraunces,
     Literata, Source Sans 3), latin and latin-ext subsets, so Pali
     diacritics (ā ṃ ṭ ḍ ṅ ṇ ḷ) render in them rather than a fallback.
@@ -198,7 +208,7 @@ members, sharing one `Cargo.lock`/`target/`.
   empty-library state, moving between screens from the cards and the
   header), importing (new, duplicate,
   cancelled), searching in both modes with highlighted snippets and
-  chapter titles,
+  chapter titles, markup in a snippet shown as text rather than HTML,
   removing a book (confirmed or not), opening the reader, centring and
   flashing a search hit, switching chapters, going back to the screen
   the book was opened from, keeping the search across screens and
@@ -370,14 +380,10 @@ In the same order of priority as the Python version, then newer ones.
    widened. Looking a term up folds only the Indic diacritics in
    `fold_term`'s table, so a term spelled with some other accent won't
    be expanded (it still matches literally, as FTS5 folds the text).
-8. Search snippets are rendered as HTML without escaping:
-   `SearchView.tsx` turns `snippet()`'s `[`/`]` delimiters into `<mark>`
-   and injects the result with `dangerouslySetInnerHTML`, while
-   `epub.rs` unescapes entities on the way in. So a paragraph whose
-   text contains a literal `<` or markup is rendered as markup rather
-   than shown, and a book could in principle inject HTML into the
-   results list. The snippet should be escaped before the delimiters
-   are replaced.
+8. Search highlighting relies on `snippet()`'s `[`/`]` delimiters, so
+   a book's own square brackets are ambiguous with them: text like
+   "[sic]" in a snippet is shown highlighted as "sic". It is shown as
+   text, never as markup.
 
 ## Roadmap
 
@@ -409,11 +415,12 @@ Done:
       against the core's
 - [x] Expand a search term to its curated transliteration variants, so
       `dharma` finds "dhamma"
+- [x] Render search snippets as text rather than HTML, and set a
+      Content Security Policy, so book text can't inject markup or
+      script into the app
 
 Next up (fixes for the known limitations above):
 
-- [ ] Escape search snippets before turning `[`/`]` into `<mark>`, so
-      book text can't inject HTML into the results list (limitation 8)
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 5)
 

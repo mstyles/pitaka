@@ -12,6 +12,19 @@ type Props = {
 
 type LastSearch = { query: string; exact: boolean; version: number };
 
+/**
+ * Renders a snippet as text, with the words snippet() wrapped in `[`/`]`
+ * as <mark>s. Built as React nodes rather than HTML so the book's own
+ * text is never parsed as markup.
+ */
+function highlight(snippet: string) {
+  return snippet
+    .split(/(\[[^\]]*\])/)
+    .map((part, i) =>
+      i % 2 === 1 ? <mark key={i}>{part.slice(1, -1)}</mark> : part,
+    );
+}
+
 function SearchView({ active, libraryVersion, onOpenResult }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -110,14 +123,7 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
               <b>{r.book_title ?? "Untitled"}</b> ·{" "}
               {r.chapter_title ?? `Chapter ${r.chapter_idx + 1}`}
             </div>
-            <div
-              className="result-snippet"
-              dangerouslySetInnerHTML={{
-                __html: r.snippet
-                  .split("[").join("<mark>")
-                  .split("]").join("</mark>"),
-              }}
-            />
+            <div className="result-snippet">{highlight(r.snippet)}</div>
           </li>
         ))}
       </ul>
