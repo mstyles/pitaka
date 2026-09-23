@@ -423,6 +423,10 @@ Later:
 - [ ] Semantic search, so related terms match without being on a
       curated list (and variant pairs could be inferred rather than
       listed)
+- [ ] An "Index this book" action, so a book already in the library can
+      be added to semantic chapter search in place. Without one the only
+      way in is to remove and re-import the book, which deletes its
+      bookmarks (limitation 6) — a steep price for a search feature
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 
