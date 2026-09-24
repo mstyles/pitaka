@@ -118,18 +118,33 @@ A new submodule of `db`, declared in `db/mod.rs` and re-exported from it by name
 - `import_book` gains the indexing pass after the core import returns, emitting a Tauri event `semantic_index_progress` with `{ book_id, done, total }` so §6 can show progress. Import still returns its `ImportOutcome` as soon as the book is in the library; indexing continues behind the event.
 - Both commands added to `generate_handler!` in `src-tauri/src/lib.rs`.
 
+As built, stage 5 differs in five ways, all so that minutes of indexing can't stall the app:
+- **Indexing opens its own connection** (`open_db` on the path kept in `AppState`) on a thread of its own, rather than holding `state.conn` for the whole run. `open_db` now sets a 30-second busy timeout, so the two connections wait for each other's short write transactions instead of failing with `SQLITE_BUSY`. Every write transaction in the core starts with a write, so neither can deadlock on a read lock it's trying to upgrade.
+- **The embedder is `Mutex<Option<Arc<Embedder>>>`**: the mutex is held only to load it, so a search runs while a book is indexing instead of waiting minutes for it.
+- **Books are indexed one at a time**, behind an `indexing: Mutex<()>`, since several imported together would only compete for the CPU.
+- **`search_chapters` is an async command** that runs on a blocking thread, because the first call may download the model and a synchronous command would freeze the window meanwhile.
+- **A second event, `semantic_index_failed`**, carries `{ book_id, error }` when a run stops early (no network for the model, say), so §6's progress line can end instead of hanging at its last count. Chapters finished before the failure stay indexed.
+
 ## 6. Frontend: `src/types.ts`, `SearchView.tsx`, `App.css`
 - `types.ts`: mirror `ChapterMatch` and `SemanticStatus` field-for-field in snake_case.
 - `SearchView.tsx` gains `scope: "passages" | "chapters"` as a segmented control above the existing box. **`exactWords`, `LastSearch.exact` and `toggleExactWords` are untouched** — they belong to the passages scope, which keeps its "Exact words" checkbox; the checkbox is hidden in the chapters scope, where it has no meaning. The scope control itself is hidden entirely when `semantic_status().available` is false, which is the demo's and the default build's state, so neither shows a control that cannot work.
 - Chapter results render as their own list: book title and chapter title (or `Chapter {chapter_idx + 1}`, matching the passages fallback), then the preview as **plain escaped text** — no `dangerouslySetInnerHTML`, no `<mark>`. Clicking opens the reader at `chapter_id`, centred and flashed on `content_block_id` exactly as a passage hit is, with back label "← Search results", reusing the existing reader-target path in `App.tsx`.
 - Under the results, when `indexed_books < total_books`: "*{indexed} of {total} books indexed for chapter search. Remove and re-import a book to include it.*" — the honest substitute for a backfill, so a missing book is stated rather than silently absent.
-- While indexing runs, the `semantic_index_progress` event drives "*Indexing {title} for chapter search… {done}/{total} chapters*" on the Books screen. Given ~10 minutes for three books, silent indexing would look like a hang.
+- While indexing runs, the `semantic_index_progress` event drives "*Indexing {title} for chapter search… {done}/{total} chapters*" on the Books screen. Given ~10 minutes for three books, silent indexing would look like a hang. `semantic_index_failed` replaces the line with the error.
 - `App.css`: the segmented control and the chapter-result card reuse the existing Paper tokens; no new colours.
+
+As built, stage 6 adds to this:
+- **Changing scope re-runs the query in the new scope**, as ticking "Exact words" already does, and clears the other scope's results rather than showing them under a query they weren't for.
+- **The "{indexed} of {total}" line shows only in the chapters scope**, and before any search too; passage search covers every book, so it has nothing to say there. The status is re-read on each visit and after each chapter search, since books finish indexing in the background.
+- **A finished run says "Indexed {title} for chapter search"** instead of leaving "{total}/{total} chapters" on screen. The events are followed in `App`, which stays mounted, so the Books screen shows where a run is up to on every visit. A finished or failed run's line stays until the Books screen has been left once, so one that ends while you're elsewhere is still shown.
+- **Results count as "{n} chapters"**, not "results", so the two scopes can't be mistaken for each other at a glance.
 
 ## 7. Fixtures and the mock: `src/test/mockBackend.ts`, `src/test/fixtures/library.json`
 - Routes for `semantic_status` and `search_chapters` in the mock's `switch`, since it throws `unmocked command` otherwise.
 - `library.json` gains a `semantic_status` object and a `chapter_matches` map keyed by query, written by `ui_fixtures_are_current` (in `db/ui_fixtures.rs`) from real `db` output. The fixture's default `semantic_status` is `available: false`, so **every existing test is unchanged** and the scope control simply doesn't render; the new tests override it via the mock's existing per-test hooks.
 - Regenerate with `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures`. The demo fixture (`src/demo/library.json`) is untouched — the demo has no semantic mode.
+- As built: the fixture test can't download the model, so the long book's three chapters get one chunk each with a hand-written vector, and each fixture query a vector of its own. Storing, ranking against `MIN_SCORE`, and building the matches are the real `store_chapter`, `rank_chunks` and `chapter_matches`; only the embedding is faked. "trees planted in a pattern" finds Part Two then Part One; "quarterly earnings guidance" scores 0.6, under the floor, and finds nothing.
+- `semantic_status` is pinned to `available: false`, so the file is the same with or without the feature. Tests turn chapter search on with the mock's `semantic` option, and `npm run dev:mock` does with `?semantic` in the URL. The mock now passes `shouldMockEvents` to `mockIPC`, so the Books screen's `listen` works without Rust, and tests send the events through `indexingEvents`.
 
 ## 8. Evaluation sets: `ebook_research_core/tests/semantic_eval/`
 Labelled queries, so ranking changes are measured rather than judged by eye. Labels are per chapter: 113 chapters make judging cheap. Each query lists its relevant chapters graded 2 (about this) or 1 (substantially discusses it), or none for a query the books don't answer. I draft the queries and grades; the user reviews them before they're used to tune anything. LLM-drafted labels are "silver" until a person who knows the books has checked them.
@@ -138,6 +153,22 @@ Labelled queries, so ranking changes are measured rather than judged by eye. Lab
 - **`local/*.json`, git-ignored** (`ebook_research_core/tests/semantic_eval/local/` added to `.gitignore`, since the books are the user's): about 50 queries against the real library. 25 on-topic, 8 of them Pali-term queries (anatta/non-self, dukkha, nibbāna, manas, ālaya, bodhicitta, jhāna, pratītyasamutpāda), 15 plausible-but-unanswered, and 10 off-corpus. Chapters are identified by `(book title, chapter_idx)`, because several of these books' chapter titles are file paths.
 - **Runner**: `semantic_eval` in `tests/integration.rs`, `#[cfg(feature = "semantic")]` and `#[ignore]`. It indexes the demo EPUB, or copies the library DB named by `PITAKA_EVAL_DB` to a temp file and indexes that, then runs every query and prints recall@5, nDCG@10, "no-answer accuracy" (unanswered and off-corpus queries that correctly return nothing, and answered ones wrongly emptied), and the top-1 score of each query so `MIN_SCORE` can be read off. It fails if the bars below aren't met.
 - **Stage 4 bars (proposed, to confirm with the user once the first run is in)**: on the local set, recall@5 ≥ 0.70 and nDCG@10 ≥ 0.60 over answered queries; at least 80% no-answer accuracy with at most one answered query wrongly emptied; and anatta/non-self queries retrieve the chapter that uses the term most within the top 5. The demo set's bars are set from its first run, so a later change can't quietly regress them.
+
+### Stage 4 results
+The first run of the runner, on the demo book (22 chapters indexed, 107 chunks) and the three-book library (106 chapters, 1,182 chunks), with the silver labels as drafted:
+
+- **Off-corpus queries separate; plausible unanswered ones don't.** No off-corpus query scored above 0.622 on either set. Unanswered library queries scored 0.602–0.726, overlapping answered ones (0.614–0.840); the demo book's answered queries sat about 0.06 lower (0.590–0.783). No floor reaches 80% no-answer accuracy with at most one answered query emptied: 0.73 rejects all 25 library no-answer queries but empties 11 answered ones.
+- **`MIN_SCORE` is 0.63**, chosen at the go/no-go review. It returns nothing for every off-corpus query in both sets, empties 1 answered library query ("ālaya-vijñāna", 0.614) and 5 demo ones, and lets 12 of 15 plausible unanswered library queries through with weak matches.
+- **Ranking is below the proposed bars even without a floor**: library recall@5 0.536 and nDCG@10 0.558 with nothing emptied. The giant *Awakening of the Heart* spine items (131 and 159 chunks) recur unlabelled in the top 5, so some of the gap may be the silver labels.
+- **Single Pali terms are weak** (recall@5 0.33 at 0.63), and bare "anatta" misses the chapter using the term most. Keyword search handles single terms; the frontend should say so rather than the index trying to.
+- **`LENGTH_PENALTY` stays 0.** 0.01 raised library nDCG@10 from 0.451 to 0.479 at the old 0.68 floor but lowered recall@5 from 0.456 to 0.434; 0.005 and 0.02 did no better.
+
+| Set, at 0.63 | recall@5 | nDCG@10 | no-answer | answered emptied |
+|---|---|---|---|---|
+| demo | 0.489 | 0.497 | 5/10 (all 5 off-corpus) | 5 of 24 |
+| library | 0.522 | 0.542 | 13/25 (all 10 off-corpus) | 1 of 27 |
+
+These are now the runner's bars, plus no off-corpus query returning anything, so a later change can't regress them.
 
 ## 9. Tests
 Core unit tests in `semantic.rs` and `db/semantic_index.rs`. **None of tests 1–8 is feature-gated** — they cover the pure logic and the schema, both of which are compiled unconditionally per §2, so all of them run in the default `cargo test -p ebook_research_core` and in CI:

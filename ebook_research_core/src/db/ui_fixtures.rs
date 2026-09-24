@@ -1,6 +1,7 @@
 //! Writes and checks the UI test fixtures from real db output.
 
 use super::import::load_book;
+use super::semantic_index::{chapter_matches, store_chapter, StoredChunk};
 use super::*;
 use crate::epub::ParsedBook;
 use rusqlite::Connection;
@@ -76,11 +77,60 @@ fn ui_fixtures_are_current() {
         searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
     }
 
+    let chapter_matches = chapter_search_fixtures(&mut conn, long_id);
+    // Pinned off, as in the default build, so the file doesn't change with
+    // `--features semantic`; the tests that show chapter search turn it on.
+    let status = SemanticStatus {
+        available: false,
+        ..semantic_status(&conn).unwrap()
+    };
+
     let mut fixtures = library_fixtures(&conn, &[folder.id]);
     fixtures["import_new"] = to_value(import_new).unwrap();
     fixtures["import_again"] = to_value(import_again).unwrap();
     fixtures["search"] = to_value(searches).unwrap();
+    fixtures["semantic_status"] = to_value(status).unwrap();
+    fixtures["chapter_matches"] = chapter_matches;
     check_fixture("src/test/fixtures/library.json", &fixtures);
+}
+
+/// Chapter search results for a few queries, keyed by query. Embedding
+/// needs the model, which no test downloads, so each of the long book's
+/// chapters gets one chunk with a hand-written vector, on its paragraph
+/// 30, and each query a vector of its own. Everything after the embedding
+/// is what `search_chapters` really does.
+fn chapter_search_fixtures(conn: &mut Connection, book_id: i64) -> serde_json::Value {
+    use serde_json::to_value;
+    use std::collections::BTreeMap;
+
+    let chapters = get_book_chapters(conn, book_id).unwrap();
+    let vecs = [[0.8, 0.6, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+    for (chapter, vec) in chapters.iter().zip(vecs) {
+        let blocks = get_chapter_content(conn, chapter.id).unwrap().blocks;
+        let char_start: usize = blocks[..29]
+            .iter()
+            .map(|b| b.text.chars().count() + 1)
+            .sum();
+        let chunk = StoredChunk {
+            char_start,
+            char_end: char_start + blocks[29].text.chars().count(),
+            vec: vec.to_vec(),
+        };
+        store_chapter(conn, book_id, chapter.id, "fixture", &[chunk]).unwrap();
+    }
+
+    let mut matches = BTreeMap::new();
+    // Part Two, then Part One; the second query's best score is 0.6,
+    // under the floor, so it finds nothing.
+    for (query, vec) in [
+        ("trees planted in a pattern", [1.0, 0.0, 0.0]),
+        ("quarterly earnings guidance", [0.0, 1.0, 0.0]),
+    ] {
+        let ranked = rank_chunks(conn, &vec, MIN_SCORE, LENGTH_PENALTY).unwrap();
+        let found = chapter_matches(conn, &ranked).unwrap();
+        matches.insert(query, to_value(found).unwrap());
+    }
+    to_value(matches).unwrap()
 }
 
 /// The browser demo (`npm run build:demo`) replays `src/demo/library.json`

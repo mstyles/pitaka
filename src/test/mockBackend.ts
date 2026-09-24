@@ -1,6 +1,7 @@
 // Answers the frontend's `invoke` calls from fixtures written by the core
 // test `ui_fixtures_are_current` (UPDATE_UI_FIXTURES=1 regenerates them), so
 // the UI can run in jsdom or a plain browser tab without the Rust side.
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import fixtureData from "./fixtures/library.json";
 import type {
@@ -8,11 +9,15 @@ import type {
   BookmarkFolder,
   BookSummary,
   ChapterContent,
+  ChapterMatch,
   ChapterSummary,
   FolderBookmark,
   ImportOutcome,
   SearchMode,
   SearchResult,
+  SemanticIndexFailed,
+  SemanticIndexProgress,
+  SemanticStatus,
 } from "../types";
 
 export type Fixtures = {
@@ -25,7 +30,12 @@ export type Fixtures = {
   search: Record<string, SearchResult[]>;
   bookmark_folders: BookmarkFolder[];
   folder_bookmarks: Record<string, FolderBookmark[]>;
+  /** Absent in the demo's data: the demo has no chapter search. */
+  semantic_status?: SemanticStatus;
+  chapter_matches?: Record<string, ChapterMatch[]>;
 };
+
+const NO_SEMANTIC: SemanticStatus = { available: false, indexed_books: 0, total_books: 0 };
 
 export const fixtures = fixtureData as Fixtures;
 
@@ -44,6 +54,8 @@ export type MockOptions = {
   books?: BookSummary[];
   /** Commands that should reject, with the error message to reject with. */
   fail?: Partial<Record<string, string>>;
+  /** Overrides the fixtures' `semantic_status`, e.g. to offer chapter search. */
+  semantic?: Partial<SemanticStatus>;
 };
 
 export type MockCall = { cmd: string; args: Record<string, unknown> };
@@ -61,6 +73,7 @@ export function installMockBackend({
   confirm = true,
   fail = {},
   books: initialBooks = data.books,
+  semantic = {},
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
   let books = initialBooks.map((b) => ({ ...b }));
@@ -97,6 +110,8 @@ export function installMockBackend({
     throw `no paragraph with id ${blockId}`;
   }
 
+  // `shouldMockEvents` lets the app's `listen` calls work without Rust, and
+  // tests send indexing events with `indexingEvents`.
   mockIPC((cmd, payload) => {
     const args = (payload ?? {}) as Record<string, unknown>;
     calls.push({ cmd, args });
@@ -127,6 +142,12 @@ export function installMockBackend({
         if (search) return search(books, String(args.query), mode);
         const hits = data.search[`${mode}:${args.query}`] ?? [];
         return hits.filter((h) => books.some((b) => b.id === h.book_id));
+      }
+      case "semantic_status":
+        return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };
+      case "search_chapters": {
+        const matches = data.chapter_matches?.[String(args.query)] ?? [];
+        return matches.filter((m) => books.some((b) => b.id === m.book_id));
       }
       case "get_book_chapters":
         return data.chapters[String(args.bookId)] ?? [];
@@ -216,7 +237,13 @@ export function installMockBackend({
       default:
         throw new Error(`unmocked command: ${cmd}`);
     }
-  });
+  }, { shouldMockEvents: true });
 
   return { calls };
 }
+
+/** Sends the events the app sends while it indexes a book for chapter search. */
+export const indexingEvents = {
+  progress: (payload: SemanticIndexProgress) => emit("semantic_index_progress", payload),
+  failed: (payload: SemanticIndexFailed) => emit("semantic_index_failed", payload),
+};

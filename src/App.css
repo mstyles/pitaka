@@ -443,6 +443,31 @@ button.button-danger:hover:not(:disabled) {
   padding-left: 38px;
 }
 
+/* Passages or chapters: one bordered control, the chosen half filled. */
+.scope-toggle {
+  display: inline-flex;
+  margin-top: 0.25em;
+}
+.scope-toggle button {
+  border-radius: 0;
+}
+.scope-toggle button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.scope-toggle button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-left: -1px;
+}
+.scope-toggle button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.index-coverage,
+.index-progress {
+  color: var(--muted);
+  font-size: 0.9em;
+}
 .search-mode {
   display: flex;
   align-items: center;

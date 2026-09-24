@@ -1,6 +1,6 @@
 import { useState } from "react";
 import BookmarksView from "./BookmarksView";
-import BooksView from "./BooksView";
+import BooksView, { useIndexing } from "./BooksView";
 import HomeView from "./HomeView";
 import NavBar, { type Screen } from "./NavBar";
 import ReaderView from "./ReaderView";
@@ -20,8 +20,10 @@ function App() {
   const [reader, setReader] = useState<ReaderTarget | null>(null);
   const [openFolderId, setOpenFolderId] = useState<number | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
+  const { indexing, dismissFinished } = useIndexing();
 
   function navigate(to: Screen) {
+    if (screen === "books" && to !== "books") dismissFinished();
     // The Bookmarks link always shows the folder list.
     setOpenFolderId(null);
     setScreen(to);
@@ -40,6 +42,7 @@ function App() {
         <BooksView
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Books" })}
           onLibraryChanged={() => setLibraryVersion((v) => v + 1)}
+          indexing={indexing}
         />
       )}
       {!reader && screen === "bookmarks" && (

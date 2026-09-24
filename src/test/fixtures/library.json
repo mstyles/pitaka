@@ -700,6 +700,31 @@
       "chapter_title": "Part Three"
     }
   },
+  "chapter_matches": {
+    "quarterly earnings guidance": [],
+    "trees planted in a pattern": [
+      {
+        "book_id": 2,
+        "book_title": "A Long Book for Scrolling",
+        "chapter_id": 4,
+        "chapter_idx": 1,
+        "chapter_title": "Part Two",
+        "content_block_id": 77,
+        "preview": "Part Two, paragraph 30: the trees were planted in a quincunx.…",
+        "score": 1.0
+      },
+      {
+        "book_id": 2,
+        "book_title": "A Long Book for Scrolling",
+        "chapter_id": 3,
+        "chapter_idx": 0,
+        "chapter_title": "Part One",
+        "content_block_id": 37,
+        "preview": "Part One, paragraph 30: filler text that is long enough to wrap onto a second line in the reader, so the chapter scrolls.…",
+        "score": 0.800000011920929
+      }
+    ]
+  },
   "chapters": {
     "1": [
       {
@@ -828,5 +853,10 @@
       }
     ],
     "stemmed:zzzz": []
+  },
+  "semantic_status": {
+    "available": false,
+    "indexed_books": 1,
+    "total_books": 2
   }
 }

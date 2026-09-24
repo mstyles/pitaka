@@ -1,5 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { indexingEvents } from "./test/mockBackend";
 import { goTo, renderApp } from "./test/renderApp";
 
 const TEST_BOOK = "Test Book of Research";
@@ -83,5 +84,68 @@ describe("books", () => {
     const { user } = renderApp({ fail: { list_books: "database is locked" } });
     await goTo(user, "Books");
     expect(await screen.findByText("Loading library failed: database is locked")).toBeTruthy();
+  });
+});
+
+describe("indexing for chapter search", () => {
+  it("shows a book's progress, then that it's done", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+    expect(
+      screen.getByText(`Indexing ${LONG_BOOK} for chapter search… 1/3 chapters`),
+    ).toBeTruthy();
+    await act(() => indexingEvents.progress({ book_id: 2, done: 3, total: 3 }));
+    expect(screen.getByText(`Indexed ${LONG_BOOK} for chapter search`)).toBeTruthy();
+  });
+
+  it("replaces the progress with the error when indexing fails", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+    await act(() =>
+      indexingEvents.failed({ book_id: 2, error: "couldn't load the search model: offline" }),
+    );
+    expect(
+      screen.getByText(
+        `Indexing ${LONG_BOOK} for chapter search failed: couldn't load the search model: offline`,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/1\/3 chapters/)).toBeNull();
+  });
+
+  it("still shows a run's progress after leaving and coming back", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+
+    await goTo(user, "Search");
+    await act(() => indexingEvents.progress({ book_id: 2, done: 2, total: 3 }));
+    await goTo(user, "Books");
+    expect(
+      await screen.findByText(`Indexing ${LONG_BOOK} for chapter search… 2/3 chapters`),
+    ).toBeTruthy();
+  });
+
+  it("shows a run that finished while away once, then drops it", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+
+    await goTo(user, "Search");
+    await act(() => indexingEvents.progress({ book_id: 2, done: 3, total: 3 }));
+    await goTo(user, "Books");
+    expect(await screen.findByText(`Indexed ${LONG_BOOK} for chapter search`)).toBeTruthy();
+
+    await goTo(user, "Search");
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    expect(screen.queryByText(/for chapter search/)).toBeNull();
   });
 });

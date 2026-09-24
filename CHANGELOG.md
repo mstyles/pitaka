@@ -7,6 +7,15 @@ build from.
 
 ## [Unreleased]
 
+### Added
+
+- Find chapters by meaning, in a build with `--features semantic`:
+  Search gains a Passages / Chapters switch, and a chapter result opens
+  the reader at the paragraph that matched. A small embedding model
+  runs locally, downloaded once on first use. Books are indexed in the
+  background when imported, with progress on the Books screen; books
+  already in the library need re-importing to be included.
+
 ## [0.1.0] - 2026-09-23
 
 The first tagged version, covering everything built so far.

@@ -4,18 +4,40 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, BlockBookmark, BookSummary, BookmarkFolder, ChapterContent, ChapterSummary,
-    FolderBookmark, ImportOutcome, SearchMode, SearchResult,
+    db, open_db, BlockBookmark, BookSummary, BookmarkFolder, ChapterContent, ChapterMatch,
+    ChapterSummary, FolderBookmark, ImportOutcome, SearchMode, SearchResult, SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
+#[cfg(feature = "semantic")]
+use ebook_research_core::semantic::Embedder;
+#[cfg(feature = "semantic")]
+use serde::Serialize;
+#[cfg(feature = "semantic")]
+use std::sync::Arc;
+#[cfg(feature = "semantic")]
+use tauri::Emitter;
+
 /// Holds the open DB connection for the app's lifetime.
 /// Tauri gives you `app.manage(...)` for exactly this kind of shared state.
 pub struct AppState {
     pub conn: Mutex<Connection>,
+    /// Indexing opens its own connection here, so a run that takes minutes
+    /// doesn't hold `conn` and stall every other command.
+    #[cfg(feature = "semantic")]
+    db_path: String,
+    /// Loaded on first use, so launching the app doesn't pay for the model.
+    /// Shared behind an `Arc` so a search doesn't wait for an indexing run
+    /// to finish with it.
+    #[cfg(feature = "semantic")]
+    embedder: Mutex<Option<Arc<Embedder>>>,
+    /// Held while a book is indexed, so books imported together are indexed
+    /// one after another rather than competing for the CPU.
+    #[cfg(feature = "semantic")]
+    indexing: Mutex<()>,
 }
 
 fn db_path(app: &AppHandle) -> Result<String, String> {
@@ -35,15 +57,144 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
     let conn = open_db(&path).map_err(|e| format!("couldn't open {path}: {e:#}"))?;
     Ok(AppState {
         conn: Mutex::new(conn),
+        #[cfg(feature = "semantic")]
+        db_path: path,
+        #[cfg(feature = "semantic")]
+        embedder: Mutex::new(None),
+        #[cfg(feature = "semantic")]
+        indexing: Mutex::new(()),
     })
 }
 
 /// Frontend calls: `invoke("import_book", { path: "/path/to/book.epub" })`
 /// (returns the existing book, with `already_imported: true`, for a duplicate).
+/// With semantic search built in, a new book is then indexed in the
+/// background; see `index_in_background`.
 #[tauri::command]
-pub fn import_book(path: String, state: State<AppState>) -> Result<ImportOutcome, String> {
-    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
-    db::import_book(&mut conn, &path).map_err(|e| e.to_string())
+pub fn import_book(
+    path: String,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<ImportOutcome, String> {
+    let outcome = {
+        let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+        db::import_book(&mut conn, &path).map_err(|e| e.to_string())?
+    };
+    if !outcome.already_imported {
+        index_in_background(app, outcome.book_id);
+    }
+    Ok(outcome)
+}
+
+/// Emitted as `semantic_index_progress` once before a book's first chapter
+/// and after each one; `done == total` means the book is indexed.
+#[cfg(feature = "semantic")]
+#[derive(Clone, Serialize)]
+struct IndexProgress {
+    book_id: i64,
+    done: usize,
+    total: usize,
+}
+
+/// Emitted as `semantic_index_failed` when indexing stops early, e.g. the
+/// model couldn't be downloaded. Chapters finished before it stay indexed.
+#[cfg(feature = "semantic")]
+#[derive(Clone, Serialize)]
+struct IndexFailed {
+    book_id: i64,
+    error: String,
+}
+
+/// Embeds a newly imported book's chapters on a thread of its own, so the
+/// import returns as soon as the book is in the library.
+#[cfg(feature = "semantic")]
+fn index_in_background(app: AppHandle, book_id: i64) {
+    std::thread::spawn(move || {
+        if let Err(error) = index(&app, book_id) {
+            eprintln!("couldn't index book {book_id} for chapter search: {error}");
+            let _ = app.emit("semantic_index_failed", IndexFailed { book_id, error });
+        }
+    });
+}
+
+#[cfg(not(feature = "semantic"))]
+fn index_in_background(_app: AppHandle, _book_id: i64) {}
+
+#[cfg(feature = "semantic")]
+fn index(app: &AppHandle, book_id: i64) -> Result<(), String> {
+    let state = app
+        .try_state::<AppState>()
+        .ok_or("the library isn't open")?;
+    // The guard protects no data, so a run that panicked doesn't matter.
+    let _one_at_a_time = state.indexing.lock().unwrap_or_else(|e| e.into_inner());
+    let embedder = embedder(&state)?;
+    let mut conn = open_db(&state.db_path).map_err(|e| format!("{e:#}"))?;
+    let report = db::index_book(&mut conn, book_id, &embedder, &mut |done, total| {
+        let _ = app.emit(
+            "semantic_index_progress",
+            IndexProgress {
+                book_id,
+                done,
+                total,
+            },
+        );
+    })
+    .map_err(|e| format!("{e:#}"))?;
+    if report.truncated > 0 {
+        eprintln!(
+            "book {book_id}: {} of {} chunks ran past the model's 512 tokens and were cut short",
+            report.truncated, report.chunks
+        );
+    }
+    Ok(())
+}
+
+/// The embedding model, loading it (and downloading it, the first time)
+/// if nothing has used it yet.
+#[cfg(feature = "semantic")]
+fn embedder(state: &AppState) -> Result<Arc<Embedder>, String> {
+    let mut slot = state.embedder.lock().map_err(|e| e.to_string())?;
+    if slot.is_none() {
+        let loaded =
+            Embedder::load().map_err(|e| format!("couldn't load the search model: {e:#}"))?;
+        *slot = Some(Arc::new(loaded));
+    }
+    Ok(Arc::clone(slot.as_ref().expect("loaded above")))
+}
+
+/// Frontend calls: `invoke("semantic_status")`, to decide whether to offer
+/// chapter search and how many books it covers.
+#[tauri::command]
+pub fn semantic_status(state: State<AppState>) -> Result<SemanticStatus, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::semantic_status(&conn).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("search_chapters", { query: "dealing with grief" })`.
+/// Async, and run on a blocking thread, because the first search may have to
+/// download the model and must not freeze the window meanwhile.
+#[tauri::command]
+pub async fn search_chapters(query: String, app: AppHandle) -> Result<Vec<ChapterMatch>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_chapters(&app, &query))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[cfg(feature = "semantic")]
+fn find_chapters(app: &AppHandle, query: &str) -> Result<Vec<ChapterMatch>, String> {
+    let state = app
+        .try_state::<AppState>()
+        .ok_or("the library isn't open")?;
+    let embedder = embedder(&state)?;
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::search_chapters(&conn, query, &embedder, 20).map_err(|e| e.to_string())
+}
+
+/// The frontend only calls `search_chapters` when `semantic_status` says it's
+/// available, so this is a guard, not a message anyone should see.
+#[cfg(not(feature = "semantic"))]
+fn find_chapters(_app: &AppHandle, _query: &str) -> Result<Vec<ChapterMatch>, String> {
+    Err("semantic search isn't available in this build".into())
 }
 
 /// Frontend calls: `invoke("search_library", { query: "neural networks", mode: "exact" })`

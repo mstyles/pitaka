@@ -12,6 +12,34 @@ export type SearchResult = {
   rank: number;
 };
 
+export type ChapterMatch = {
+  book_id: number;
+  book_title: string | null;
+  chapter_id: number;
+  chapter_idx: number;
+  chapter_title: string | null;
+  content_block_id: number;
+  score: number;
+  preview: string;
+};
+
+export type SemanticStatus = {
+  available: boolean;
+  indexed_books: number;
+  total_books: number;
+};
+
+export type SemanticIndexProgress = {
+  book_id: number;
+  done: number;
+  total: number;
+};
+
+export type SemanticIndexFailed = {
+  book_id: number;
+  error: string;
+};
+
 export type ImportOutcome = {
   book_id: number;
   already_imported: boolean;
