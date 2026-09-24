@@ -17,6 +17,11 @@ to keep.
   diacritics are ignored, so `samsara` finds "saṃsāra", and `dharma`
   also finds a text that only writes "dhamma". Quoted phrases,
   `prefix*` and `AND`/`OR`/`NOT` work too.
+- **Find chapters by meaning** (optional, see [Install](#install)).
+  Describe what you're after — "dealing with difficult emotions" — and
+  get the chapters about it, whatever words they use. A small embedding
+  model runs on your own computer; it's downloaded once and nothing is
+  sent anywhere.
 - **Read with the hit in context.** Opening a result jumps the reader to
   that paragraph, with the book's chapters alongside.
 - **Keep passages in bookmark folders**, one per topic or project, each
@@ -61,6 +66,16 @@ but those builds are untested.
 3. `npm run tauri build`, then install or run a bundle from
    `target/release/bundle/`. Or `npm run tauri dev` to run it straight
    from the checkout.
+
+Chapter search by meaning is behind a Cargo feature, off by default: add
+`-- --features semantic` to either command (`npm run tauri dev --
+--features semantic`). The first build takes longer, as it compiles the
+model runtime ([candle](https://github.com/huggingface/candle)). The
+first time a book is indexed or searched, the app downloads
+[BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)
+(about 130 MB) into `~/.cache/huggingface`; after that it works offline.
+Only books imported while the feature is on are indexed (see
+[Known limitations](#known-limitations)).
 
 The library lives in `library.db` in the app's data directory
 (`~/.local/share/com.pitaka.app/` on Linux). Imported books are indexed
@@ -168,6 +183,51 @@ members, sharing one `Cargo.lock`/`target/`.
   "neuronal", a word the book never uses, and gets back exactly the
   blocks "neural" returns, in both modes, while an unlisted term's hits
   and ranks are unchanged. `cargo test -p ebook_research_core` passes.
+- Semantic chapter search (`--features semantic`; plan in
+  `docs/plans/semantic-chapter-search.md`). `ebook_research_core/src/semantic.rs`
+  loads BAAI/bge-small-en-v1.5 with candle, embeds by CLS pooling into
+  384-dim unit vectors, cuts chapter text into 1,600-char chunks
+  overlapping by 200, and skips contents pages, indexes and short front
+  matter. `db/semantic_index.rs` stores one row per chunk in
+  `chunk_embeddings` (migration 004), and ranks each chapter by its
+  single best chunk, dropping anything under `MIN_SCORE` (0.63). A
+  match opens the reader at the paragraph where its best chunk starts.
+  What was measured:
+  - FTS5 can't do this: of ten thematic queries against a real
+    three-book library, four returned nothing and the rest matched
+    incidental words.
+  - The model was chosen on evidence. `thenlper/gte-small` ships F16
+    weights and returned the same five chunks for every query; the
+    loader now refuses half-precision weights. bge-small separates
+    unrelated text (anger vs. an anger practice 0.823, vs. physics
+    0.495, vs. a recipe 0.439), which the ignored test
+    `the_model_discriminates_unrelated_text` re-checks in-tree.
+  - No chunk in the real library runs past the model's 512 tokens (max
+    474). The demo book indexes 22 of its 24 chapters into 107 chunks
+    in about 48 seconds on the CPU; batch size made no difference.
+  - Ranking was scored by the ignored `semantic_eval` runner against
+    labelled queries: 34 for the demo book
+    (`tests/semantic_eval/demo.json`) and a git-ignored set for the
+    real library. At `MIN_SCORE` 0.63, recall@5 is 0.489 (demo) and
+    0.522 (library), nDCG@10 0.497 and 0.542. Every off-corpus query
+    ("quarterly earnings guidance") returns nothing, but 12 of 15
+    plausible questions the books don't answer get weak matches, and
+    one answered library query is emptied. Those numbers are now the
+    runner's bars. A length penalty traded recall for nDCG, so it's 0.
+    The labels are drafted, not yet checked by someone who knows the
+    books.
+  - Unit tests, which run in the default `cargo test` and CI, cover the
+    chunking, the front-matter filter, the vector BLOBs, max-over-chunks
+    ranking, the floor, previews, the paragraph lookup, per-chapter
+    transactions and the cascade from a deleted book. Tests needing the
+    model are `#[ignore]`d so CI never downloads it; CI runs clippy
+    with the feature on.
+  - In the app, `import_book` returns once the book is in the library
+    and indexes it on its own thread and database connection (with a
+    30-second busy timeout), one book at a time, sending progress and
+    failure events. `search_chapters` runs off the main thread, since
+    the first call may download the model. None of this is covered by
+    automated tests.
 - The frontend typechecks (`npx tsc --noEmit`):
   - `src/HomeView.tsx` — the launch screen: Books, Bookmarks and
     Search cards with counts from `list_books` and
@@ -180,7 +240,13 @@ members, sharing one `Cargo.lock`/`target/`.
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
     book list from `list_books` with Remove.
-  - `src/SearchView.tsx` — a search box with an "Exact words" toggle →
+  - `src/SearchView.tsx` — in a build with semantic search, a
+    Passages / Chapters switch; Chapters calls `search_chapters` and
+    lists each chapter with a plain-text preview of the part that
+    matched, plus "1 of 2 books indexed…" when some aren't. The Books
+    screen shows "Indexing {title} for chapter search… 3/24 chapters",
+    followed in `App.tsx` so it survives leaving the screen. Otherwise:
+    a search box with an "Exact words" toggle →
     `search_library` rendering highlighted snippets, each labelled with
     its book and chapter title (or "Chapter N", counting from 1, when
     the chapter has none). Snippets are built as React text and `<mark>`
@@ -243,10 +309,16 @@ members, sharing one `Cargo.lock`/`target/`.
   deleting (confirmed or not), removing passages, opening a passage in
   the reader and coming back to its folder, the Remove-book warning
   with its bookmark count, and bookmarking from the reader's popover
-  (tick, untick, new folder, duplicate-name error, closing it). The mock replays
+  (tick, untick, new folder, duplicate-name error, closing it), and
+  chapter search: the switch hidden without the feature, results as
+  text, opening a chapter at its match and coming back, the indexed-books
+  line, "No results", errors, and the indexing progress line across
+  screens. The mock replays
   `src/test/fixtures/library.json`, which the core test
   `ui_fixtures_are_current` writes from real `db` output for
-  `test.epub` plus a synthetic 3×40-paragraph book. That test fails when
+  `test.epub` plus a synthetic 3×40-paragraph book. Chapter matches are
+  the real storing, ranking and lookup code over hand-written vectors,
+  since the test can't download the model. That test fails when
   the committed file is out of date, so a changed Rust type can't
   silently drift from what the tests feed the UI. What they can't catch: argument names the real
   Tauri layer expects (`bookId` → `book_id`) and anything in
@@ -277,7 +349,10 @@ members, sharing one `Cargo.lock`/`target/`.
   so the paragraph sat within 1px of the viewport's centre, flashing;
   switching chapters reset the scroll with no flash; going back kept the
   search; Exact words re-ran it; removing a book dropped its row and
-  hits. No console errors. Walked again for bookmark folders: the
+  hits. No console errors. Walked again for chapter search with
+  `?semantic` in the URL: results, opening Part Two centred and flashed
+  on the match, coming back with the query and scope kept, and a
+  progress event on the Books screen. Walked again for bookmark folders: the
   folder listed with counts, the fixture paragraph's icon was filled, a
   paragraph was bookmarked into a new folder and the existing one from
   the popover, the library counts updated, and a passage opened in the
@@ -290,7 +365,11 @@ words" toggle was added, and not since `nav.xhtml` started being
 skipped or the paragraph-extraction rewrite: re-imported books haven't
 been checked in the reader). Bookmark folders haven't been clicked
 through in the Tauri window, and migration 003 hasn't been run against
-a real library yet. The build needs the Linux system webview libs
+a real library yet. Chapter search has been partly tried in the Tauri
+window: importing a book showed the indexing progress, and found the
+bug where leaving the Books screen hid it. A full walk (search results,
+the model download, a failed run) hasn't been recorded. The build needs
+the Linux system webview libs
 (webkit2gtk, dbus, appindicator, etc.):
 
 ```
@@ -310,9 +389,12 @@ pitaka/
 │   ├── Cargo.toml
 │   ├── migrations/             <- numbered schema migrations (001 = base schema)
 │   ├── src/{lib,epub}.rs
+│   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
-│   │                              library / bookmarks, re-exported as db::*
-│   └── tests/integration.rs
+│   │                              library / bookmarks / semantic_index,
+│   │                              re-exported as db::*
+│   ├── tests/integration.rs
+│   └── tests/semantic_eval/    <- labelled queries for ranking (local/ is git-ignored)
 ├── src-tauri/
 │   ├── Cargo.toml               <- ebook_research_core = { path = "../ebook_research_core" }
 │   └── src/
@@ -320,7 +402,8 @@ pitaka/
 │       ├── lib.rs                <- registers commands + plugins
 │       └── commands.rs           <- import_book / search_library / list_books /
 │                                    get_book_chapters / get_chapter_content /
-│                                    bookmark folder + bookmark commands
+│                                    bookmark folder + bookmark commands /
+│                                    semantic_status / search_chapters
 ├── src/                         <- React + TS frontend
 │   ├── App.tsx                  <- current screen, reader target and back label
 │   ├── HomeView.tsx             <- launch screen: Books / Bookmarks / Search cards
@@ -349,6 +432,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 - To change the schema, add the next numbered `.sql` file and list it in
   `migrations()` in `db/mod.rs`. Don't edit a migration that has already run
   against a real library.
+- 004 adds `chunk_embeddings` for semantic chapter search. It's applied
+  in every build, with or without the feature, so a library moves
+  between builds unchanged; nothing is backfilled.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -361,10 +447,12 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 
 1. Install the Tauri Linux prerequisites (see command above).
 2. `npm install` at the repo root.
-3. `npm run tauri dev` — opens the app with hot-reload.
+3. `npm run tauri dev` — opens the app with hot-reload (add
+   `-- --features semantic` for chapter search).
 4. `npm run tauri build` — produces a release bundle.
 5. `npm test` — frontend tests; `npm run dev:mock` — the UI in a
-   browser on :1430 against the mocked backend.
+   browser on :1430 against the mocked backend (`?semantic` in the URL
+   offers chapter search).
 
 ## Known limitations
 
@@ -413,6 +501,29 @@ In the same order of priority as the Python version, then newer ones.
    a book's own square brackets are ambiguous with them: text like
    "[sic]" in a snippet is shown highlighted as "sic". It is shown as
    text, never as markup.
+9. Semantic chapter search:
+   - It covers only books imported while the feature was built in.
+     There's no backfill, so the rest need removing and re-importing,
+     which deletes their bookmarks (limitation 6); the Search screen
+     says how many books are indexed. A run stopped by closing the app
+     leaves a book partly indexed, and it counts as indexed.
+   - The model is downloaded on first use, so that needs a network
+     connection once, and indexing takes minutes per book.
+   - Results are chapters, not passages, and nothing is highlighted: a
+     match needn't share any words with the query. A very long spine
+     item (some books have 200,000-char "chapters") gets more chances
+     to match and turns up more often than it should.
+   - `MIN_SCORE` and the (zero) length penalty were calibrated on three
+     books by one author plus the demo book, with labels not yet
+     checked by a reader. Off-corpus queries return nothing, but
+     plausible questions the library doesn't answer usually still get
+     weak matches.
+   - The front-matter filter is a heuristic: it drops one-verse
+     chapters under 200 chars, and verse chapters with very short
+     lines can look like a contents page.
+   - Single Pali terms do poorly (recall@5 0.33): bare "anatta" misses
+     the chapter using it most. Keyword search is the tool for a
+     single term.
 
 ## Roadmap
 
@@ -447,6 +558,8 @@ Done:
 - [x] Render search snippets as text rather than HTML, and set a
       Content Security Policy, so book text can't inject markup or
       script into the app
+- [x] Semantic search, for the chapter case: find chapters by meaning
+      with a local embedding model, behind the `semantic` feature
 
 Next up (fixes for the known limitations above):
 
@@ -466,9 +579,12 @@ Later:
       rendering every block as a plain `<p>` (limitation 3)
 - [ ] Release builds for Linux, macOS and Windows, so the app can be
       installed without building it
-- [ ] Semantic search, so related terms match without being on a
-      curated list (and variant pairs could be inferred rather than
-      listed)
+- [ ] Paragraph-level semantic search, with results that open on the
+      passage rather than the chapter
+- [ ] Infer transliteration variant pairs rather than listing them
+      (limitation 7)
+- [ ] Recalibrate `MIN_SCORE` and the ranking on a larger, more varied
+      library, with labels checked by a reader (limitation 9)
 - [ ] An "Index this book" action, so a book already in the library can
       be added to semantic chapter search in place. Without one the only
       way in is to remove and re-import the book, which deletes its
