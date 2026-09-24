@@ -123,8 +123,20 @@ members, sharing one `Cargo.lock`/`target/`.
   other blocks is split into them. Text split across inline tags is
   joined as written, so a drop cap like `<b>B</b>EFORE` reads
   "BEFORE". Each chapter's title is its first `<h1>`/`<h2>`, falling
-  back to the document's `<head><title>` (so a half-title page without
-  a heading gets the book's name) and then to the internal file path.
+  back to the file's first entry in the book's table of contents (the
+  EPUB 3 nav document's `toc` nav, else the EPUB 2 NCX), then to the
+  document's `<head><title>` (so a half-title page with neither gets the
+  book's name) and then to the internal file path. TOC hrefs are
+  resolved against the TOC file's own folder, with `#fragments`, `..`
+  and `%20`-style escapes handled. Checked by parsing the three books in
+  `~/Documents/books`: *Understanding Our Mind* now has "I - The Mind Is
+  a Field", "2 - Every Kind of Seed" and so on instead of 65 chapters
+  named after the book, and *No Mud, No Lotus* has "1: The Art of
+  Transforming Suffering". Files the TOC doesn't list (the HTML
+  contents page, some front and back matter, footnotes) still get their
+  `<head><title>`, which is often the book's name. Not yet checked by
+  re-importing the books in the Tauri window; no UI code changed, so
+  it wasn't clicked through against the mocked backend either.
   The EPUB 3 navigation document (the manifest item whose `properties` include `nav`) is skipped, so the
   table of contents isn't a chapter or a source of search hits;
   `linear="no"` items and cover pages are kept, since they can hold
@@ -467,13 +479,14 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 In the same order of priority as the Python version, then newer ones.
 
 1. No distinct handling of footnotes/endnotes.
-2. Chapter titles come from the first `<h1>`/`<h2>`, else the page's
-   `<title>`, but there's no migration: books imported before that
-   change keep file-path titles until re-imported. Books that style
-   headings as `<div>`s (e.g. `<div class="ct">`) instead of
-   `<h1>`/`<h2>` get their page `<title>`, which is often just the
-   book's name, or a file path when it's empty. Books imported before the EPUB 3 nav document was skipped
-   keep it as a chapter until they're removed and re-imported.
+2. Books imported before chapter titles came from the table of
+   contents (or before the EPUB 3 nav document was skipped) keep their
+   old chapter titles (or the nav chapter) until removed and
+   re-imported. A file with no `<h1>`/`<h2>` and no TOC entry still
+   falls back to its `<head><title>`, which is often just the book's
+   name. A book with headings on only some chapters mixes the two
+   styles, e.g. "PART I. STORE CONSCIOUSNESS" beside "2 - Every Kind of
+   Seed".
 3. Images, tables, and other non-text content are silently dropped, and
    formatting is lost — the reader renders every block as a plain `<p>`.
    A paragraph that contains a nested block (e.g. a lead-in sentence
@@ -542,6 +555,8 @@ Done:
 - [x] EPUB import with FTS5 full-text search and highlighted snippets
 - [x] Library list and continuous-scroll reader with jump-to-search-hit
 - [x] Chapter titles from the first `<h1>`/`<h2>`
+- [x] Chapter titles from the table of contents when there's no
+      `<h1>`/`<h2>`
 - [x] Exact-word search mode alongside stemmed search
 - [x] Versioned schema migrations
 - [x] Quote search terms before passing them to FTS5 so punctuation

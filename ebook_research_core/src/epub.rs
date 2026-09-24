@@ -5,9 +5,13 @@
 //!   1. Read META-INF/container.xml to find the path to the OPF file.
 //!   2. Parse the OPF: manifest (id -> href, properties) + spine (reading
 //!      order of ids) + Dublin Core metadata (title, creator).
-//!   3. For each spine item except the EPUB 3 navigation document, read its
+//!   3. Read the table of contents (the EPUB 3 nav document, else the
+//!      EPUB 2 NCX) for each file's first label.
+//!   4. For each spine item except the EPUB 3 navigation document, read its
 //!      XHTML and split it into paragraphs
-//!      by block-level tag, tracking char offsets within the chapter.
+//!      by block-level tag, tracking char offsets within the chapter. A
+//!      chapter's title is its first `<h1>`/`<h2>`, else its TOC label,
+//!      else its `<head><title>`, else its file path.
 
 use anyhow::{anyhow, Context, Result};
 use quick_xml::events::Event;
@@ -17,7 +21,8 @@ use std::io::Read;
 
 pub struct ParsedChapter {
     pub file_name: String,
-    /// First `<h1>`/`<h2>` text, falling back to `file_name`.
+    /// First `<h1>`/`<h2>` text, else the file's first table-of-contents
+    /// label, else its `<head><title>`, else `file_name`.
     pub title: String,
     /// (char_start, char_end, text) within this chapter's joined plain text
     pub paragraphs: Vec<(usize, usize, String)>,
@@ -65,12 +70,15 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let (manifest, spine_ids, title, author) = parse_opf(&opf_xml)?;
+    let opf = parse_opf(&opf_xml)?;
 
-    // --- Step 3: walk spine, extract paragraphs per chapter ---
+    // --- Step 3: table of contents -> first label per file ---
+    let toc = toc_titles(&mut zip, &opf_dir, &opf);
+
+    // --- Step 4: walk spine, extract paragraphs per chapter ---
     let mut chapters = Vec::new();
-    for id in spine_ids {
-        let Some(item) = manifest.get(&id) else {
+    for id in &opf.spine {
+        let Some(item) = opf.manifest.get(id) else {
             continue;
         };
         // The nav document is the book's table of contents, not reading
@@ -80,12 +88,7 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         if item.is_nav() {
             continue;
         }
-        let href = &item.href;
-        let full_path = if opf_dir.is_empty() {
-            href.clone()
-        } else {
-            format!("{opf_dir}/{href}")
-        };
+        let full_path = resolve_href(&opf_dir, &item.href);
 
         let xhtml = {
             let mut s = String::new();
@@ -96,11 +99,18 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
             s
         };
 
-        let (blocks, title) = extract_chapter(&xhtml);
+        let ChapterText {
+            blocks,
+            heading,
+            head_title,
+        } = extract_chapter(&xhtml);
         if blocks.is_empty() {
             continue;
         }
-        let title = title.unwrap_or_else(|| full_path.clone());
+        let title = heading
+            .or_else(|| toc.get(&full_path).cloned())
+            .or(head_title)
+            .unwrap_or_else(|| full_path.clone());
 
         let mut paragraphs = Vec::new();
         let mut cursor = 0usize;
@@ -119,8 +129,8 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
     }
 
     Ok(ParsedBook {
-        title,
-        author,
+        title: opf.title,
+        author: opf.author,
         chapters,
     })
 }
@@ -148,10 +158,11 @@ fn extract_opf_path(container_xml: &str) -> Result<String> {
     ))
 }
 
-/// A manifest `<item>`: its path relative to the OPF, and its
-/// space-separated `properties` (empty if absent).
+/// A manifest `<item>`: its path relative to the OPF, its `media-type`,
+/// and its space-separated `properties` (empty if absent).
 struct ManifestItem {
     href: String,
+    media_type: String,
     properties: String,
 }
 
@@ -163,13 +174,16 @@ impl ManifestItem {
     }
 }
 
-/// (manifest id->item, spine idrefs in order, title, author)
-type Opf = (
-    HashMap<String, ManifestItem>,
-    Vec<String>,
-    Option<String>,
-    Option<String>,
-);
+struct Opf {
+    /// Manifest id -> item.
+    manifest: HashMap<String, ManifestItem>,
+    /// Spine idrefs in reading order.
+    spine: Vec<String>,
+    /// The spine's `toc` attribute: the NCX's manifest id.
+    toc_id: Option<String>,
+    title: Option<String>,
+    author: Option<String>,
+}
 
 fn parse_opf(opf_xml: &str) -> Result<Opf> {
     let mut reader = Reader::from_str(opf_xml);
@@ -178,6 +192,7 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
 
     let mut manifest = HashMap::new();
     let mut spine = Vec::new();
+    let mut toc_id = None;
     let mut title = None;
     let mut author = None;
     let mut in_title_tag = false;
@@ -192,17 +207,33 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                     "item" => {
                         let mut id = None;
                         let mut href = None;
+                        let mut media_type = String::new();
                         let mut properties = String::new();
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"id" => id = Some(attr.unescape_value()?.to_string()),
                                 b"href" => href = Some(attr.unescape_value()?.to_string()),
+                                b"media-type" => media_type = attr.unescape_value()?.to_string(),
                                 b"properties" => properties = attr.unescape_value()?.to_string(),
                                 _ => {}
                             }
                         }
                         if let (Some(id), Some(href)) = (id, href) {
-                            manifest.insert(id, ManifestItem { href, properties });
+                            manifest.insert(
+                                id,
+                                ManifestItem {
+                                    href,
+                                    media_type,
+                                    properties,
+                                },
+                            );
+                        }
+                    }
+                    "spine" => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"toc" {
+                                toc_id = Some(attr.unescape_value()?.to_string());
+                            }
                         }
                     }
                     "itemref" => {
@@ -242,7 +273,13 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
         buf.clear();
     }
 
-    Ok((manifest, spine, title, author))
+    Ok(Opf {
+        manifest,
+        spine,
+        toc_id,
+        title,
+        author,
+    })
 }
 
 #[cfg(test)]
@@ -258,7 +295,7 @@ mod opf_tests {
             <item id="navish" href="navish.xhtml" properties="navigation"/>
             <item id="ch1" href="ch1.xhtml"/>
         </manifest></package>"#;
-        let (manifest, ..) = parse_opf(opf).unwrap();
+        let manifest = parse_opf(opf).unwrap().manifest;
         let is_nav = |id: &str| manifest[id].is_nav();
         assert!(is_nav("nav"));
         assert!(is_nav("toc"));
@@ -267,6 +304,238 @@ mod opf_tests {
         assert!(!is_nav("ch1"));
         assert_eq!(manifest["ch1"].href, "ch1.xhtml");
     }
+}
+
+const NCX_MEDIA_TYPE: &str = "application/x-dtbncx+xml";
+
+/// Parses a TOC file into `(href, label)` pairs in document order.
+type TocParser = fn(&str) -> Vec<(String, String)>;
+
+/// Full zip path of each file the table of contents names -> its first
+/// label. Reads the EPUB 3 nav document if there is one and it has any
+/// entries, else the EPUB 2 NCX. A missing or unreadable TOC gives an
+/// empty map: titles then fall back to `<head><title>`.
+fn toc_titles<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    opf_dir: &str,
+    opf: &Opf,
+) -> HashMap<String, String> {
+    let nav = opf.manifest.values().find(|item| item.is_nav());
+    let ncx = opf
+        .toc_id
+        .as_ref()
+        .and_then(|id| opf.manifest.get(id))
+        .or_else(|| {
+            opf.manifest
+                .values()
+                .find(|item| item.media_type == NCX_MEDIA_TYPE)
+        });
+    let sources: [(Option<&ManifestItem>, TocParser); 2] = [(nav, parse_nav_toc), (ncx, parse_ncx)];
+
+    for (item, parse) in sources {
+        let Some(item) = item else { continue };
+        let path = resolve_href(opf_dir, &item.href);
+        let mut xml = String::new();
+        let Ok(mut file) = zip.by_name(&path) else {
+            continue;
+        };
+        if file.read_to_string(&mut xml).is_err() {
+            continue;
+        }
+        let toc_dir = path.rsplit_once('/').map_or("", |(dir, _)| dir);
+        let mut titles = HashMap::new();
+        for (href, label) in parse(&xml) {
+            titles.entry(resolve_href(toc_dir, &href)).or_insert(label);
+        }
+        if !titles.is_empty() {
+            return titles;
+        }
+    }
+    HashMap::new()
+}
+
+/// `(href, label)` for each link in the nav document's `toc` nav (the
+/// `<nav>` whose `epub:type` includes `toc`), in document order. Other
+/// navs such as `landmarks` and `page-list` are ignored, as are links
+/// with no href or an empty label.
+fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
+    let mut reader = Reader::from_str(xml);
+    reader.check_end_names(false);
+    let mut buf = Vec::new();
+    let mut entries = Vec::new();
+    // Depth of nested `<nav>`s, and the depth at which the toc nav opened.
+    let mut nav_depth = 0usize;
+    let mut toc_depth = None;
+    // The open link's href and label so far.
+    let mut link: Option<(String, String)> = None;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => match local_name(e.name().as_ref()) {
+                "nav" => {
+                    nav_depth += 1;
+                    let is_toc = e.attributes().flatten().any(|attr| {
+                        local_name(attr.key.as_ref()) == "type"
+                            && attr
+                                .unescape_value()
+                                .is_ok_and(|v| v.split_ascii_whitespace().any(|t| t == "toc"))
+                    });
+                    if is_toc && toc_depth.is_none() {
+                        toc_depth = Some(nav_depth);
+                    }
+                }
+                "a" if toc_depth.is_some() => {
+                    link = e
+                        .attributes()
+                        .flatten()
+                        .find(|attr| attr.key.as_ref() == b"href")
+                        .and_then(|attr| attr.unescape_value().ok())
+                        .map(|href| (href.into_owned(), String::new()));
+                }
+                _ => {}
+            },
+            Ok(Event::Text(e)) => {
+                if let (Some((_, label)), Ok(text)) = (link.as_mut(), e.unescape()) {
+                    label.push_str(&text);
+                }
+            }
+            Ok(Event::End(e)) => match local_name(e.name().as_ref()) {
+                "nav" => {
+                    if toc_depth == Some(nav_depth) {
+                        toc_depth = None;
+                    }
+                    nav_depth = nav_depth.saturating_sub(1);
+                }
+                "a" => {
+                    if let Some((href, label)) = link.take() {
+                        let label = normalize_whitespace(&label);
+                        if !label.is_empty() {
+                            entries.push((href, label));
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    entries
+}
+
+/// `(src, label)` for each `navPoint` in an NCX, in document order, from
+/// its `navLabel/text` and `content src`. A nested navPoint comes after
+/// its parent, so a file's first entry is its outermost one. Entries with
+/// no src or an empty label are dropped.
+fn parse_ncx(xml: &str) -> Vec<(String, String)> {
+    let mut reader = Reader::from_str(xml);
+    reader.check_end_names(false);
+    let mut buf = Vec::new();
+    // One (label, src) per open navPoint. An entry is emitted once both
+    // are known, which is at the parent's `<content>`, before any child.
+    let mut open: Vec<(String, Option<String>, bool)> = Vec::new();
+    let mut in_label_text = false;
+    let mut entries = Vec::new();
+
+    fn emit(entry: &mut (String, Option<String>, bool), out: &mut Vec<(String, String)>) {
+        let (label, src, emitted) = entry;
+        if *emitted {
+            return;
+        }
+        if let Some(src) = src {
+            *emitted = true;
+            let label = normalize_whitespace(label);
+            if !label.is_empty() {
+                out.push((src.clone(), label));
+            }
+        }
+    }
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "navPoint" => {
+                open.push((String::new(), None, false));
+            }
+            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "text" => {
+                in_label_text = !open.is_empty();
+            }
+            Ok(Event::Start(e) | Event::Empty(e)) if local_name(e.name().as_ref()) == "content" => {
+                let src = e
+                    .attributes()
+                    .flatten()
+                    .find(|attr| attr.key.as_ref() == b"src")
+                    .and_then(|attr| attr.unescape_value().ok())
+                    .map(|src| src.into_owned());
+                if let Some(entry) = open.last_mut() {
+                    if entry.1.is_none() {
+                        entry.1 = src;
+                    }
+                    emit(entry, &mut entries);
+                }
+            }
+            Ok(Event::Text(e)) if in_label_text => {
+                if let (Some(entry), Ok(text)) = (open.last_mut(), e.unescape()) {
+                    if !entry.2 {
+                        entry.0.push_str(&text);
+                    }
+                }
+            }
+            Ok(Event::End(e)) => match local_name(e.name().as_ref()) {
+                "text" => in_label_text = false,
+                "navPoint" => {
+                    if let Some(mut entry) = open.pop() {
+                        emit(&mut entry, &mut entries);
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    entries
+}
+
+/// Resolves an href from a file in `base_dir` to a full zip path: drops
+/// the `#fragment`, decodes `%XX` escapes and resolves `.`/`..` segments.
+/// Spine paths go through this too, so both sides compare equal.
+fn resolve_href(base_dir: &str, href: &str) -> String {
+    let href = href.split('#').next().unwrap_or("");
+    let href = percent_decode(href);
+    let mut segments: Vec<&str> = base_dir.split('/').filter(|s| !s.is_empty()).collect();
+    for segment in href.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            s => segments.push(s),
+        }
+    }
+    segments.join("/")
+}
+
+/// Decodes `%XX` escapes; a `%` not followed by two hex digits is kept
+/// as is, and invalid UTF-8 is replaced.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Strips an XML namespace prefix, e.g. "dc:title" -> "title".
@@ -297,9 +566,19 @@ fn is_block(name: &str) -> bool {
     BLOCK_TAGS.contains(&name)
 }
 
-/// Walks a chapter's XHTML and returns `(is_heading, text)` per paragraph,
-/// with inline whitespace normalized. `is_heading` is true only for
-/// `<h1>`/`<h2>`.
+/// A chapter's paragraphs and its title candidates from its own markup.
+struct ChapterText {
+    /// `(is_heading, text)` per paragraph; `is_heading` is true only for
+    /// `<h1>`/`<h2>`.
+    blocks: Vec<(bool, String)>,
+    /// The first `<h1>`/`<h2>`.
+    heading: Option<String>,
+    /// The document's non-empty `<head><title>`.
+    head_title: Option<String>,
+}
+
+/// Walks a chapter's XHTML and returns its paragraphs, with inline
+/// whitespace normalized.
 ///
 /// A block element that directly contains text (not only inside nested
 /// blocks) is a paragraph and emits all of its text, nested blocks
@@ -308,20 +587,23 @@ fn is_block(name: &str) -> bool {
 /// one paragraph while still splitting a container `<div>` of paragraph
 /// `<div>`s into its children.
 ///
-/// Also returns the chapter's title: its first `<h1>`/`<h2>`, else the
-/// document's `<head><title>`, else `None` (the caller falls back to the
-/// file path). Front matter such as a half-title page often has no heading
-/// but does have a `<title>`.
-fn extract_chapter(xhtml: &str) -> (Vec<(bool, String)>, Option<String>) {
+/// Also returns the chapter's first `<h1>`/`<h2>` and its `<head><title>`
+/// separately; `parse_epub` puts the book's TOC label between them. Front
+/// matter such as a half-title page often has no heading but does have a
+/// `<title>`.
+fn extract_chapter(xhtml: &str) -> ChapterText {
     let tree = build_tree(xhtml);
-    let mut paragraphs = Vec::new();
-    collect_paragraphs(&tree, &mut paragraphs);
-    let title = paragraphs
+    let mut blocks = Vec::new();
+    collect_paragraphs(&tree, &mut blocks);
+    let heading = blocks
         .iter()
         .find(|(is_heading, _)| *is_heading)
-        .map(|(_, text)| text.clone())
-        .or_else(|| head_title(&tree));
-    (paragraphs, title)
+        .map(|(_, text)| text.clone());
+    ChapterText {
+        blocks,
+        heading,
+        head_title: head_title(&tree),
+    }
 }
 
 /// The non-empty text of `<html><head><title>`. Only `html` and `head` are
@@ -500,11 +782,13 @@ mod tests {
     use super::extract_chapter;
 
     fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
-        extract_chapter(xhtml).0
+        extract_chapter(xhtml).blocks
     }
 
+    /// The title from the chapter's own markup: heading, else head title.
     fn title(xhtml: &str) -> Option<String> {
-        extract_chapter(xhtml).1
+        let chapter = extract_chapter(xhtml);
+        chapter.heading.or(chapter.head_title)
     }
 
     #[test]
@@ -639,5 +923,179 @@ mod tests {
         let xhtml = "<html><head></head><body><svg><title>Cover image</title></svg>\
                      <p>text</p></body></html>";
         assert_eq!(title(xhtml), None);
+    }
+}
+
+#[cfg(test)]
+mod toc_tests {
+    use super::{parse_epub, parse_nav_toc, parse_ncx, resolve_href};
+    use std::io::Write;
+
+    fn pairs(entries: &[(&str, &str)]) -> Vec<(String, String)> {
+        entries
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn nav_toc_reads_only_the_toc_nav() {
+        let xml = r#"<html xmlns:epub="http://www.idpf.org/2007/ops"><body>
+            <nav epub:type="landmarks"><ol>
+                <li><a href="cover.xhtml">Cover</a></li>
+            </ol></nav>
+            <nav epub:type="toc" id="toc"><ol>
+                <li><a href="ch1.xhtml">1:  The Art
+                    of <em>Transforming</em></a>
+                    <ol><li><a href="ch1.xhtml#s1">Section</a></li></ol></li>
+                <li><a href="ch2.xhtml"> </a></li>
+                <li><a href="ch3.xhtml">Three</a></li>
+            </ol></nav>
+            <nav epub:type="page-list"><ol>
+                <li><a href="ch1.xhtml#p1">1</a></li>
+            </ol></nav>
+        </body></html>"#;
+        assert_eq!(
+            parse_nav_toc(xml),
+            pairs(&[
+                ("ch1.xhtml", "1: The Art of Transforming"),
+                ("ch1.xhtml#s1", "Section"),
+                ("ch3.xhtml", "Three"),
+            ])
+        );
+    }
+
+    #[test]
+    fn ncx_lists_nested_nav_points_parent_first() {
+        let xml = r#"<ncx><navMap>
+            <navPoint id="n1" playOrder="1">
+                <navLabel><text>Chapter  1</text></navLabel>
+                <content src="c01.html"/>
+                <navPoint id="n2" playOrder="2">
+                    <navLabel><text>Section</text></navLabel>
+                    <content src="c01.html#h1"/>
+                </navPoint>
+            </navPoint>
+            <navPoint id="n3" playOrder="3">
+                <navLabel><text>Chapter 2</text></navLabel>
+                <content src="c02.html"></content>
+            </navPoint>
+        </navMap></ncx>"#;
+        assert_eq!(
+            parse_ncx(xml),
+            pairs(&[
+                ("c01.html", "Chapter 1"),
+                ("c01.html#h1", "Section"),
+                ("c02.html", "Chapter 2"),
+            ])
+        );
+    }
+
+    #[test]
+    fn resolve_href_normalizes_paths() {
+        assert_eq!(
+            resolve_href("OEBPS", "xhtml/Ch%201.xhtml#ch1"),
+            "OEBPS/xhtml/Ch 1.xhtml"
+        );
+        assert_eq!(
+            resolve_href("OEBPS/nav", "../Text/a.html"),
+            "OEBPS/Text/a.html"
+        );
+        assert_eq!(resolve_href("", "./a.html"), "a.html");
+        assert_eq!(resolve_href("", "100%.html"), "100%.html");
+    }
+
+    /// Writes an EPUB with the given files (besides container.xml) to a
+    /// temp path.
+    fn write_epub(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("pitaka-{name}-{}.epub", std::process::id()));
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let options = zip::write::FileOptions::default();
+        let container = r#"<container><rootfiles>
+            <rootfile full-path="OEBPS/content.opf"/>
+        </rootfiles></container>"#;
+        for (file, content) in [("META-INF/container.xml", container)].iter().chain(files) {
+            zip.start_file(*file, options).unwrap();
+            zip.write_all(content.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        path
+    }
+
+    fn chapter(head_title: &str, body: &str) -> String {
+        format!("<html><head><title>{head_title}</title></head><body>{body}</body></html>")
+    }
+
+    fn titles(path: &std::path::Path) -> Vec<String> {
+        let book = parse_epub(path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(path).unwrap();
+        book.chapters.into_iter().map(|c| c.title).collect()
+    }
+
+    const OPF: &str = r#"<package><manifest>
+        <item id="nav" href="nav/nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+        <item id="h" href="Text/heading.xhtml" media-type="application/xhtml+xml"/>
+        <item id="d" href="Text/div%20heading.xhtml" media-type="application/xhtml+xml"/>
+        <item id="n" href="Text/none.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine toc="ncx">
+        <itemref idref="nav"/><itemref idref="h"/><itemref idref="d"/><itemref idref="n"/>
+    </spine></package>"#;
+
+    const NCX: &str = r#"<ncx><navMap>
+        <navPoint><navLabel><text>NCX heading</text></navLabel>
+            <content src="Text/heading.xhtml"/></navPoint>
+        <navPoint><navLabel><text>NCX div</text></navLabel>
+            <content src="Text/div%20heading.xhtml#top"/></navPoint>
+    </navMap></ncx>"#;
+
+    #[test]
+    fn heading_then_toc_then_head_title() {
+        let nav = r#"<html><body><nav epub:type="toc"><ol>
+            <li><a href="../Text/heading.xhtml">Nav heading</a></li>
+            <li><a href="../Text/div%20heading.xhtml">1: The Art of Transforming Suffering</a></li>
+        </ol></nav></body></html>"#;
+        let path = write_epub(
+            "precedence",
+            &[
+                ("OEBPS/content.opf", OPF),
+                ("OEBPS/nav/nav.xhtml", nav),
+                ("OEBPS/toc.ncx", NCX),
+                (
+                    "OEBPS/Text/heading.xhtml",
+                    &chapter("Book", "<h2>Chapter One</h2><p>x</p>"),
+                ),
+                (
+                    "OEBPS/Text/div heading.xhtml",
+                    &chapter("Book", r#"<div class="ct">1 The Art</div><p>x</p>"#),
+                ),
+                ("OEBPS/Text/none.xhtml", &chapter("Half Title", "<p>x</p>")),
+            ],
+        );
+        assert_eq!(
+            titles(&path),
+            [
+                "Chapter One",
+                "1: The Art of Transforming Suffering",
+                "Half Title"
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_nav_falls_back_to_ncx() {
+        let nav = r#"<html><body><nav epub:type="toc"><ol></ol></nav></body></html>"#;
+        let path = write_epub(
+            "ncx-fallback",
+            &[
+                ("OEBPS/content.opf", OPF),
+                ("OEBPS/nav/nav.xhtml", nav),
+                ("OEBPS/toc.ncx", NCX),
+                ("OEBPS/Text/heading.xhtml", &chapter("Book", "<p>x</p>")),
+                ("OEBPS/Text/div heading.xhtml", &chapter("Book", "<p>x</p>")),
+                ("OEBPS/Text/none.xhtml", &chapter("Half Title", "<p>x</p>")),
+            ],
+        );
+        assert_eq!(titles(&path), ["NCX heading", "NCX div", "Half Title"]);
     }
 }
