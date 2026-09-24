@@ -9,38 +9,19 @@ import type {
   SemanticIndexProgress,
 } from "./types";
 
-type Props = {
-  onOpenBook: (bookId: number) => void;
-  /** Called after a book is added or removed, so a kept search can re-run. */
-  onLibraryChanged: () => void;
-};
+/** The latest indexing event; see `useIndexing`. */
+export type Indexing =
+  | ({ kind: "progress" } & SemanticIndexProgress)
+  | ({ kind: "failed" } & SemanticIndexFailed)
+  | null;
 
-function BooksView({ onOpenBook, onLibraryChanged }: Props) {
-  const [importStatus, setImportStatus] = useState("");
-  const [books, setBooks] = useState<BookSummary[] | null>(null);
-  // The latest indexing event: a book imported now is indexed for chapter
-  // search in the background, which takes minutes.
-  const [indexing, setIndexing] = useState<
-    | ({ kind: "progress" } & SemanticIndexProgress)
-    | ({ kind: "failed" } & SemanticIndexFailed)
-    | null
-  >(null);
-
-  async function refreshBooks() {
-    try {
-      setBooks(await invoke<BookSummary[]>("list_books"));
-    } catch (err) {
-      setImportStatus(`Loading library failed: ${err}`);
-    }
-  }
-
-  // Remounted on every visit, including on return from the reader.
-  useEffect(() => {
-    refreshBooks();
-  }, []);
-
-  // Only while this screen shows; a run still going when it's reopened
-  // shows again at its next chapter.
+/**
+ * Follows the background indexing that runs after an import, which takes
+ * minutes. Called from App, which stays mounted, so the Books screen shows
+ * where a run is up to on every visit, not just once its next chapter ends.
+ */
+export function useIndexing() {
+  const [indexing, setIndexing] = useState<Indexing>(null);
   useEffect(() => {
     const unlisteners = [
       listen<SemanticIndexProgress>("semantic_index_progress", (e) =>
@@ -53,6 +34,36 @@ function BooksView({ onOpenBook, onLibraryChanged }: Props) {
     return () => {
       for (const unlisten of unlisteners) unlisten.then((f) => f());
     };
+  }, []);
+  // Once the Books screen has shown a finished or failed run, it's done with.
+  function dismissFinished() {
+    setIndexing((prev) => (prev?.kind === "progress" && prev.done < prev.total ? prev : null));
+  }
+  return { indexing, dismissFinished };
+}
+
+type Props = {
+  onOpenBook: (bookId: number) => void;
+  /** Called after a book is added or removed, so a kept search can re-run. */
+  onLibraryChanged: () => void;
+  indexing: Indexing;
+};
+
+function BooksView({ onOpenBook, onLibraryChanged, indexing }: Props) {
+  const [importStatus, setImportStatus] = useState("");
+  const [books, setBooks] = useState<BookSummary[] | null>(null);
+
+  async function refreshBooks() {
+    try {
+      setBooks(await invoke<BookSummary[]>("list_books"));
+    } catch (err) {
+      setImportStatus(`Loading library failed: ${err}`);
+    }
+  }
+
+  // Remounted on every visit, including on return from the reader.
+  useEffect(() => {
+    refreshBooks();
   }, []);
 
   function indexingLine() {

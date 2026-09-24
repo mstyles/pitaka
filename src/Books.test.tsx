@@ -117,4 +117,35 @@ describe("indexing for chapter search", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/1\/3 chapters/)).toBeNull();
   });
+
+  it("still shows a run's progress after leaving and coming back", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+
+    await goTo(user, "Search");
+    await act(() => indexingEvents.progress({ book_id: 2, done: 2, total: 3 }));
+    await goTo(user, "Books");
+    expect(
+      await screen.findByText(`Indexing ${LONG_BOOK} for chapter search… 2/3 chapters`),
+    ).toBeTruthy();
+  });
+
+  it("shows a run that finished while away once, then drops it", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3 }));
+
+    await goTo(user, "Search");
+    await act(() => indexingEvents.progress({ book_id: 2, done: 3, total: 3 }));
+    await goTo(user, "Books");
+    expect(await screen.findByText(`Indexed ${LONG_BOOK} for chapter search`)).toBeTruthy();
+
+    await goTo(user, "Search");
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    expect(screen.queryByText(/for chapter search/)).toBeNull();
+  });
 });

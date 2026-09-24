@@ -136,7 +136,7 @@ As built, stage 5 differs in five ways, all so that minutes of indexing can't st
 As built, stage 6 adds to this:
 - **Changing scope re-runs the query in the new scope**, as ticking "Exact words" already does, and clears the other scope's results rather than showing them under a query they weren't for.
 - **The "{indexed} of {total}" line shows only in the chapters scope**, and before any search too; passage search covers every book, so it has nothing to say there. The status is re-read on each visit and after each chapter search, since books finish indexing in the background.
-- **A finished run says "Indexed {title} for chapter search"** instead of leaving "{total}/{total} chapters" on screen. The Books screen listens only while it's showing; a run still going when it's reopened reappears at its next chapter.
+- **A finished run says "Indexed {title} for chapter search"** instead of leaving "{total}/{total} chapters" on screen. The events are followed in `App`, which stays mounted, so the Books screen shows where a run is up to on every visit. A finished or failed run's line stays until the Books screen has been left once, so one that ends while you're elsewhere is still shown.
 - **Results count as "{n} chapters"**, not "results", so the two scopes can't be mistaken for each other at a glance.
 
 ## 7. Fixtures and the mock: `src/test/mockBackend.ts`, `src/test/fixtures/library.json`
