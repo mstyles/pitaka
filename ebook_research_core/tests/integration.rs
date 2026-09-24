@@ -512,3 +512,50 @@ fn the_model_discriminates_unrelated_text() {
     assert!(!single.truncated);
     assert!(embedder.embed(&"word ".repeat(700)).unwrap().truncated);
 }
+
+/// Indexes the demo book end to end: every chapter is embedded or skipped,
+/// progress counts up to the chapter total, the rows carry the model and
+/// its dimension, and indexing again replaces rows rather than adding them.
+/// The demo book, not `test.epub`, whose chapters are too short to index.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model"]
+fn indexes_a_book_for_semantic_search() {
+    use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_REPO};
+
+    let mut conn = open_db(":memory:").unwrap();
+    let book_id = import_book(&mut conn, "../demo/verses-of-the-senior-nuns.epub")
+        .unwrap()
+        .book_id;
+    let chapters = db::get_book_chapters(&conn, book_id).unwrap().len();
+    let embedder = Embedder::load().expect("load failed");
+
+    let mut calls = Vec::new();
+    let started = std::time::Instant::now();
+    let report = index_book(&mut conn, book_id, &embedder, &mut |done, total| {
+        calls.push((done, total))
+    })
+    .unwrap();
+
+    eprintln!("{report:?} in {:.1?}", started.elapsed());
+    assert_eq!(report.chapters + report.skipped, chapters, "{report:?}");
+    // Chapter 2 is a single verse, under the length floor.
+    assert!(report.chapters > 0 && report.skipped > 0, "{report:?}");
+    assert_eq!(report.truncated, 0, "{report:?}");
+    let expected: Vec<(usize, usize)> = (0..=chapters).map(|done| (done, chapters)).collect();
+    assert_eq!(calls, expected);
+
+    let rows = |conn: &Connection| -> (usize, i64, String) {
+        conn.query_row(
+            "SELECT COUNT(*), MIN(dim), MIN(model) FROM chunk_embeddings WHERE book_id = ?1",
+            [book_id],
+            |r| Ok((r.get::<_, i64>(0)? as usize, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+    };
+    assert_eq!(rows(&conn), (report.chunks, 384, MODEL_REPO.to_string()));
+
+    let again = index_book(&mut conn, book_id, &embedder, &mut |_, _| {}).unwrap();
+    assert_eq!(again, report);
+    assert_eq!(rows(&conn).0, report.chunks);
+}

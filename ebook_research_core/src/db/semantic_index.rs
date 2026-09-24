@@ -4,10 +4,17 @@
 //! feature; the ranking here works on vectors alone.
 
 use super::ContentBlockRow;
-use crate::semantic::blob_to_vec;
+use crate::semantic::{blob_to_vec, vec_to_blob};
 use anyhow::{bail, Result};
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
+use serde::Serialize;
 use std::collections::HashMap;
+
+#[cfg(feature = "semantic")]
+use {
+    super::{get_book_chapters, get_chapter_content},
+    crate::semantic::{chunks, is_indexable, Embedder, MODEL_REPO},
+};
 
 /// The score a chapter must reach to be returned at all. Cosine similarity
 /// always ranks something first, so without a floor "No results" could
@@ -89,6 +96,138 @@ pub(crate) fn block_at(blocks: &[ContentBlockRow], char_start: usize) -> Option<
     }
     blocks.last().map(|b| b.id)
 }
+
+/// What [`index_book`] did with a book's chapters.
+#[derive(Debug, Default, Clone, PartialEq, Serialize)]
+pub struct IndexReport {
+    /// Chapters that now have embeddings.
+    pub chapters: usize,
+    /// Chapters `is_indexable` turned away: contents pages, indexes and
+    /// other near-empty front and back matter.
+    pub skipped: usize,
+    pub chunks: usize,
+    /// Chunks longer than the model's 512 tokens, whose tails weren't
+    /// embedded. Zero on this library; non-zero means a denser text than
+    /// the chunk size assumes.
+    pub truncated: usize,
+}
+
+/// One chunk ready to store: its char offsets in the chapter text and its
+/// unit vector.
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+pub(crate) struct StoredChunk {
+    pub char_start: usize,
+    pub char_end: usize,
+    pub vec: Vec<f32>,
+}
+
+/// Replaces a chapter's embeddings with `chunks` in one transaction, so an
+/// indexing run stopped partway leaves every chapter either complete or
+/// untouched, and indexing a chapter again doesn't duplicate its rows.
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+pub(crate) fn store_chapter(
+    conn: &mut Connection,
+    book_id: i64,
+    chapter_id: i64,
+    model: &str,
+    chunks: &[StoredChunk],
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "DELETE FROM chunk_embeddings WHERE chapter_id = ?1",
+        params![chapter_id],
+    )?;
+    {
+        let mut insert = tx.prepare(
+            "INSERT INTO chunk_embeddings
+             (chapter_id, book_id, chunk_idx, char_start, char_end, model, dim, vec)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )?;
+        for (idx, chunk) in chunks.iter().enumerate() {
+            insert.execute(params![
+                chapter_id,
+                book_id,
+                idx as i64,
+                chunk.char_start as i64,
+                chunk.char_end as i64,
+                model,
+                chunk.vec.len() as i64,
+                vec_to_blob(&chunk.vec),
+            ])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Embeds a book's chapters for semantic search, replacing any embeddings
+/// they already have. Run after the import has committed, never inside it:
+/// at a quarter of a second per chunk a book takes minutes, and holding the
+/// import's write lock that long would block the whole library. Each
+/// chapter is embedded before its transaction opens and committed on its
+/// own, so a run can be stopped at any point and keep what it finished.
+/// `progress(done, total)` is called once before the first chapter and
+/// after each one, skipped chapters included.
+#[cfg(feature = "semantic")]
+pub fn index_book(
+    conn: &mut Connection,
+    book_id: i64,
+    embedder: &Embedder,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<IndexReport> {
+    let chapters = get_book_chapters(conn, book_id)?;
+    let total = chapters.len();
+    let mut report = IndexReport::default();
+    progress(0, total);
+    for (done, chapter) in chapters.iter().enumerate() {
+        let texts: Vec<String> = get_chapter_content(conn, chapter.id)?
+            .blocks
+            .into_iter()
+            .map(|block| block.text)
+            .collect();
+        if !is_indexable(&texts) {
+            report.skipped += 1;
+            progress(done + 1, total);
+            continue;
+        }
+        // The same `\n` join `block_at` counts in.
+        let text = texts.join("\n");
+        let spans = chunks(&text);
+        // Byte offsets of every char, and of the end, to slice by char.
+        let bytes: Vec<usize> = text
+            .char_indices()
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .collect();
+        let mut stored = Vec::with_capacity(spans.len());
+        for batch in spans.chunks(EMBED_BATCH) {
+            let slices: Vec<&str> = batch
+                .iter()
+                .map(|&(start, end)| &text[bytes[start]..bytes[end]])
+                .collect();
+            for (&(char_start, char_end), embedding) in
+                batch.iter().zip(embedder.embed_batch(&slices)?)
+            {
+                report.truncated += usize::from(embedding.truncated);
+                stored.push(StoredChunk {
+                    char_start,
+                    char_end,
+                    vec: embedding.vec,
+                });
+            }
+        }
+        store_chapter(conn, book_id, chapter.id, MODEL_REPO, &stored)?;
+        report.chapters += 1;
+        report.chunks += stored.len();
+        progress(done + 1, total);
+    }
+    Ok(report)
+}
+
+/// Chunks per forward pass. Batching doesn't speed up the CPU backend, so
+/// this only bounds memory on a long chapter.
+#[cfg(feature = "semantic")]
+const EMBED_BATCH: usize = 8;
 
 #[cfg(test)]
 mod tests {
@@ -207,6 +346,52 @@ mod tests {
             assert_eq!(block_at(&blocks, offset), Some(id), "offset {offset}");
         }
         assert_eq!(block_at(&[], 0), None);
+    }
+
+    #[test]
+    fn storing_a_chapter_replaces_its_rows_atomically() {
+        let mut conn = open_db(":memory:").unwrap();
+        let (book_id, one, two) = two_chapter_book(&mut conn);
+        let chunk = |char_start: usize, vec: [f32; 3]| StoredChunk {
+            char_start,
+            char_end: char_start + 1600,
+            vec: vec.to_vec(),
+        };
+        let rows = |conn: &Connection, chapter_id: i64| -> Vec<(i64, i64, i64)> {
+            conn.prepare(
+                "SELECT chunk_idx, char_start, dim FROM chunk_embeddings
+                 WHERE chapter_id = ?1 ORDER BY chunk_idx",
+            )
+            .unwrap()
+            .query_map([chapter_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+        };
+
+        let first = [chunk(0, [1.0, 0.0, 0.0]), chunk(1400, [0.0, 1.0, 0.0])];
+        store_chapter(&mut conn, book_id, one, "test", &first).unwrap();
+        store_chapter(&mut conn, book_id, two, "test", &first).unwrap();
+        assert_eq!(rows(&conn, one), vec![(0, 0, 3), (1, 1400, 3)]);
+
+        // Indexing again replaces the chapter's rows instead of adding to
+        // them, and leaves the other chapter alone.
+        store_chapter(
+            &mut conn,
+            book_id,
+            one,
+            "test",
+            &[chunk(0, [0.0, 0.0, 1.0])],
+        )
+        .unwrap();
+        assert_eq!(rows(&conn, one), vec![(0, 0, 3)]);
+        assert_eq!(rows(&conn, two).len(), 2);
+
+        // A write that fails partway rolls back the delete too: the missing
+        // book fails the foreign key on insert, after the old rows went.
+        let err = store_chapter(&mut conn, 999, one, "test", &first);
+        assert!(err.is_err());
+        assert_eq!(rows(&conn, one), vec![(0, 0, 3)]);
     }
 
     #[test]

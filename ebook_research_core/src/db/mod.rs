@@ -61,7 +61,9 @@ pub use library::{
     ChapterSummary, ContentBlockRow,
 };
 pub use search::{search, search_with_variants, SearchMode, SearchResult, VariantIndex};
-pub use semantic_index::MIN_SCORE;
+#[cfg(feature = "semantic")]
+pub use semantic_index::index_book;
+pub use semantic_index::{IndexReport, MIN_SCORE};
 
 #[cfg(test)]
 mod tests {
