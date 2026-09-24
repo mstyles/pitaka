@@ -62,8 +62,13 @@ pub use library::{
 };
 pub use search::{search, search_with_variants, SearchMode, SearchResult, VariantIndex};
 #[cfg(feature = "semantic")]
-pub use semantic_index::index_book;
-pub use semantic_index::{IndexReport, MIN_SCORE};
+pub use semantic_index::{index_book, search_chapters};
+// For the evaluation runner, which sweeps the floor and length penalty.
+#[doc(hidden)]
+pub use semantic_index::{rank_chunks, RankedChapter};
+pub use semantic_index::{
+    semantic_status, ChapterMatch, IndexReport, SemanticStatus, LENGTH_PENALTY, MIN_SCORE,
+};
 
 #[cfg(test)]
 mod tests {

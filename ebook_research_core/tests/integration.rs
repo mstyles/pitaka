@@ -559,3 +559,482 @@ fn indexes_a_book_for_semantic_search() {
     assert_eq!(again, report);
     assert_eq!(rows(&conn).0, report.chunks);
 }
+
+/// A thematic query that appears nowhere in the book word for word finds
+/// the chapter about it, and the match opens at a paragraph of that
+/// chapter. The demo book, since `test.epub`'s chapters are too short to
+/// index; found by title, not index.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model"]
+fn semantic_search_finds_a_chapter_by_meaning() {
+    use ebook_research_core::semantic::Embedder;
+    use ebook_research_core::{search_chapters, MIN_SCORE};
+
+    let embedder = Embedder::load().expect("load failed");
+    let db_path =
+        semantic_eval::indexed_copy("demo", semantic_eval::DEMO_EPUB, &embedder, |dest| {
+            let mut conn = open_db(dest).unwrap();
+            import_book(&mut conn, semantic_eval::DEMO_EPUB).unwrap();
+        });
+    let conn = open_db(db_path.to_str().unwrap()).unwrap();
+    let query = "growing old and the body losing its beauty";
+
+    let matches = search_chapters(&conn, query, &embedder, 10).unwrap();
+
+    for m in &matches {
+        eprintln!("{:.3} {:?}: {}", m.score, m.chapter_title, m.preview);
+    }
+    let top = &matches[0];
+    assert_eq!(
+        top.chapter_title.as_deref(),
+        Some("The Book of the Twenties")
+    );
+    assert_eq!(top.book_title.as_deref(), Some("Verses of the Senior Nuns"));
+    assert!(matches.iter().all(|m| m.score >= MIN_SCORE));
+    assert!(matches.windows(2).all(|w| w[0].score >= w[1].score));
+    let content = db::get_chapter_content(&conn, top.chapter_id).unwrap();
+    let text: String = content
+        .blocks
+        .iter()
+        .map(|b| b.text.to_lowercase())
+        .collect();
+    assert!(!text.contains(query), "the query is in the text verbatim");
+    assert!(
+        content.blocks.iter().any(|b| b.id == top.content_block_id),
+        "opens at a paragraph of the chapter"
+    );
+    let preview = top.preview.trim_matches('…');
+    assert!(!preview.is_empty() && preview.len() < 300, "{preview:?}");
+    let first_word = preview.split_whitespace().next().unwrap();
+    assert!(text.contains(&first_word.to_lowercase()), "{preview:?}");
+
+    // A query the book has nothing to do with returns nothing at all.
+    assert_eq!(
+        search_chapters(&conn, "configuring a Kubernetes cluster", &embedder, 10).unwrap(),
+        vec![]
+    );
+}
+
+/// The §8 evaluation runner. Indexes the demo book, and the library named
+/// by `PITAKA_EVAL_DB` against `semantic_eval/local/library.json` when it's
+/// set, then scores every labelled query: recall@5 and nDCG@10 over the
+/// answered ones, and how often a query the books don't answer correctly
+/// comes back empty. Prints each query's top score and the sweeps that
+/// chose `MIN_SCORE` and `LENGTH_PENALTY`, and fails below the bars.
+///
+/// Indexing a library takes minutes, so each indexed copy is kept under
+/// the target dir and reused while it's newer than its source; delete
+/// `target/tmp/semantic_eval` after changing chunking or the model.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model and indexes for minutes"]
+fn semantic_eval() {
+    use ebook_research_core::semantic::Embedder;
+    use ebook_research_core::{LENGTH_PENALTY, MIN_SCORE};
+    use semantic_eval::*;
+
+    let embedder = Embedder::load().expect("load failed");
+
+    let demo_db = indexed_copy("demo", DEMO_EPUB, &embedder, |dest| {
+        let mut conn = open_db(dest).unwrap();
+        import_book(&mut conn, DEMO_EPUB).unwrap();
+    });
+    let demo = EvalSet::load(
+        "demo",
+        demo_db,
+        include_str!("semantic_eval/demo.json"),
+        &embedder,
+    );
+    let demo_score = demo.report(MIN_SCORE, LENGTH_PENALTY);
+    // The bars are the first run's numbers at MIN_SCORE 0.63, so a later
+    // change can't quietly regress them. They're below the plan's proposed
+    // 0.70 and 0.60: the floor rejects off-corpus queries but not plausible
+    // unanswered ones, and this book's scores sit about 0.06 under the
+    // library's, so five answered queries fall under it. Chapter 2 is a
+    // deliberate miss: one verse, under the length floor, never indexed.
+    demo_score.assert_at_least(&Bars {
+        recall_at_5: 0.48,
+        ndcg_at_10: 0.49,
+        no_answer_accuracy: 0.50,
+        max_emptied: 5,
+        max_required_missed: 0,
+    });
+
+    let Ok(source) = std::env::var("PITAKA_EVAL_DB") else {
+        eprintln!("PITAKA_EVAL_DB not set; skipping the local library set");
+        return;
+    };
+    let library_db = indexed_copy("library", &source, &embedder, |dest| {
+        let src = Connection::open_with_flags(&source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
+        src.execute("VACUUM INTO ?1", [dest]).unwrap();
+    });
+    let labels = std::fs::read_to_string("tests/semantic_eval/local/library.json")
+        .expect("PITAKA_EVAL_DB is set but tests/semantic_eval/local/library.json is missing");
+    let library = EvalSet::load("library", library_db, &labels, &embedder);
+    let library_score = library.report(MIN_SCORE, LENGTH_PENALTY);
+    // The first run's numbers at MIN_SCORE 0.63. The bare term "anatta"
+    // misses the chapter using it most; single Pali terms are keyword
+    // search's job.
+    library_score.assert_at_least(&Bars {
+        recall_at_5: 0.52,
+        ndcg_at_10: 0.54,
+        no_answer_accuracy: 0.52,
+        max_emptied: 1,
+        max_required_missed: 1,
+    });
+}
+
+#[cfg(feature = "semantic")]
+mod semantic_eval {
+    use ebook_research_core::semantic::Embedder;
+    use ebook_research_core::{db, index_book, open_db};
+    use rusqlite::Connection;
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+
+    pub const DEMO_EPUB: &str = "../demo/verses-of-the-senior-nuns.epub";
+    const FLOORS: [f32; 21] = [
+        0.60, 0.61, 0.62, 0.63, 0.64, 0.65, 0.66, 0.67, 0.68, 0.69, 0.70, 0.71, 0.72, 0.73, 0.74,
+        0.75, 0.76, 0.77, 0.78, 0.79, 0.80,
+    ];
+    const PENALTIES: [f32; 4] = [0.0, 0.005, 0.01, 0.02];
+
+    /// A library DB with every book indexed, built by `create` (which
+    /// writes an unindexed DB to the path it's given) and cached until
+    /// `source` changes.
+    pub fn indexed_copy(
+        name: &str,
+        source: &str,
+        embedder: &Embedder,
+        create: impl FnOnce(&str),
+    ) -> PathBuf {
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("semantic_eval");
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join(format!("{name}.db"));
+        let done = dir.join(format!("{name}.indexed"));
+        let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        if modified(&done) > modified(Path::new(source)) {
+            eprintln!("{name}: reusing the indexed copy at {}", db_path.display());
+            return db_path;
+        }
+        let _ = std::fs::remove_file(&done);
+        let _ = std::fs::remove_file(&db_path);
+        create(db_path.to_str().unwrap());
+        let mut conn = open_db(db_path.to_str().unwrap()).unwrap();
+        for book in db::list_books(&conn).unwrap() {
+            let started = std::time::Instant::now();
+            let report = index_book(&mut conn, book.id, embedder, &mut |_, _| {}).unwrap();
+            eprintln!(
+                "{name}: indexed {:?} in {:.0?}: {report:?}",
+                book.title,
+                started.elapsed()
+            );
+            assert_eq!(report.truncated, 0, "{:?}", book.title);
+        }
+        std::fs::write(&done, "").unwrap();
+        db_path
+    }
+
+    struct Query {
+        text: String,
+        kind: String,
+        pali: bool,
+        /// chapter id → grade
+        relevant: HashMap<i64, u32>,
+        required_in_top_5: Vec<i64>,
+        vec: Vec<f32>,
+    }
+
+    pub struct EvalSet {
+        name: String,
+        conn: Connection,
+        queries: Vec<Query>,
+        /// chapter id → a short label, for printing
+        labels: HashMap<i64, String>,
+    }
+
+    pub struct Bars {
+        pub recall_at_5: f64,
+        pub ndcg_at_10: f64,
+        pub no_answer_accuracy: f64,
+        pub max_emptied: usize,
+        pub max_required_missed: usize,
+    }
+
+    #[derive(Debug, Default)]
+    pub struct Score {
+        name: String,
+        recall_at_5: f64,
+        ndcg_at_10: f64,
+        pali_recall_at_5: f64,
+        /// Unanswered and off-corpus queries that came back empty.
+        no_answer_correct: usize,
+        no_answer_total: usize,
+        /// Off-corpus queries that leaked through the floor; always a bar.
+        off_corpus_leaked: usize,
+        /// Answered queries the floor emptied.
+        emptied: usize,
+        required_missed: Vec<String>,
+    }
+
+    impl Score {
+        fn no_answer_accuracy(&self) -> f64 {
+            self.no_answer_correct as f64 / self.no_answer_total.max(1) as f64
+        }
+
+        pub fn assert_at_least(&self, bars: &Bars) {
+            let failures: Vec<String> = [
+                (self.recall_at_5 < bars.recall_at_5)
+                    .then(|| format!("recall@5 {:.3} < {}", self.recall_at_5, bars.recall_at_5)),
+                (self.ndcg_at_10 < bars.ndcg_at_10)
+                    .then(|| format!("nDCG@10 {:.3} < {}", self.ndcg_at_10, bars.ndcg_at_10)),
+                (self.no_answer_accuracy() < bars.no_answer_accuracy).then(|| {
+                    format!(
+                        "no-answer accuracy {:.3} < {}",
+                        self.no_answer_accuracy(),
+                        bars.no_answer_accuracy
+                    )
+                }),
+                (self.emptied > bars.max_emptied).then(|| {
+                    format!(
+                        "{} answered queries emptied > {}",
+                        self.emptied, bars.max_emptied
+                    )
+                }),
+                (self.required_missed.len() > bars.max_required_missed)
+                    .then(|| format!("required chapters missed: {:?}", self.required_missed)),
+                (self.off_corpus_leaked > 0).then(|| {
+                    format!(
+                        "{} off-corpus queries returned results",
+                        self.off_corpus_leaked
+                    )
+                }),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            assert!(failures.is_empty(), "{}: {failures:?}", self.name);
+        }
+    }
+
+    impl EvalSet {
+        pub fn load(name: &str, db_path: PathBuf, json: &str, embedder: &Embedder) -> Self {
+            let conn = open_db(db_path.to_str().unwrap()).unwrap();
+            let eval: serde_json::Value = serde_json::from_str(json).unwrap();
+            let books = db::list_books(&conn).unwrap();
+            let chapter_id = |book: Option<&str>, idx: u64| -> i64 {
+                let book = match book {
+                    Some(title) => books
+                        .iter()
+                        .find(|b| b.title.as_deref() == Some(title))
+                        .unwrap_or_else(|| panic!("{name}: no book {title:?}")),
+                    None => {
+                        assert_eq!(books.len(), 1, "{name}: label names no book");
+                        &books[0]
+                    }
+                };
+                db::get_book_chapters(&conn, book.id)
+                    .unwrap()
+                    .iter()
+                    .find(|c| c.idx == idx as i64)
+                    .unwrap_or_else(|| panic!("{name}: {:?} has no chapter {idx}", book.title))
+                    .id
+            };
+            let label_id = |label: &serde_json::Value| {
+                chapter_id(
+                    label["book"].as_str(),
+                    label["chapter_idx"].as_u64().unwrap(),
+                )
+            };
+            let queries = eval["queries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|q| {
+                    let text = q["query"].as_str().unwrap().to_string();
+                    Query {
+                        vec: embedder.embed_query(&text).unwrap(),
+                        text,
+                        kind: q["kind"].as_str().unwrap().to_string(),
+                        pali: q["pali"].as_bool().unwrap_or(false),
+                        relevant: q["relevant"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|r| (label_id(r), r["grade"].as_u64().unwrap() as u32))
+                            .collect(),
+                        required_in_top_5: q["required_in_top_5"]
+                            .as_array()
+                            .map(|a| a.iter().map(label_id).collect())
+                            .unwrap_or_default(),
+                    }
+                })
+                .collect();
+            let mut labels = HashMap::new();
+            for (i, book) in books.iter().enumerate() {
+                for chapter in db::get_book_chapters(&conn, book.id).unwrap() {
+                    let prefix = if books.len() > 1 {
+                        format!("B{i}:")
+                    } else {
+                        String::new()
+                    };
+                    labels.insert(chapter.id, format!("{prefix}{}", chapter.idx));
+                }
+            }
+            EvalSet {
+                name: name.to_string(),
+                conn,
+                queries,
+                labels,
+            }
+        }
+
+        /// Every chapter for every query, ranked with `penalty`, unfloored.
+        fn rank_all(&self, penalty: f32) -> Vec<Vec<db::RankedChapter>> {
+            self.queries
+                .iter()
+                .map(|q| db::rank_chunks(&self.conn, &q.vec, f32::NEG_INFINITY, penalty).unwrap())
+                .collect()
+        }
+
+        fn score(&self, ranked: &[Vec<db::RankedChapter>], floor: f32) -> Score {
+            let mut score = Score {
+                name: self.name.clone(),
+                ..Score::default()
+            };
+            let (mut answered, mut pali) = (0, 0);
+            for (q, ranked) in self.queries.iter().zip(ranked) {
+                let kept: Vec<i64> = ranked
+                    .iter()
+                    .filter(|c| c.score >= floor)
+                    .map(|c| c.chapter_id)
+                    .collect();
+                if q.kind != "answered" {
+                    score.no_answer_total += 1;
+                    score.no_answer_correct += usize::from(kept.is_empty());
+                    if q.kind == "off_corpus" {
+                        score.off_corpus_leaked += usize::from(!kept.is_empty());
+                    }
+                    continue;
+                }
+                answered += 1;
+                score.emptied += usize::from(kept.is_empty());
+                let top5 = &kept[..kept.len().min(5)];
+                let hits = top5.iter().filter(|id| q.relevant.contains_key(id)).count();
+                let recall = hits as f64 / q.relevant.len().min(5) as f64;
+                score.recall_at_5 += recall;
+                if q.pali {
+                    pali += 1;
+                    score.pali_recall_at_5 += recall;
+                }
+                let gain = |grade: u32| f64::from((1 << grade) - 1);
+                let dcg: f64 = kept
+                    .iter()
+                    .take(10)
+                    .enumerate()
+                    .map(|(i, id)| {
+                        gain(*q.relevant.get(id).unwrap_or(&0)) / (i as f64 + 2.0).log2()
+                    })
+                    .sum();
+                let mut ideal: Vec<u32> = q.relevant.values().copied().collect();
+                ideal.sort_unstable_by(|a, b| b.cmp(a));
+                let idcg: f64 = ideal
+                    .iter()
+                    .take(10)
+                    .enumerate()
+                    .map(|(i, &g)| gain(g) / (i as f64 + 2.0).log2())
+                    .sum();
+                score.ndcg_at_10 += dcg / idcg;
+                for id in &q.required_in_top_5 {
+                    if !top5.contains(id) {
+                        score
+                            .required_missed
+                            .push(format!("{}: {}", q.text, self.labels[id]));
+                    }
+                }
+            }
+            score.recall_at_5 /= answered.max(1) as f64;
+            score.ndcg_at_10 /= answered.max(1) as f64;
+            score.pali_recall_at_5 /= pali.max(1) as f64;
+            score
+        }
+
+        /// Prints each query's results and both sweeps, and returns the
+        /// score at `floor` and `penalty`.
+        pub fn report(&self, floor: f32, penalty: f32) -> Score {
+            let ranked = self.rank_all(penalty);
+            eprintln!(
+                "\n== {}: floor {floor}, length penalty {penalty} ==",
+                self.name
+            );
+            eprintln!("kind        top1   top 5 (grade, * = relevant)  query");
+            for (q, ranked) in self.queries.iter().zip(&ranked) {
+                let top1 = ranked.iter().map(|c| c.score).fold(f32::MIN, f32::max);
+                let top5: Vec<String> = ranked
+                    .iter()
+                    .filter(|c| c.score >= floor)
+                    .take(5)
+                    .map(|c| match q.relevant.get(&c.chapter_id) {
+                        Some(g) => format!("{}*{g}", self.labels[&c.chapter_id]),
+                        None => self.labels[&c.chapter_id].clone(),
+                    })
+                    .collect();
+                let flag = match (q.kind.as_str(), top1 >= floor) {
+                    ("answered", false) => "EMPTIED",
+                    ("answered", true) => "",
+                    (_, true) => "LEAKED",
+                    (_, false) => "",
+                };
+                eprintln!(
+                    "{:<11} {top1:.3}  {:<28} {}  {flag}",
+                    q.kind,
+                    top5.join(" "),
+                    q.text
+                );
+            }
+
+            eprintln!("\nfloor  no-answer  emptied  recall@5  nDCG@10  (penalty {penalty})");
+            for f in FLOORS {
+                let s = self.score(&ranked, f);
+                eprintln!(
+                    "{f:.2}   {:>2}/{:<2}      {:>2}       {:.3}     {:.3}",
+                    s.no_answer_correct, s.no_answer_total, s.emptied, s.recall_at_5, s.ndcg_at_10
+                );
+            }
+
+            eprintln!("\npenalty  recall@5  nDCG@10  pali recall@5  (floor {floor})  most frequent top-5 chapters (chunks)");
+            for p in PENALTIES {
+                let ranked = self.rank_all(p);
+                let s = self.score(&ranked, floor);
+                let mut counts: HashMap<i64, (usize, usize)> = HashMap::new();
+                for (q, r) in self.queries.iter().zip(&ranked) {
+                    if q.kind == "answered" {
+                        for c in r.iter().filter(|c| c.score >= floor).take(5) {
+                            counts.entry(c.chapter_id).or_insert((0, c.n_chunks)).0 += 1;
+                        }
+                    }
+                }
+                let mut counts: Vec<_> = counts.into_iter().collect();
+                counts.sort_by_key(|&(_, (n, _))| std::cmp::Reverse(n));
+                let frequent: Vec<String> = counts
+                    .iter()
+                    .take(4)
+                    .map(|(id, (n, chunks))| format!("{}×{n} ({chunks})", self.labels[id]))
+                    .collect();
+                eprintln!(
+                    "{p:<7}  {:.3}     {:.3}    {:.3}          {}",
+                    s.recall_at_5,
+                    s.ndcg_at_10,
+                    s.pali_recall_at_5,
+                    frequent.join(", ")
+                );
+            }
+
+            let score = self.score(&ranked, floor);
+            eprintln!("\n{score:?}");
+            score
+        }
+    }
+}

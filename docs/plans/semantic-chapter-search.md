@@ -139,6 +139,22 @@ Labelled queries, so ranking changes are measured rather than judged by eye. Lab
 - **Runner**: `semantic_eval` in `tests/integration.rs`, `#[cfg(feature = "semantic")]` and `#[ignore]`. It indexes the demo EPUB, or copies the library DB named by `PITAKA_EVAL_DB` to a temp file and indexes that, then runs every query and prints recall@5, nDCG@10, "no-answer accuracy" (unanswered and off-corpus queries that correctly return nothing, and answered ones wrongly emptied), and the top-1 score of each query so `MIN_SCORE` can be read off. It fails if the bars below aren't met.
 - **Stage 4 bars (proposed, to confirm with the user once the first run is in)**: on the local set, recall@5 ≥ 0.70 and nDCG@10 ≥ 0.60 over answered queries; at least 80% no-answer accuracy with at most one answered query wrongly emptied; and anatta/non-self queries retrieve the chapter that uses the term most within the top 5. The demo set's bars are set from its first run, so a later change can't quietly regress them.
 
+### Stage 4 results
+The first run of the runner, on the demo book (22 chapters indexed, 107 chunks) and the three-book library (106 chapters, 1,182 chunks), with the silver labels as drafted:
+
+- **Off-corpus queries separate; plausible unanswered ones don't.** No off-corpus query scored above 0.622 on either set. Unanswered library queries scored 0.602–0.726, overlapping answered ones (0.614–0.840); the demo book's answered queries sat about 0.06 lower (0.590–0.783). No floor reaches 80% no-answer accuracy with at most one answered query emptied: 0.73 rejects all 25 library no-answer queries but empties 11 answered ones.
+- **`MIN_SCORE` is 0.63**, chosen at the go/no-go review. It returns nothing for every off-corpus query in both sets, empties 1 answered library query ("ālaya-vijñāna", 0.614) and 5 demo ones, and lets 12 of 15 plausible unanswered library queries through with weak matches.
+- **Ranking is below the proposed bars even without a floor**: library recall@5 0.536 and nDCG@10 0.558 with nothing emptied. The giant *Awakening of the Heart* spine items (131 and 159 chunks) recur unlabelled in the top 5, so some of the gap may be the silver labels.
+- **Single Pali terms are weak** (recall@5 0.33 at 0.63), and bare "anatta" misses the chapter using the term most. Keyword search handles single terms; the frontend should say so rather than the index trying to.
+- **`LENGTH_PENALTY` stays 0.** 0.01 raised library nDCG@10 from 0.451 to 0.479 at the old 0.68 floor but lowered recall@5 from 0.456 to 0.434; 0.005 and 0.02 did no better.
+
+| Set, at 0.63 | recall@5 | nDCG@10 | no-answer | answered emptied |
+|---|---|---|---|---|
+| demo | 0.489 | 0.497 | 5/10 (all 5 off-corpus) | 5 of 24 |
+| library | 0.522 | 0.542 | 13/25 (all 10 off-corpus) | 1 of 27 |
+
+These are now the runner's bars, plus no off-corpus query returning anything, so a later change can't regress them.
+
 ## 9. Tests
 Core unit tests in `semantic.rs` and `db/semantic_index.rs`. **None of tests 1–8 is feature-gated** — they cover the pure logic and the schema, both of which are compiled unconditionally per §2, so all of them run in the default `cargo test -p ebook_research_core` and in CI:
 1. `chunks_cover_the_text_with_overlap` — offsets are contiguous-with-overlap, the last ends at the char length, a 1600-char text is one chunk, a 3000-char one is two, and a text with Pali diacritics (`saṃsāra`, `paṭicca`) chunks without panicking and round-trips through `chars().skip(start).take(end - start)`.

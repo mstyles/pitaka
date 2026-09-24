@@ -3,7 +3,7 @@
 //! Indexing and query embedding need the model, behind the `semantic`
 //! feature; the ranking here works on vectors alone.
 
-use super::ContentBlockRow;
+use super::{get_chapter_content, ContentBlockRow};
 use crate::semantic::{blob_to_vec, vec_to_blob};
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection};
@@ -12,34 +12,58 @@ use std::collections::HashMap;
 
 #[cfg(feature = "semantic")]
 use {
-    super::{get_book_chapters, get_chapter_content},
+    super::get_book_chapters,
     crate::semantic::{chunks, is_indexable, Embedder, MODEL_REPO},
 };
 
 /// The score a chapter must reach to be returned at all. Cosine similarity
 /// always ranks something first, so without a floor "No results" could
-/// never happen. Measured on bge-small against the real library: on-topic
-/// top hits scored 0.703–0.871, off-corpus ones at most 0.660. A starting
-/// value, to be replaced by the one the evaluation sets pick.
-pub const MIN_SCORE: f32 = 0.68;
+/// never happen. Picked on the evaluation sets in `tests/semantic_eval/`:
+/// no off-corpus query scored above 0.622 on either the demo book or a
+/// three-book library, while answered queries reached 0.59–0.84. It does
+/// not reject plausible questions the books don't answer, which scored
+/// 0.60–0.73; no floor separated those without emptying real answers.
+pub const MIN_SCORE: f32 = 0.63;
 
-/// A chapter's best-matching chunk for a query.
-#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+/// How much a chapter's score drops per unit of `ln(chunks)` when ranking.
+/// The best chunk of a 140-chunk chapter has 140 chances to score high, so
+/// max-over-chunks favours long chapters; this can offset that. It only
+/// reorders: the floor applies to the uncorrected score.
+pub const LENGTH_PENALTY: f32 = 0.0;
+
+/// A chapter's best-matching chunk for a query. Public only for the
+/// evaluation runner in `tests/integration.rs`, which sweeps the floor and
+/// the length penalty over [`rank_chunks`].
+#[doc(hidden)]
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct RankedChapter {
+pub struct RankedChapter {
     pub chapter_id: i64,
+    /// The best chunk's cosine similarity, before any length correction.
     pub score: f32,
+    pub n_chunks: usize,
     pub char_start: usize,
     pub char_end: usize,
 }
 
+impl RankedChapter {
+    fn corrected(&self, length_penalty: f32) -> f32 {
+        self.score - length_penalty * (self.n_chunks as f32).ln()
+    }
+}
+
 /// Scores every chapter by its single best chunk against `query`, a unit
-/// vector, and returns those reaching [`MIN_SCORE`], best first. The best
-/// chunk rather than the mean: a long chapter's mean drifts towards the
-/// corpus average while a short front-matter page stays sharp. Brute force
-/// over every row; a large library is tens of thousands of chunks.
-#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
-pub(crate) fn rank_chunks(conn: &Connection, query: &[f32]) -> Result<Vec<RankedChapter>> {
+/// vector, keeps those whose best chunk reaches `min_score`, and orders
+/// them best first after subtracting `length_penalty × ln(chunks)`. The
+/// best chunk rather than the mean: a long chapter's mean drifts towards
+/// the corpus average while a short front-matter page stays sharp. Brute
+/// force over every row; a large library is tens of thousands of chunks.
+#[doc(hidden)]
+pub fn rank_chunks(
+    conn: &Connection,
+    query: &[f32],
+    min_score: f32,
+    length_penalty: f32,
+) -> Result<Vec<RankedChapter>> {
     let mut stmt =
         conn.prepare("SELECT chapter_id, char_start, char_end, dim, vec FROM chunk_embeddings")?;
     let mut rows = stmt.query([])?;
@@ -57,26 +81,28 @@ pub(crate) fn rank_chunks(conn: &Connection, query: &[f32]) -> Result<Vec<Ranked
             );
         }
         let score: f32 = vec.iter().zip(query).map(|(a, b)| a * b).sum();
-        if best.get(&chapter_id).is_some_and(|b| b.score >= score) {
-            continue;
-        }
-        let char_start: i64 = row.get(1)?;
-        let char_end: i64 = row.get(2)?;
-        best.insert(
+        let chapter = best.entry(chapter_id).or_insert(RankedChapter {
             chapter_id,
-            RankedChapter {
-                chapter_id,
-                score,
-                char_start: char_start as usize,
-                char_end: char_end as usize,
-            },
-        );
+            score: f32::NEG_INFINITY,
+            n_chunks: 0,
+            char_start: 0,
+            char_end: 0,
+        });
+        chapter.n_chunks += 1;
+        if score > chapter.score {
+            chapter.score = score;
+            chapter.char_start = row.get::<_, i64>(1)? as usize;
+            chapter.char_end = row.get::<_, i64>(2)? as usize;
+        }
     }
     let mut ranked: Vec<RankedChapter> = best
         .into_values()
-        .filter(|c| c.score >= MIN_SCORE)
+        .filter(|c| c.score >= min_score)
         .collect();
-    ranked.sort_by(|a, b| b.score.total_cmp(&a.score));
+    ranked.sort_by(|a, b| {
+        b.corrected(length_penalty)
+            .total_cmp(&a.corrected(length_penalty))
+    });
     Ok(ranked)
 }
 
@@ -229,6 +255,154 @@ pub fn index_book(
 #[cfg(feature = "semantic")]
 const EMBED_BATCH: usize = 8;
 
+/// A chapter returned by [`search_chapters`]. Deliberately not a
+/// `SearchResult`: there's no highlighted snippet, since nothing matched
+/// word for word, and `score` is a similarity where higher is better, the
+/// opposite of `bm25()`'s rank.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ChapterMatch {
+    pub book_id: i64,
+    pub book_title: Option<String>,
+    pub chapter_id: i64,
+    pub chapter_idx: i64,
+    pub chapter_title: Option<String>,
+    /// The paragraph where the best-matching chunk starts, for the reader
+    /// to open at: some chapters are whole book sections, and opening one
+    /// at the top would land dozens of pages from the match.
+    pub content_block_id: i64,
+    pub score: f32,
+    /// About the first 200 chars of the best-matching chunk, as plain text.
+    pub preview: String,
+}
+
+/// Chapters whose meaning is closest to `query`, best first, at most
+/// `limit` of them. Empty when nothing reaches [`MIN_SCORE`], so a query
+/// the library doesn't answer says so instead of returning its nearest
+/// miss.
+#[cfg(feature = "semantic")]
+pub fn search_chapters(
+    conn: &Connection,
+    query: &str,
+    embedder: &Embedder,
+    limit: i64,
+) -> Result<Vec<ChapterMatch>> {
+    let query = embedder.embed_query(query)?;
+    let mut ranked = rank_chunks(conn, &query, MIN_SCORE, LENGTH_PENALTY)?;
+    ranked.truncate(limit.max(0) as usize);
+    chapter_matches(conn, &ranked)
+}
+
+/// Titles, the paragraph to open at and a preview for ranked chapters.
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+pub(crate) fn chapter_matches(
+    conn: &Connection,
+    ranked: &[RankedChapter],
+) -> Result<Vec<ChapterMatch>> {
+    let mut matches = Vec::with_capacity(ranked.len());
+    for chapter in ranked {
+        let content = get_chapter_content(conn, chapter.chapter_id)?;
+        let book_title: Option<String> = conn.query_row(
+            "SELECT title FROM books WHERE id = ?1",
+            params![content.book_id],
+            |row| row.get(0),
+        )?;
+        let Some(content_block_id) = block_at(&content.blocks, chapter.char_start) else {
+            bail!("chapter {} has embeddings but no text", chapter.chapter_id);
+        };
+        let text = content
+            .blocks
+            .iter()
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        matches.push(ChapterMatch {
+            book_id: content.book_id,
+            book_title,
+            chapter_id: chapter.chapter_id,
+            chapter_idx: content.chapter_idx,
+            chapter_title: content.chapter_title,
+            content_block_id,
+            score: chapter.score,
+            preview: preview(&text, chapter.char_start, chapter.char_end),
+        });
+    }
+    Ok(matches)
+}
+
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+const PREVIEW_CHARS: usize = 200;
+
+/// Up to [`PREVIEW_CHARS`] of `text[char_start..char_end]`, counted in
+/// chars, with whitespace collapsed. Chunks start and end mid-word, so a
+/// partial first word is dropped, the end is cut back to a word boundary,
+/// and an ellipsis marks each side that continues.
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+fn preview(text: &str, char_start: usize, char_end: usize) -> String {
+    let chunk: Vec<char> = text
+        .chars()
+        .skip(char_start)
+        .take(char_end.saturating_sub(char_start))
+        .collect();
+    let before = char_start.checked_sub(1).and_then(|i| text.chars().nth(i));
+    let mut from = 0;
+    if before.is_some_and(|c| !c.is_whitespace()) {
+        from = chunk
+            .iter()
+            .position(|c| c.is_whitespace())
+            .map_or(0, |i| i + 1);
+    }
+    let rest = &chunk[from..];
+    let limit = rest.len().min(PREVIEW_CHARS);
+    let after = match rest.get(limit) {
+        Some(&c) => Some(c),
+        None => text.chars().nth(char_start + chunk.len()),
+    };
+    let mut end = limit;
+    if after.is_some_and(|c| !c.is_whitespace()) {
+        end = rest[..limit]
+            .iter()
+            .rposition(|c| c.is_whitespace())
+            .filter(|&i| i > 0)
+            .unwrap_or(limit);
+    }
+    let body = &rest[..end];
+    let cut = after.is_some();
+    let body: String = body.iter().collect();
+    let body = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    let open = if before.is_some_and(|c| c != '\n') {
+        "…"
+    } else {
+        ""
+    };
+    let close = if cut { "…" } else { "" };
+    format!("{open}{body}{close}")
+}
+
+/// Whether semantic search can run, and how much of the library it covers.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SemanticStatus {
+    /// False in a build without the `semantic` feature.
+    pub available: bool,
+    pub indexed_books: i64,
+    pub total_books: i64,
+}
+
+/// Always compiled, so the frontend has one command to ask whether to
+/// offer chapter search at all.
+pub fn semantic_status(conn: &Connection) -> Result<SemanticStatus> {
+    let (indexed_books, total_books) = conn.query_row(
+        "SELECT (SELECT COUNT(DISTINCT book_id) FROM chunk_embeddings),
+                (SELECT COUNT(*) FROM books)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    Ok(SemanticStatus {
+        available: cfg!(feature = "semantic"),
+        indexed_books,
+        total_books,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,11 +467,11 @@ mod tests {
             &[[0.9, 0.435_89, 0.0], [0.9, 0.0, 0.435_89]],
         );
 
-        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0]).unwrap();
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 0.0).unwrap();
 
         let ids: Vec<i64> = ranked.iter().map(|c| c.chapter_id).collect();
         assert_eq!(ids, vec![sharp, steady]);
-        assert_eq!(ranked[0].score, 1.0);
+        assert_eq!((ranked[0].score, ranked[0].n_chunks), (1.0, 3));
         assert_eq!((ranked[0].char_start, ranked[0].char_end), (1400, 3000));
         assert!((ranked[1].score - 0.9).abs() < 1e-6);
         assert_eq!((ranked[1].char_start, ranked[1].char_end), (0, 1600));
@@ -310,14 +484,126 @@ mod tests {
         insert_chunks(&conn, book_id, one, &[[1.0, 0.0, 0.0]]);
         insert_chunks(&conn, book_id, two, &[[0.0, 1.0, 0.0], [0.6, 0.8, 0.0]]);
 
-        assert_eq!(rank_chunks(&conn, &[0.0, 0.0, 1.0]).unwrap(), vec![]);
+        assert_eq!(
+            rank_chunks(&conn, &[0.0, 0.0, 1.0], MIN_SCORE, 0.0).unwrap(),
+            vec![]
+        );
         // 0.6 is under the floor, so only the chapter reaching it comes back.
-        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0]).unwrap();
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 0.0).unwrap();
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].chapter_id, one);
 
-        let err = rank_chunks(&conn, &[1.0, 0.0]).expect_err("a 2-dim query");
+        let err = rank_chunks(&conn, &[1.0, 0.0], MIN_SCORE, 0.0).expect_err("a 2-dim query");
         assert!(err.to_string().contains("different model"), "{err}");
+    }
+
+    #[test]
+    fn the_length_penalty_reorders_but_never_empties() {
+        let mut conn = open_db(":memory:").unwrap();
+        let (book_id, short, long) = two_chapter_book(&mut conn);
+        let near = |score: f32| [score, (1.0 - score * score).sqrt(), 0.0];
+        insert_chunks(&conn, book_id, short, &[near(0.80)]);
+        // Twenty chunks, one of them a shade better than the short chapter.
+        let mut chunks = vec![near(0.70); 19];
+        chunks.push(near(0.82));
+        insert_chunks(&conn, book_id, long, &chunks);
+        let order = |penalty: f32| -> Vec<i64> {
+            rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, penalty)
+                .unwrap()
+                .iter()
+                .map(|c| c.chapter_id)
+                .collect()
+        };
+
+        assert_eq!(order(0.0), vec![long, short]);
+        // 0.82 − 0.01 × ln 20 = 0.79, under the short chapter's 0.80.
+        assert_eq!(order(0.01), vec![short, long]);
+        // The floor sees the uncorrected score: a penalty that drives the
+        // corrected score under it still returns the chapter.
+        assert_eq!(order(1.0), vec![short, long]);
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 1.0).unwrap();
+        assert!((ranked[1].score - 0.82).abs() < 1e-6);
+        assert_eq!(ranked[1].n_chunks, 20);
+    }
+
+    #[test]
+    fn a_match_opens_at_its_chunk_with_a_preview() {
+        let mut conn = open_db(":memory:").unwrap();
+        let paragraphs = ["Heading", "The first paragraph.", "The second one here."];
+        let book = ParsedBook {
+            title: Some("A Book".to_string()),
+            author: None,
+            chapters: vec![ParsedChapter {
+                file_name: "c.xhtml".to_string(),
+                title: "Chapter".to_string(),
+                paragraphs: paragraphs
+                    .iter()
+                    .map(|p| (0, p.len(), p.to_string()))
+                    .collect(),
+            }],
+        };
+        let book_id = load_book(&mut conn, "/b.epub", "h", &book).unwrap();
+        let content =
+            get_chapter_content(&conn, get_book_chapters(&conn, book_id).unwrap()[0].id).unwrap();
+        // "The second" starts at char 29 of the `\n`-joined text.
+        let ranked = RankedChapter {
+            chapter_id: content.chapter_id,
+            score: 0.75,
+            n_chunks: 1,
+            char_start: 33,
+            char_end: 49,
+        };
+
+        let matches = chapter_matches(&conn, &[ranked]).unwrap();
+
+        assert_eq!(
+            matches,
+            vec![ChapterMatch {
+                book_id,
+                book_title: Some("A Book".to_string()),
+                chapter_id: content.chapter_id,
+                chapter_idx: 0,
+                chapter_title: Some("Chapter".to_string()),
+                content_block_id: content.blocks[2].id,
+                score: 0.75,
+                preview: "…second one here.".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn previews_cut_at_word_boundaries() {
+        // A whole chapter in one chunk, newlines flattened.
+        assert_eq!(preview("One line.\nTwo.", 0, 14), "One line. Two.");
+        // Mid-word at both ends: the partial words go, ellipses mark it.
+        assert_eq!(preview("alpha beta gamma delta", 2, 13), "…beta…");
+        // A chunk starting a paragraph has no leading ellipsis.
+        assert_eq!(preview("alpha\nbeta gamma", 6, 16), "beta gamma");
+        // Long chunks stop at the last word boundary within the limit.
+        let text = "word ".repeat(100);
+        let long = preview(&text, 0, 500);
+        assert!(long.ends_with("word…"), "{long}");
+        assert!(long.chars().count() <= PREVIEW_CHARS + 1, "{long}");
+        // Diacritics are counted as chars, not bytes.
+        assert_eq!(preview("saṃsāra paṭicca", 8, 15), "…paṭicca");
+    }
+
+    #[test]
+    fn semantic_status_counts_indexed_books() {
+        let mut conn = open_db(":memory:").unwrap();
+        let (book_id, one, _) = two_chapter_book(&mut conn);
+        let status = |conn: &Connection| semantic_status(conn).unwrap();
+        assert_eq!(
+            status(&conn),
+            SemanticStatus {
+                available: cfg!(feature = "semantic"),
+                indexed_books: 0,
+                total_books: 1,
+            }
+        );
+
+        insert_chunks(&conn, book_id, one, &[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        assert_eq!(status(&conn).indexed_books, 1);
     }
 
     #[test]
