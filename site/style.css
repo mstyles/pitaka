@@ -118,8 +118,20 @@ footer {
 }
 
 .wordmark {
-  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
   margin: 0 0 32px;
+}
+/* The app icon, a woven basket (piṭaka), beside the name as one lockup.
+   The SVG has a transparent margin around its square, so it's drawn a
+   little larger than the text and pulled left to line up with it. */
+.wordmark img {
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin-left: -3px;
 }
 
 .hero h1 {
