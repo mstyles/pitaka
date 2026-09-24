@@ -118,12 +118,19 @@ A new submodule of `db`, declared in `db/mod.rs` and re-exported from it by name
 - `import_book` gains the indexing pass after the core import returns, emitting a Tauri event `semantic_index_progress` with `{ book_id, done, total }` so §6 can show progress. Import still returns its `ImportOutcome` as soon as the book is in the library; indexing continues behind the event.
 - Both commands added to `generate_handler!` in `src-tauri/src/lib.rs`.
 
+As built, stage 5 differs in five ways, all so that minutes of indexing can't stall the app:
+- **Indexing opens its own connection** (`open_db` on the path kept in `AppState`) on a thread of its own, rather than holding `state.conn` for the whole run. `open_db` now sets a 30-second busy timeout, so the two connections wait for each other's short write transactions instead of failing with `SQLITE_BUSY`. Every write transaction in the core starts with a write, so neither can deadlock on a read lock it's trying to upgrade.
+- **The embedder is `Mutex<Option<Arc<Embedder>>>`**: the mutex is held only to load it, so a search runs while a book is indexing instead of waiting minutes for it.
+- **Books are indexed one at a time**, behind an `indexing: Mutex<()>`, since several imported together would only compete for the CPU.
+- **`search_chapters` is an async command** that runs on a blocking thread, because the first call may download the model and a synchronous command would freeze the window meanwhile.
+- **A second event, `semantic_index_failed`**, carries `{ book_id, error }` when a run stops early (no network for the model, say), so §6's progress line can end instead of hanging at its last count. Chapters finished before the failure stay indexed.
+
 ## 6. Frontend: `src/types.ts`, `SearchView.tsx`, `App.css`
 - `types.ts`: mirror `ChapterMatch` and `SemanticStatus` field-for-field in snake_case.
 - `SearchView.tsx` gains `scope: "passages" | "chapters"` as a segmented control above the existing box. **`exactWords`, `LastSearch.exact` and `toggleExactWords` are untouched** — they belong to the passages scope, which keeps its "Exact words" checkbox; the checkbox is hidden in the chapters scope, where it has no meaning. The scope control itself is hidden entirely when `semantic_status().available` is false, which is the demo's and the default build's state, so neither shows a control that cannot work.
 - Chapter results render as their own list: book title and chapter title (or `Chapter {chapter_idx + 1}`, matching the passages fallback), then the preview as **plain escaped text** — no `dangerouslySetInnerHTML`, no `<mark>`. Clicking opens the reader at `chapter_id`, centred and flashed on `content_block_id` exactly as a passage hit is, with back label "← Search results", reusing the existing reader-target path in `App.tsx`.
 - Under the results, when `indexed_books < total_books`: "*{indexed} of {total} books indexed for chapter search. Remove and re-import a book to include it.*" — the honest substitute for a backfill, so a missing book is stated rather than silently absent.
-- While indexing runs, the `semantic_index_progress` event drives "*Indexing {title} for chapter search… {done}/{total} chapters*" on the Books screen. Given ~10 minutes for three books, silent indexing would look like a hang.
+- While indexing runs, the `semantic_index_progress` event drives "*Indexing {title} for chapter search… {done}/{total} chapters*" on the Books screen. Given ~10 minutes for three books, silent indexing would look like a hang. `semantic_index_failed` replaces the line with the error.
 - `App.css`: the segmented control and the chapter-result card reuse the existing Paper tokens; no new colours.
 
 ## 7. Fixtures and the mock: `src/test/mockBackend.ts`, `src/test/fixtures/library.json`

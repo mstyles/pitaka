@@ -5,6 +5,12 @@
 use anyhow::Result;
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
+use std::time::Duration;
+
+/// How long a statement waits for another connection's lock before failing.
+/// The app indexes books for semantic search on a second connection, and
+/// each side's write transactions are short, so a wait is always brief.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Schema migrations, applied in order. The DB's `PRAGMA user_version` records
 /// how many have run. Never edit one that has shipped — add a new file.
@@ -20,6 +26,7 @@ fn migrations() -> Migrations<'static> {
 pub fn open_db(db_path: &str) -> Result<Connection> {
     let mut conn = Connection::open(db_path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    conn.busy_timeout(BUSY_TIMEOUT)?;
     baseline_unversioned_db(&conn)?;
     migrations().to_latest(&mut conn)?;
     Ok(conn)
@@ -77,5 +84,14 @@ mod tests {
     #[test]
     fn migrations_are_valid() {
         migrations().validate().unwrap();
+    }
+
+    #[test]
+    fn open_db_waits_for_another_connection() {
+        let conn = open_db(":memory:").unwrap();
+        let ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(ms, BUSY_TIMEOUT.as_millis() as i64);
     }
 }
