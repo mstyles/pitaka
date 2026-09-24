@@ -133,10 +133,18 @@ As built, stage 5 differs in five ways, all so that minutes of indexing can't st
 - While indexing runs, the `semantic_index_progress` event drives "*Indexing {title} for chapter search… {done}/{total} chapters*" on the Books screen. Given ~10 minutes for three books, silent indexing would look like a hang. `semantic_index_failed` replaces the line with the error.
 - `App.css`: the segmented control and the chapter-result card reuse the existing Paper tokens; no new colours.
 
+As built, stage 6 adds to this:
+- **Changing scope re-runs the query in the new scope**, as ticking "Exact words" already does, and clears the other scope's results rather than showing them under a query they weren't for.
+- **The "{indexed} of {total}" line shows only in the chapters scope**, and before any search too; passage search covers every book, so it has nothing to say there. The status is re-read on each visit and after each chapter search, since books finish indexing in the background.
+- **A finished run says "Indexed {title} for chapter search"** instead of leaving "{total}/{total} chapters" on screen. The Books screen listens only while it's showing; a run still going when it's reopened reappears at its next chapter.
+- **Results count as "{n} chapters"**, not "results", so the two scopes can't be mistaken for each other at a glance.
+
 ## 7. Fixtures and the mock: `src/test/mockBackend.ts`, `src/test/fixtures/library.json`
 - Routes for `semantic_status` and `search_chapters` in the mock's `switch`, since it throws `unmocked command` otherwise.
 - `library.json` gains a `semantic_status` object and a `chapter_matches` map keyed by query, written by `ui_fixtures_are_current` (in `db/ui_fixtures.rs`) from real `db` output. The fixture's default `semantic_status` is `available: false`, so **every existing test is unchanged** and the scope control simply doesn't render; the new tests override it via the mock's existing per-test hooks.
 - Regenerate with `UPDATE_UI_FIXTURES=1 cargo test -p ebook_research_core ui_fixtures`. The demo fixture (`src/demo/library.json`) is untouched — the demo has no semantic mode.
+- As built: the fixture test can't download the model, so the long book's three chapters get one chunk each with a hand-written vector, and each fixture query a vector of its own. Storing, ranking against `MIN_SCORE`, and building the matches are the real `store_chapter`, `rank_chunks` and `chapter_matches`; only the embedding is faked. "trees planted in a pattern" finds Part Two then Part One; "quarterly earnings guidance" scores 0.6, under the floor, and finds nothing.
+- `semantic_status` is pinned to `available: false`, so the file is the same with or without the feature. Tests turn chapter search on with the mock's `semantic` option, and `npm run dev:mock` does with `?semantic` in the URL. The mock now passes `shouldMockEvents` to `mockIPC`, so the Books screen's `listen` works without Rust, and tests send the events through `indexingEvents`.
 
 ## 8. Evaluation sets: `ebook_research_core/tests/semantic_eval/`
 Labelled queries, so ranking changes are measured rather than judged by eye. Labels are per chapter: 113 chapters make judging cheap. Each query lists its relevant chapters graded 2 (about this) or 1 (substantially discusses it), or none for a query the books don't answer. I draft the queries and grades; the user reviews them before they're used to tune anything. LLM-drafted labels are "silver" until a person who knows the books has checked them.

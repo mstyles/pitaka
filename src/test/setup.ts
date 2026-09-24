@@ -6,8 +6,11 @@ import { afterEach, vi } from "vitest";
 // it to centre a search hit.
 Element.prototype.scrollIntoView = vi.fn();
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Unmounting stops event listeners through a promise, which needs the
+  // mocked IPC still in place when it settles.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   clearMocks();
   vi.useRealTimers();
   vi.clearAllMocks();

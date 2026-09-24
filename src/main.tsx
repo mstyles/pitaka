@@ -7,10 +7,12 @@ import DemoBanner from "./DemoBanner";
 async function start() {
   // `npm run dev:mock`: run in a plain browser tab against fixture data
   // instead of the Rust backend. Vite replaces MODE at build time, so this
-  // branch and the fixtures are left out of real builds.
+  // branch and the fixtures are left out of real builds. `?semantic` offers
+  // chapter search, as a build with the `semantic` feature does.
   if (import.meta.env.MODE === "mock") {
     const { installMockBackend } = await import("./test/mockBackend");
-    installMockBackend();
+    const semantic = new URLSearchParams(location.search).has("semantic");
+    installMockBackend(semantic ? { semantic: { available: true } } : {});
     document.title = "pitaka (mock backend)";
   }
   // `npm run dev:demo` / `build:demo`: the same, with one real book and a

@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
-import type { BookSummary, ImportOutcome } from "./types";
+import type {
+  BookSummary,
+  ImportOutcome,
+  SemanticIndexFailed,
+  SemanticIndexProgress,
+} from "./types";
 
 type Props = {
   onOpenBook: (bookId: number) => void;
@@ -12,6 +18,13 @@ type Props = {
 function BooksView({ onOpenBook, onLibraryChanged }: Props) {
   const [importStatus, setImportStatus] = useState("");
   const [books, setBooks] = useState<BookSummary[] | null>(null);
+  // The latest indexing event: a book imported now is indexed for chapter
+  // search in the background, which takes minutes.
+  const [indexing, setIndexing] = useState<
+    | ({ kind: "progress" } & SemanticIndexProgress)
+    | ({ kind: "failed" } & SemanticIndexFailed)
+    | null
+  >(null);
 
   async function refreshBooks() {
     try {
@@ -25,6 +38,34 @@ function BooksView({ onOpenBook, onLibraryChanged }: Props) {
   useEffect(() => {
     refreshBooks();
   }, []);
+
+  // Only while this screen shows; a run still going when it's reopened
+  // shows again at its next chapter.
+  useEffect(() => {
+    const unlisteners = [
+      listen<SemanticIndexProgress>("semantic_index_progress", (e) =>
+        setIndexing({ kind: "progress", ...e.payload }),
+      ),
+      listen<SemanticIndexFailed>("semantic_index_failed", (e) =>
+        setIndexing({ kind: "failed", ...e.payload }),
+      ),
+    ];
+    return () => {
+      for (const unlisten of unlisteners) unlisten.then((f) => f());
+    };
+  }, []);
+
+  function indexingLine() {
+    if (!indexing) return null;
+    const book = books?.find((b) => b.id === indexing.book_id);
+    const title = book ? (book.title ?? "Untitled") : `book #${indexing.book_id}`;
+    if (indexing.kind === "failed") {
+      return `Indexing ${title} for chapter search failed: ${indexing.error}`;
+    }
+    const { done, total } = indexing;
+    if (done === total) return `Indexed ${title} for chapter search`;
+    return `Indexing ${title} for chapter search… ${done}/${total} chapters`;
+  }
 
   async function importBook() {
     const path = await open({
@@ -74,6 +115,7 @@ function BooksView({ onOpenBook, onLibraryChanged }: Props) {
         <button className="button-primary" onClick={importBook}>Import EPUB…</button>
         <span>{importStatus}</span>
       </div>
+      {indexing && <p className="index-progress">{indexingLine()}</p>}
 
       {books?.length === 0 ? (
         <p className="section-empty">No books yet. Import an EPUB to start.</p>
