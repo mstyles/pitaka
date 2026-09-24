@@ -341,7 +341,15 @@ members, sharing one `Cargo.lock`/`target/`.
   state, a diacritic-free search opening the reader at the hit, and the
   import message. Checked in Chrome from the built site: search, the
   reader, bookmarks and the landing page, which fit a 390px-wide
-  viewport without sideways scrolling. Not checked in dark mode.
+  viewport without sideways scrolling. Not checked in dark mode. The demo
+  has no chapter search: `semantic_status` reports it unavailable, the
+  Chapters switch doesn't show, and the banner and landing page say it
+  needs the desktop app. The landing page's chapter-search screenshot
+  (`docs/screenshots/chapter-search.jpg`) is real bge-small output for
+  "the dangers of sensual pleasure" over the demo book, from
+  `search_chapters` with the model, fed to the demo's UI through the mock
+  with the banner removed. The new section was checked at 720px and
+  1280px wide.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked

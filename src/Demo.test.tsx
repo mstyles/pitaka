@@ -37,6 +37,15 @@ describe("browser demo", () => {
     expect(await screen.findByText(`Import failed: ${DEMO_IMPORT_ERROR}`)).toBeTruthy();
   });
 
+  it("has no chapter search, and says so", async () => {
+    const { user, callsTo } = renderApp(demoOptions());
+    await goTo(user, "Search");
+    await waitFor(() => expect(callsTo("semantic_status")).toHaveLength(1));
+    expect(screen.queryByRole("button", { name: "Chapters" })).toBeNull();
+    render(<DemoBanner />);
+    expect(screen.getByText(/Chapter search by meaning needs the desktop app/)).toBeTruthy();
+  });
+
   it("links the banner to the install instructions", () => {
     render(<DemoBanner />);
     const link = screen.getByRole("link", { name: "Get the desktop app →" });
