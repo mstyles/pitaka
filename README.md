@@ -518,6 +518,8 @@ In the same order of priority as the Python version, then newer ones.
      checked by a reader. Off-corpus queries return nothing, but
      plausible questions the library doesn't answer usually still get
      weak matches.
+   - The model isn't pinned to a version, and a model change isn't
+     detected at search time (see the roadmap).
    - The front-matter filter is a heuristic: it drops one-verse
      chapters under 200 chars, and verse chapters with very short
      lines can look like a contents page.
@@ -565,6 +567,12 @@ Next up (fixes for the known limitations above):
 
 - [ ] Recover from malformed XHTML instead of bailing on the first
       parse error (limitation 5)
+- [ ] Pin the embedding model to a Hugging Face commit rather than the
+      repo's `main` branch, and check `chunk_embeddings.model` at search
+      time. Today a new upload to `BAAI/bge-small-en-v1.5` would change
+      what fresh installs download, and a different model of the same
+      dimension would mix with stored vectors silently, since
+      `rank_chunks` only compares lengths (limitation 9)
 
 Later:
 
