@@ -455,3 +455,60 @@ fn semantic_eval_labels_name_real_chapters() {
         }
     }
 }
+
+/// The spike's sanity probe. A model can load cleanly, pass every
+/// structural test and still be useless: gte-small, loaded from F16
+/// weights, scored anger against quantum physics at 0.95 and returned the
+/// same five chunks for every query. This is the test that catches that.
+/// Passages are embedded as stored, without the query prefix, which is how
+/// the spike measured them. Re-run it whenever `MODEL_REPO` changes.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model"]
+fn the_model_discriminates_unrelated_text() {
+    use ebook_research_core::semantic::Embedder;
+
+    let embedder = Embedder::load().expect("load failed");
+    let texts = [
+        "how to work with anger",
+        "a practice for calming anger and irritation",
+        "grief after a death in the family",
+        "quantum chromodynamics and the strong nuclear force",
+        "the recipe calls for two cups of flour",
+    ];
+    let vecs: Vec<Vec<f32>> = embedder
+        .embed_batch(&texts)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.vec)
+        .collect();
+    let dot = |a: &[f32], b: &[f32]| -> f32 { a.iter().zip(b).map(|(x, y)| x * y).sum() };
+    for vec in &vecs {
+        assert!(
+            (dot(vec, vec) - 1.0).abs() < 1e-4,
+            "vectors are unit length"
+        );
+    }
+    let [anger, practice, _grief, physics, recipe] = [0, 1, 2, 3, 4].map(|i| &vecs[i]);
+    let related = dot(anger, practice);
+    // bge-small: 0.823 against 0.495 and 0.439.
+    assert!(related > dot(anger, physics) + 0.2, "{related} vs physics");
+    assert!(related > dot(anger, recipe) + 0.2, "{related} vs recipe");
+
+    // These five sentences only: over a real library's chunks, bge's mean
+    // vector has norm 0.835, so this threshold says nothing about a corpus.
+    let mean: Vec<f32> = (0..vecs[0].len())
+        .map(|d| vecs.iter().map(|v| v[d]).sum::<f32>() / vecs.len() as f32)
+        .collect();
+    let norm = dot(&mean, &mean).sqrt();
+    assert!(
+        norm < 0.85,
+        "mean vector norm {norm} (bge: 0.79, gte-small: 0.99)"
+    );
+
+    // Batched and single embeddings agree, so padding doesn't leak in.
+    let single = embedder.embed(texts[3]).unwrap();
+    assert!(dot(&single.vec, physics) > 0.9999);
+    assert!(!single.truncated);
+    assert!(embedder.embed(&"word ".repeat(700)).unwrap().truncated);
+}

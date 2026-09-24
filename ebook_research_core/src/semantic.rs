@@ -13,6 +13,153 @@ pub const MODEL_REPO: &str = "BAAI/bge-small-en-v1.5";
 /// leaving this off degrades results in a way that looks like a weak model.
 pub const QUERY_PREFIX: &str = "Represent this sentence for searching relevant passages: ";
 
+#[cfg(feature = "semantic")]
+pub use embedder::{Embedder, Embedding};
+
+#[cfg(feature = "semantic")]
+mod embedder {
+    use super::{MODEL_REPO, QUERY_PREFIX};
+    use anyhow::{bail, Context, Result};
+    use candle_core::{safetensors::MmapedSafetensors, DType, Device, IndexOp, Tensor};
+    use candle_nn::VarBuilder;
+    use candle_transformers::models::bert::{BertModel, Config, DTYPE};
+    use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
+
+    /// The model's context window, in tokens. Longer text is cut to fit.
+    const MAX_TOKENS: usize = 512;
+
+    /// A text's embedding: a unit vector, so cosine similarity is a plain
+    /// dot product.
+    #[derive(Debug, Clone)]
+    pub struct Embedding {
+        pub vec: Vec<f32>,
+        /// The text ran past `MAX_TOKENS` and its tail wasn't embedded.
+        pub truncated: bool,
+    }
+
+    /// The embedding model, [`MODEL_REPO`], run on the CPU.
+    pub struct Embedder {
+        model: BertModel,
+        tokenizer: Tokenizer,
+        device: Device,
+    }
+
+    impl Embedder {
+        /// Loads the model from the standard Hugging Face cache, downloading
+        /// it there first if it isn't cached, so the first run needs network
+        /// and later ones don't.
+        pub fn load() -> Result<Self> {
+            Self::load_repo(MODEL_REPO)
+        }
+
+        fn load_repo(model_repo: &str) -> Result<Self> {
+            let repo = hf_hub::api::sync::Api::new()?.model(model_repo.to_string());
+            let fetch = |file: &str| {
+                repo.get(file)
+                    .with_context(|| format!("fetching {file} for {model_repo}"))
+            };
+
+            let config: Config =
+                serde_json::from_str(&std::fs::read_to_string(fetch("config.json")?)?)?;
+            let mut tokenizer =
+                Tokenizer::from_file(fetch("tokenizer.json")?).map_err(anyhow::Error::msg)?;
+            tokenizer
+                .with_truncation(Some(TruncationParams {
+                    max_length: MAX_TOKENS,
+                    ..Default::default()
+                }))
+                .map_err(anyhow::Error::msg)?;
+            tokenizer.with_padding(Some(PaddingParams::default()));
+
+            let weights = fetch("model.safetensors")?;
+            // SAFETY: the file is memory-mapped read-only; it could only
+            // change underneath us if the HF cache were rewritten mid-load.
+            let tensors = unsafe { MmapedSafetensors::new(&weights)? };
+            for (name, view) in tensors.tensors() {
+                // Integer buffers such as position_ids are fine; half-precision
+                // weights are what made gte-small return the same vectors for
+                // every input.
+                if matches!(DType::try_from(view.dtype()), Ok(DType::F16 | DType::BF16)) {
+                    bail!(
+                        "the embedding model must ship F32 weights, but {model_repo}'s \
+                         {name} is {:?}",
+                        view.dtype()
+                    );
+                }
+            }
+            let device = Device::Cpu;
+            // SAFETY: as above.
+            let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights], DTYPE, &device)? };
+            Ok(Self {
+                model: BertModel::load(vb, &config)?,
+                tokenizer,
+                device,
+            })
+        }
+
+        /// Embeds a passage, as stored in the index.
+        pub fn embed(&self, text: &str) -> Result<Embedding> {
+            Ok(self.embed_batch(&[text])?.remove(0))
+        }
+
+        /// Embeds a search query, with the [`QUERY_PREFIX`] bge expects.
+        pub fn embed_query(&self, query: &str) -> Result<Vec<f32>> {
+            Ok(self.embed(&format!("{QUERY_PREFIX}{query}"))?.vec)
+        }
+
+        /// Embeds several passages in one forward pass, padded to the
+        /// longest; the attention mask keeps padding out of the result.
+        pub fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Embedding>> {
+            let encodings = self
+                .tokenizer
+                .encode_batch(texts.to_vec(), true)
+                .map_err(anyhow::Error::msg)?;
+            let stack = |rows: Vec<&[u32]>| -> Result<Tensor> {
+                let rows = rows
+                    .into_iter()
+                    .map(|row| Tensor::new(row, &self.device))
+                    .collect::<candle_core::Result<Vec<_>>>()?;
+                Ok(Tensor::stack(&rows, 0)?)
+            };
+            let ids = stack(encodings.iter().map(|e| e.get_ids()).collect())?;
+            let mask = stack(encodings.iter().map(|e| e.get_attention_mask()).collect())?;
+
+            let hidden = self.model.forward(&ids, &ids.zeros_like()?, Some(&mask))?;
+            // CLS pooling, not mean: bge is trained to put the sentence in
+            // the first token.
+            let cls = hidden.i((.., 0))?;
+            let unit = cls.broadcast_div(&cls.sqr()?.sum_keepdim(1)?.sqrt()?)?;
+            let vecs: Vec<Vec<f32>> = unit.to_vec2()?;
+
+            Ok(vecs
+                .into_iter()
+                .zip(&encodings)
+                .map(|(vec, encoding)| Embedding {
+                    vec,
+                    truncated: !encoding.get_overflowing().is_empty(),
+                })
+                .collect())
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// gte-small ships F16 weights and, loaded anyway, returns the same
+        /// few chunks for every query. Needs the model in the HF cache or
+        /// network, so it's ignored by default.
+        #[test]
+        #[ignore = "downloads thenlper/gte-small"]
+        fn half_precision_weights_are_refused() {
+            let err = Embedder::load_repo("thenlper/gte-small")
+                .err()
+                .expect("gte-small should be refused");
+            assert!(err.to_string().contains("must ship F32 weights"), "{err}");
+        }
+    }
+}
+
 /// Chunk length in chars, about 350 tokens, inside bge's 512-token window.
 const CHUNK_CHARS: usize = 1600;
 /// Chars shared by neighbouring chunks, so a sentence that straddles a

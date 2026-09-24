@@ -32,6 +32,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test -p ebook_research_core
+      # Semantic search builds, but its tests aren't run here: they download
+      # the embedding model.
+      - run: cargo check -p ebook_research_core --all-targets --features semantic
 
   frontend:
     runs-on: ubuntu-24.04

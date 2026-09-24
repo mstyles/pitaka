@@ -28,3 +28,7 @@ serde_json = "1"
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
 ebook_research_core = { path = "../ebook_research_core" }
 
+[features]
+# Semantic chapter search; see ebook_research_core's feature of the same name.
+semantic = ["ebook_research_core/semantic"]
+
