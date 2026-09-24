@@ -7,6 +7,8 @@ build from.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-24
+
 ### Added
 
 - Find chapters by meaning, in a build with `--features semantic`:
@@ -15,6 +17,16 @@ build from.
   runs locally, downloaded once on first use. Books are indexed in the
   background when imported, with progress on the Books screen; books
   already in the library need re-importing to be included.
+
+### Changed
+
+- A chapter with no `<h1>`/`<h2>` takes its name from the book's table
+  of contents before falling back to the page's `<title>`, so books
+  that style headings as `<div>`s no longer show the book's name for
+  every chapter. Books already in the library need re-importing to
+  pick this up.
+- The project page shows chapter search, says the browser demo doesn't
+  have it, and puts the app icon beside the name.
 
 ## [0.1.0] - 2026-09-23
 
@@ -63,5 +75,6 @@ The first tagged version, covering everything built so far.
   sets a Content Security Policy, so a book's text can't inject markup
   or script into the app.
 
-[Unreleased]: https://github.com/mstyles/pitaka/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mstyles/pitaka/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mstyles/pitaka/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mstyles/pitaka/releases/tag/v0.1.0

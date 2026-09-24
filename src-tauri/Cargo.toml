@@ -1,6 +1,6 @@
 [package]
 name = "pitaka"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desktop EPUB research app: full-text search and bookmark folders across your library"
 authors = ["Matt Styles"]
 edition = "2021"
