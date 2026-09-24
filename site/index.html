@@ -6,7 +6,7 @@
     <title>Pitaka — search and bookmark your EPUB library</title>
     <meta
       name="description"
-      content="A desktop app for reading and researching your EPUB library: full-text search across every book, and bookmark folders for the passages you want to keep."
+      content="A desktop app for reading and researching your EPUB library: full-text search across every book, chapter search by meaning, and bookmark folders for the passages you want to keep."
     />
     <link rel="icon" type="image/svg+xml" href="demo/favicon.svg" />
     <link rel="stylesheet" href="style.css" />
@@ -17,7 +17,8 @@
       <h1>Search every book you own, and keep the passages that matter.</h1>
       <p class="lede">
         Pitaka is a desktop app for reading and researching your EPUB library. Import your books,
-        search them all at once, and collect passages into bookmark folders.
+        search them all at once by word or by meaning, and collect passages into bookmark
+        folders.
       </p>
       <p class="actions">
         <a class="button primary" href="demo/">Try it in your browser</a>
@@ -26,6 +27,8 @@
       <p class="note">
         The demo runs entirely in your browser with one built-in book, the Therīgāthā (<em>Verses
         of the Senior Nuns</em>). Try searching for <kbd>patacara</kbd> or <kbd>craving</kbd>.
+        Chapter search by meaning isn't in the demo: it runs a language model on your own
+        computer, so it needs the desktop app.
       </p>
     </header>
 
@@ -45,6 +48,27 @@
           </p>
         </div>
         <img src="screenshots/search.jpg" alt="Search results for patacara, with the name highlighted in each passage" width="720" height="812" loading="lazy" />
+      </section>
+
+      <section class="feature">
+        <div class="copy">
+          <h2>Find chapters by meaning</h2>
+          <p>
+            Describe what you're looking for, like <kbd>the dangers of sensual pleasure</kbd>,
+            and get the chapters that are about it, even when they don't use your words. Open
+            one and the reader lands on the passage that matched.
+          </p>
+          <p>
+            A small AI model reads each book as you import it and runs entirely on your own
+            computer. It's downloaded once, then works offline, and your books never leave your
+            machine. It finds and ranks chapters; it doesn't write anything.
+          </p>
+          <p class="note">
+            Desktop app only, and optional when building it. Not available in the browser demo.
+            The screenshot shows real results from the demo's book.
+          </p>
+        </div>
+        <img src="screenshots/chapter-search.jpg" alt="Chapter search for the dangers of sensual pleasure, listing four chapters of the Therīgāthā with a preview of the passage that matched" width="704" height="786" loading="lazy" />
       </section>
 
       <section class="feature">
@@ -77,6 +101,10 @@
           though Tauri also targets macOS and Windows. There are no prebuilt downloads yet, so
           for now it's built from source. The
           <a href="https://github.com/mstyles/pitaka#install">install steps</a> are in the README.
+        </p>
+        <p>
+          Chapter search by meaning is switched on when building (the install steps show how).
+          It only covers books imported after that, and each book takes a few minutes to index.
         </p>
         <p>
           It's early software: footnotes aren't handled specially yet, and the reader shows

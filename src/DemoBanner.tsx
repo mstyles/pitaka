@@ -4,7 +4,7 @@ export default function DemoBanner() {
     <aside className="demo-banner" aria-label="About this demo">
       <p>
         You're trying Pitaka in your browser with one built-in book, the Therīgāthā. Bookmarks
-        last until you reload.{" "}
+        last until you reload. Chapter search by meaning needs the desktop app.{" "}
         <a href="https://github.com/mstyles/pitaka#install">Get the desktop app →</a>
       </p>
     </aside>
