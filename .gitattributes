@@ -1,0 +1,10 @@
+# Check text out with LF on every OS: the UI fixture tests compare JSON byte
+# for byte, and include_str! files shouldn't depend on checkout settings.
+* text=auto eol=lf
+
+*.epub binary
+*.woff2 binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary

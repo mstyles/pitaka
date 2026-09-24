@@ -35,7 +35,8 @@ A few rules the codebase follows:
 
 ## Setting up
 
-See [Install](README.md#install) for the system libraries. Then:
+See [Install](README.md#install) for the prerequisites on Linux or
+Windows. Then:
 
 ```sh
 npm install
