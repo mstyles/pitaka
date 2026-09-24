@@ -4,9 +4,17 @@ use ebook_research_core::{
 };
 use rusqlite::Connection;
 
+/// A path for a scratch file in the OS temp directory.
+fn temp_path(name: &str) -> String {
+    std::env::temp_dir()
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[test]
 fn parses_and_indexes_and_searches() {
-    let db_path = "/tmp/test_library.db";
+    let db_path = &temp_path("test_library.db");
     let _ = std::fs::remove_file(db_path);
 
     let parsed = parse_epub("test.epub").expect("parse failed");
@@ -184,9 +192,9 @@ fn parses_and_indexes_and_searches() {
 /// another. A changed file at an already-imported path is a clear error.
 #[test]
 fn skips_duplicate_imports() {
-    let db_path = "/tmp/test_dedup_library.db";
-    let copy_path = "/tmp/test_dedup_copy.epub";
-    let changed_path = "/tmp/test_dedup_changed.epub";
+    let db_path = &temp_path("test_dedup_library.db");
+    let copy_path = &temp_path("test_dedup_copy.epub");
+    let changed_path = &temp_path("test_dedup_changed.epub");
     let _ = std::fs::remove_file(db_path);
     std::fs::copy("test.epub", copy_path).unwrap();
     std::fs::write(changed_path, b"edited since it was imported").unwrap();
@@ -237,7 +245,7 @@ fn skips_duplicate_imports() {
 /// de-duped by file hash, lets the same file be imported again.
 #[test]
 fn deletes_and_reimports_a_book() {
-    let db_path = "/tmp/test_delete_library.db";
+    let db_path = &temp_path("test_delete_library.db");
     let _ = std::fs::remove_file(db_path);
 
     let mut conn = open_db(db_path).unwrap();
@@ -276,7 +284,7 @@ fn deletes_and_reimports_a_book() {
 /// rebuilt from its existing text.
 #[test]
 fn upgrades_unversioned_library() {
-    let db_path = "/tmp/test_unversioned_library.db";
+    let db_path = &temp_path("test_unversioned_library.db");
     let _ = std::fs::remove_file(db_path);
 
     {
@@ -323,7 +331,7 @@ fn upgrades_unversioned_library() {
 /// chapter, and checks removing the book empties the folder but keeps it.
 #[test]
 fn bookmarks_a_passage_into_a_folder() {
-    let db_path = "/tmp/test_bookmarks_library.db";
+    let db_path = &temp_path("test_bookmarks_library.db");
     let _ = std::fs::remove_file(db_path);
 
     let mut conn = open_db(db_path).unwrap();
@@ -364,7 +372,7 @@ fn bookmarks_a_passage_into_a_folder() {
 /// assertions don't move when `data/term_variants.txt` is edited.
 #[test]
 fn expands_transliteration_variants() {
-    let db_path = "/tmp/test_library_variants.db";
+    let db_path = &temp_path("test_library_variants.db");
     let _ = std::fs::remove_file(db_path);
     let mut conn = open_db(db_path).expect("open_db failed");
     import_book(&mut conn, "test.epub").expect("import failed");

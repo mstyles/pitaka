@@ -65,15 +65,13 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         zip.by_name(&opf_path)?.read_to_string(&mut s)?;
         s
     };
-    let opf_dir = std::path::Path::new(&opf_path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    // A zip entry name, so `/`-separated on every OS: not a `Path`.
+    let opf_dir = opf_path.rsplit_once('/').map_or("", |(dir, _)| dir);
 
     let opf = parse_opf(&opf_xml)?;
 
     // --- Step 3: table of contents -> first label per file ---
-    let toc = toc_titles(&mut zip, &opf_dir, &opf);
+    let toc = toc_titles(&mut zip, opf_dir, &opf);
 
     // --- Step 4: walk spine, extract paragraphs per chapter ---
     let mut chapters = Vec::new();
@@ -88,7 +86,7 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         if item.is_nav() {
             continue;
         }
-        let full_path = resolve_href(&opf_dir, &item.href);
+        let full_path = resolve_href(opf_dir, &item.href);
 
         let xhtml = {
             let mut s = String::new();

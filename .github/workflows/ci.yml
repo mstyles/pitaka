@@ -36,6 +36,24 @@ jobs:
       # run here: they download the embedding model.
       - run: cargo clippy --workspace --all-targets --features pitaka/semantic -- -D warnings
 
+  # Windows needs no system libraries: the runner has the MSVC build tools and
+  # webview2-com fetches the WebView2 SDK. fmt and the frontend job give the
+  # same answer on every OS, so they only run on Linux.
+  rust-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test -p ebook_research_core
+      # Clippy doesn't link, so only a build catches link errors in candle and
+      # tokenizers' onig, a C library built here with MSVC.
+      - run: cargo build --workspace --features pitaka/semantic
+
   frontend:
     runs-on: ubuntu-24.04
     steps:
