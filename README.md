@@ -416,10 +416,17 @@ members, sharing one `Cargo.lock`/`target/`.
   paragraph was bookmarked into a new folder and the existing one from
   the popover, the library counts updated, and a passage opened in the
   reader flashing, with "← Library" returning to the folder. No console
-  errors. Not checked in dark mode. Highlights and notes haven't been
-  walked in the browser yet: the toolbar's position over a real
-  selection, the 1280px margin layout and the colours in dark mode are
-  unchecked.
+  errors. Not checked in dark mode. Walked again for highlights and
+  notes: a dragged selection got the toolbar centred above it and a
+  blue highlight on exactly the selected words; the popover recoloured,
+  added a note and removed a highlight with its note; a paragraph note
+  from the margin pen showed its marker at the paragraph's end; and the
+  Bookmarks & notes screen listed the entries in reading order and
+  opened one in the reader with its card open. At 1920px wide the cards
+  sat in the margin column, opening one left the text where it was, and
+  a long note pushed the next paragraph down; at 884px they opened under
+  the paragraph. The gap under a tall card was then fixed and checked
+  at 884px only. No console errors. Not checked in dark mode.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact

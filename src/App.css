@@ -875,8 +875,9 @@ mark.hl {
   display: inline-block;
   vertical-align: super;
   min-height: 0;
-  margin: 0 0.1em;
-  padding: 0 0.15em;
+  /* The text's own space follows, so none on the right. */
+  margin: 0 0 0 0.1em;
+  padding: 0 0.1em;
   line-height: 1;
   border: none;
   background: none;
@@ -1004,10 +1005,11 @@ mark.hl {
     align-items: start;
   }
 
+  /* The bottom margin matches the paragraph's, for a card taller than it. */
   .note-margin,
   .note-margin:empty {
     display: flex;
-    margin: 0.3em 0 0;
+    margin: 0.3em 0 1em;
   }
 }
 
