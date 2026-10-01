@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pitaka — search and bookmark your EPUB library</title>
+    <title>Pitaka — search, bookmark and annotate your EPUB library</title>
     <meta
       name="description"
-      content="A desktop app for reading and researching your EPUB library: full-text search across every book, chapter search by meaning, and bookmark folders for the passages you want to keep."
+      content="A desktop app for reading and researching your EPUB library: full-text search across every book, chapter search by meaning, bookmark folders for the passages you want to keep, and highlights and notes as you read."
     />
     <link rel="icon" type="image/svg+xml" href="demo/favicon.svg" />
     <link rel="stylesheet" href="style.css" />
@@ -20,8 +20,8 @@
       <h1>Search every book you own, and keep the passages that matter.</h1>
       <p class="lede">
         Pitaka is a desktop app for reading and researching your EPUB library. Import your books,
-        search them all at once by word or by meaning, and collect passages into bookmark
-        folders.
+        search them all at once by word or by meaning, collect passages into bookmark folders,
+        and highlight and write notes as you read.
       </p>
       <p class="actions">
         <a class="button primary" href="demo/">Try it in your browser</a>
@@ -29,7 +29,8 @@
       </p>
       <p class="note">
         The demo runs entirely in your browser with one built-in book, the Therīgāthā (<em>Verses
-        of the Senior Nuns</em>). Try searching for <kbd>patacara</kbd> or <kbd>craving</kbd>.
+        of the Senior Nuns</em>). Try searching for <kbd>patacara</kbd> or <kbd>craving</kbd>, then
+        select a line in the reader to highlight it.
         Chapter search by meaning isn't in the demo: it runs a language model on your own
         computer, so it needs the desktop app.
       </p>
@@ -84,6 +85,23 @@
           </p>
         </div>
         <img src="screenshots/reader.jpg" alt="The reader showing a chapter list and a highlighted paragraph" width="1110" height="812" loading="lazy" />
+      </section>
+
+      <section class="feature">
+        <div class="copy">
+          <h2>Highlight and write notes</h2>
+          <p>
+            Select the words that matter in a paragraph to highlight them in one of four
+            colours, and add a note to a highlight or to a whole paragraph. A small pen marks
+            each note in the text; click it and the note opens in the margin beside the passage,
+            where you can edit it.
+          </p>
+          <p>
+            Every book's highlights and notes are collected in reading order, each a click away
+            from its place in the book.
+          </p>
+        </div>
+        <img src="screenshots/notes.jpg" alt="Two highlighted verses of Paṭācārā, one with its note open in the margin beside it" width="764" height="438" loading="lazy" />
       </section>
 
       <section class="feature">

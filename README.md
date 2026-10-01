@@ -3,8 +3,8 @@
 [![CI](https://github.com/mstyles/pitaka/actions/workflows/ci.yml/badge.svg)](https://github.com/mstyles/pitaka/actions/workflows/ci.yml)
 
 A desktop app for reading and researching your EPUB library: full-text
-search across every book, and bookmark folders for the passages you want
-to keep.
+search across every book, bookmark folders for the passages you want
+to keep, and highlights and notes as you read.
 
 **[Try it in your browser](https://mstyles.github.io/pitaka/demo/)** ·
 [Website](https://mstyles.github.io/pitaka/)
@@ -24,6 +24,10 @@ to keep.
   sent anywhere.
 - **Read with the hit in context.** Opening a result jumps the reader to
   that paragraph, with the book's chapters alongside.
+- **Highlight and write notes.** Select words in a paragraph to
+  highlight them in one of four colours, and note a highlight or a whole
+  paragraph. Notes open in the margin beside the text, and each book's
+  highlights and notes are listed in reading order.
 - **Keep passages in bookmark folders**, one per topic or project, each
   passage linked back to its place in the book.
 - **Local and private.** Your books are indexed into a SQLite database on
@@ -33,9 +37,9 @@ The browser demo is the real interface with one built-in book, the
 Therīgāthā (*Verses of the Senior Nuns*), and a search that works like
 the app's. Importing your own books needs the desktop app.
 
-| Home | Reader | Bookmarks |
-| --- | --- | --- |
-| ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
+| Home | Reader | Notes | Bookmarks |
+| --- | --- | --- | --- |
+| ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![Highlighted verses with a note in the margin](docs/screenshots/notes.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
 
 **Contents:** [Install](#install) · [Licence](#licence) ·
 [Contributing](#contributing) · [How it's built](#how-its-built) ·
@@ -400,7 +404,10 @@ members, sharing one `Cargo.lock`/`target/`.
   "the dangers of sensual pleasure" over the demo book, from
   `search_chapters` with the model, fed to the demo's UI through the mock
   with the banner removed. The new section was checked at 720px and
-  1280px wide.
+  1280px wide. The highlights and notes screenshot
+  (`docs/screenshots/notes.jpg`) was made in `npm run dev:demo` by
+  selecting and noting Paṭācārā's verses with the mouse, with the banner
+  removed and the fading hover icons of one paragraph painted out.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
