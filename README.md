@@ -622,6 +622,9 @@ Later:
       bookmarks (limitation 6) — a steep price for a search feature
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
+- [ ] Import a whole directory of books in one go, instead of one file
+      at a time
+- [ ] OCR support, so scanned or image-only books can be searched
 
 ## Workflow roadmap
 
