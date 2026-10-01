@@ -4,8 +4,9 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, BlockBookmark, BookSummary, BookmarkFolder, ChapterContent, ChapterMatch,
-    ChapterSummary, FolderBookmark, ImportOutcome, SearchMode, SearchResult, SemanticStatus,
+    db, open_db, AnnotatedBook, BlockBookmark, BookAnnotation, BookSummary, BookmarkFolder,
+    ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary, FolderBookmark, Highlight,
+    ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -322,6 +323,104 @@ pub fn get_chapter_bookmarks(
 ) -> Result<Vec<BlockBookmark>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::get_chapter_bookmarks(&conn, chapter_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("add_highlight", { contentBlockId: 42, start: 0, end: 8, color: "yellow" })`
+/// (offsets count characters, not UTF-16 units; the range can't overlap
+/// another highlight).
+#[tauri::command]
+pub fn add_highlight(
+    content_block_id: i64,
+    start: i64,
+    end: i64,
+    color: String,
+    state: State<AppState>,
+) -> Result<Highlight, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::add_highlight(&conn, content_block_id, start, end, &color).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("set_highlight_color", { highlightId: 1, color: "green" })`
+#[tauri::command]
+pub fn set_highlight_color(
+    highlight_id: i64,
+    color: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::set_highlight_color(&conn, highlight_id, &color).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("delete_highlight", { highlightId: 1 })`. Deletes
+/// the highlight's note too.
+#[tauri::command]
+pub fn delete_highlight(highlight_id: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::delete_highlight(&conn, highlight_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("add_highlight_note", { highlightId: 1, body: "…" })`
+#[tauri::command]
+pub fn add_highlight_note(
+    highlight_id: i64,
+    body: String,
+    state: State<AppState>,
+) -> Result<Note, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::add_highlight_note(&conn, highlight_id, &body).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("add_paragraph_note", { contentBlockId: 42, body: "…" })`
+#[tauri::command]
+pub fn add_paragraph_note(
+    content_block_id: i64,
+    body: String,
+    state: State<AppState>,
+) -> Result<Note, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::add_paragraph_note(&conn, content_block_id, &body).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("update_note", { noteId: 1, body: "…" })`
+#[tauri::command]
+pub fn update_note(note_id: i64, body: String, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::update_note(&conn, note_id, &body).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("delete_note", { noteId: 1 })`
+#[tauri::command]
+pub fn delete_note(note_id: i64, state: State<AppState>) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::delete_note(&conn, note_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("get_chapter_annotations", { chapterId: 1 })`
+#[tauri::command]
+pub fn get_chapter_annotations(
+    chapter_id: i64,
+    state: State<AppState>,
+) -> Result<ChapterAnnotations, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_chapter_annotations(&conn, chapter_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("list_annotated_books")` (by title)
+#[tauri::command]
+pub fn list_annotated_books(state: State<AppState>) -> Result<Vec<AnnotatedBook>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_annotated_books(&conn).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("list_book_annotations", { bookId: 1 })` (in
+/// reading order)
+#[tauri::command]
+pub fn list_book_annotations(
+    book_id: i64,
+    state: State<AppState>,
+) -> Result<Vec<BookAnnotation>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_book_annotations(&conn, book_id).map_err(|e| e.to_string())
 }
 
 /// Opens the library and stashes the connection in managed state. If that

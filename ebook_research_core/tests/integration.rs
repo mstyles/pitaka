@@ -298,7 +298,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
         let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
@@ -357,6 +357,48 @@ fn bookmarks_a_passage_into_a_folder() {
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].name, "Know your limit - Oct 10 2026");
     assert_eq!(folders[0].bookmark_count, 0);
+}
+
+/// Highlights a real paragraph's first word and notes it, then checks a
+/// removed and re-imported book comes back with nothing marked.
+#[test]
+fn highlights_and_notes_a_passage() {
+    let db_path = "/tmp/test_annotations_library.db";
+    let _ = std::fs::remove_file(db_path);
+
+    let mut conn = open_db(db_path).unwrap();
+    let book_id = import_book(&mut conn, "test.epub").unwrap().book_id;
+    let chapter = db::get_book_chapters(&conn, book_id)
+        .unwrap()
+        .into_iter()
+        .find(|c| c.title.as_deref() == Some("Chapter One: Beginnings"))
+        .expect("Chapter One should be imported");
+    let block = db::get_chapter_content(&conn, chapter.id)
+        .unwrap()
+        .blocks
+        .remove(0);
+    let first_word: String = block
+        .text
+        .chars()
+        .take_while(|c| c.is_alphanumeric())
+        .collect();
+    let end = first_word.chars().count() as i64;
+
+    let highlight = db::add_highlight(&conn, block.id, 0, end, "yellow").unwrap();
+    db::add_highlight_note(&conn, highlight.id, "where it starts").unwrap();
+
+    let entries = db::list_book_annotations(&conn, book_id).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].text, first_word);
+    assert_eq!(entries[0].chapter_id, chapter.id);
+    assert_eq!(entries[0].note_body.as_deref(), Some("where it starts"));
+    let annotations = db::get_chapter_annotations(&conn, chapter.id).unwrap();
+    assert_eq!(annotations.highlights.len(), 1);
+    assert_eq!(annotations.notes.len(), 1);
+
+    db::delete_book(&conn, book_id).unwrap();
+    import_book(&mut conn, "test.epub").unwrap();
+    assert!(db::list_annotated_books(&conn).unwrap().is_empty());
 }
 
 /// A query term with a curated transliteration variant also finds the other

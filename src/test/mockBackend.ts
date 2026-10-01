@@ -5,14 +5,19 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import fixtureData from "./fixtures/library.json";
 import type {
+  AnnotatedBook,
   BlockBookmark,
+  BookAnnotation,
   BookmarkFolder,
   BookSummary,
+  ChapterAnnotations,
   ChapterContent,
   ChapterMatch,
   ChapterSummary,
   FolderBookmark,
+  Highlight,
   ImportOutcome,
+  Note,
   SearchMode,
   SearchResult,
   SemanticIndexFailed,
@@ -33,7 +38,13 @@ export type Fixtures = {
   /** Absent in the demo's data: the demo has no chapter search. */
   semantic_status?: SemanticStatus;
   chapter_matches?: Record<string, ChapterMatch[]>;
+  /** Absent in the demo's data, which starts with nothing highlighted. */
+  chapter_annotations?: Record<string, ChapterAnnotations>;
+  annotated_books?: AnnotatedBook[];
+  book_annotations?: Record<string, BookAnnotation[]>;
 };
+
+const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"];
 
 const NO_SEMANTIC: SemanticStatus = { available: false, indexed_books: 0, total_books: 0 };
 
@@ -102,6 +113,64 @@ export function installMockBackend({
   function withCount(f: (typeof folders)[number]): BookmarkFolder {
     return { ...f, bookmark_count: bookmarks.filter((b) => b.folder_id === f.id).length };
   }
+  // Highlight and note state, seeded the same way. Errors use the core's
+  // wording, since the UI shows them as they come.
+  const seeded = Object.values(data.chapter_annotations ?? {});
+  let highlights: Highlight[] = seeded.flatMap((a) => a.highlights);
+  let notes: Note[] = seeded.flatMap((a) => a.notes);
+  let nextHighlightId = Math.max(0, ...highlights.map((h) => h.id)) + 1;
+  let nextNoteId = Math.max(0, ...notes.map((n) => n.id)) + 1;
+
+  function checkColor(color: unknown) {
+    if (!HIGHLIGHT_COLORS.includes(String(color))) throw `unknown highlight colour "${color}"`;
+    return color as Highlight["color"];
+  }
+  function checkBody(body: unknown) {
+    const trimmed = String(body).trim();
+    if (!trimmed) throw "note can't be empty";
+    return trimmed;
+  }
+  function findHighlight(id: number) {
+    const h = highlights.find((h) => h.id === id);
+    if (!h) throw `no highlight with id ${id}`;
+    return h;
+  }
+  function findNote(id: number) {
+    const n = notes.find((n) => n.id === id);
+    if (!n) throw `no note with id ${id}`;
+    return n;
+  }
+  /** A block's chapter and position, whether or not its book is still in the library. */
+  function blockPlace(blockId: number) {
+    for (const content of Object.values(data.chapter_content)) {
+      const block = content.blocks.find((b) => b.id === blockId);
+      if (block) return { content, block };
+    }
+    throw `no paragraph with id ${blockId}`;
+  }
+  /** Paragraph order, then a paragraph's own note before its highlights by start. */
+  function readingOrder(blockId: number, highlightId: number | null) {
+    const { content, block } = blockPlace(blockId);
+    const start = highlightId == null ? -1 : findHighlight(highlightId).start_offset;
+    return [content.chapter_idx, block.block_idx, start];
+  }
+  function byReadingOrder<T>(key: (item: T) => number[]) {
+    return (a: T, b: T) => {
+      const [x, y] = [key(a), key(b)];
+      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+      return 0;
+    };
+  }
+  function bookOf(blockId: number) {
+    return blockPlace(blockId).content.book_id;
+  }
+  function counts(bookId: number) {
+    return {
+      highlight_count: highlights.filter((h) => bookOf(h.content_block_id) === bookId).length,
+      note_count: notes.filter((n) => bookOf(n.content_block_id) === bookId).length,
+    };
+  }
+
   function findBlock(blockId: number) {
     for (const content of Object.values(data.chapter_content)) {
       const block = content.blocks.find((b) => b.id === blockId);
@@ -122,6 +191,7 @@ export function installMockBackend({
         return books.map((b) => ({
           ...b,
           bookmark_count: bookmarks.filter((bm) => bm.book_id === b.id).length,
+          ...counts(b.id),
         }));
       case "import_book": {
         if (importError) throw importError;
@@ -135,6 +205,8 @@ export function installMockBackend({
         if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
         books = books.filter((b) => b.id !== id);
         bookmarks = bookmarks.filter((b) => b.book_id !== id);
+        highlights = highlights.filter((h) => bookOf(h.content_block_id) !== id);
+        notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
         return null;
       }
       case "search_library": {
@@ -225,6 +297,133 @@ export function installMockBackend({
               a.folder_id - b.folder_id,
           )
           .map((b): BlockBookmark => ({ content_block_id: b.content_block_id, folder_id: b.folder_id }));
+      }
+      case "add_highlight": {
+        const color = checkColor(args.color);
+        const blockId = args.contentBlockId as number;
+        const { block } = findBlock(blockId);
+        const [start, end] = [args.start as number, args.end as number];
+        if (start < 0 || start >= end || end > Array.from(block.text).length) {
+          throw `highlight range ${start}..${end} is outside the paragraph`;
+        }
+        if (
+          highlights.some(
+            (h) => h.content_block_id === blockId && h.start_offset < end && h.end_offset > start,
+          )
+        ) {
+          throw "that overlaps an existing highlight";
+        }
+        const highlight: Highlight = {
+          id: nextHighlightId++,
+          content_block_id: blockId,
+          start_offset: start,
+          end_offset: end,
+          color,
+          created_at: sqliteNow(),
+        };
+        highlights = [...highlights, highlight];
+        return highlight;
+      }
+      case "set_highlight_color": {
+        const color = checkColor(args.color);
+        const h = findHighlight(args.highlightId as number);
+        highlights = highlights.map((x) => (x === h ? { ...h, color } : x));
+        return null;
+      }
+      case "delete_highlight": {
+        const h = findHighlight(args.highlightId as number);
+        notes = notes.filter((n) => n.highlight_id !== h.id);
+        highlights = highlights.filter((x) => x !== h);
+        return null;
+      }
+      case "add_highlight_note":
+      case "add_paragraph_note": {
+        const body = checkBody(args.body);
+        let blockId: number;
+        let highlightId: number | null = null;
+        if (cmd === "add_highlight_note") {
+          const h = findHighlight(args.highlightId as number);
+          if (notes.some((n) => n.highlight_id === h.id)) throw "that highlight already has a note";
+          blockId = h.content_block_id;
+          highlightId = h.id;
+        } else {
+          blockId = args.contentBlockId as number;
+          findBlock(blockId);
+          if (notes.some((n) => n.content_block_id === blockId && n.highlight_id == null)) {
+            throw "that paragraph already has a note";
+          }
+        }
+        const now = sqliteNow();
+        const note: Note = {
+          id: nextNoteId++,
+          content_block_id: blockId,
+          highlight_id: highlightId,
+          body,
+          created_at: now,
+          updated_at: now,
+        };
+        notes = [...notes, note];
+        return note;
+      }
+      case "update_note": {
+        const body = checkBody(args.body);
+        const n = findNote(args.noteId as number);
+        notes = notes.map((x) => (x === n ? { ...n, body, updated_at: sqliteNow() } : x));
+        return null;
+      }
+      case "delete_note": {
+        const n = findNote(args.noteId as number);
+        notes = notes.filter((x) => x !== n);
+        return null;
+      }
+      case "get_chapter_annotations": {
+        const inChapter = (blockId: number) =>
+          blockPlace(blockId).content.chapter_id === args.chapterId;
+        return {
+          highlights: highlights
+            .filter((h) => inChapter(h.content_block_id))
+            .sort(byReadingOrder((h) => readingOrder(h.content_block_id, h.id))),
+          notes: notes
+            .filter((n) => inChapter(n.content_block_id))
+            .sort(byReadingOrder((n) => readingOrder(n.content_block_id, n.highlight_id))),
+        } satisfies ChapterAnnotations;
+      }
+      case "list_annotated_books":
+        return books
+          .map((b): AnnotatedBook => ({ book_id: b.id, title: b.title, author: b.author, ...counts(b.id) }))
+          .filter((b) => b.highlight_count > 0 || b.note_count > 0)
+          .sort(
+            (a, b) =>
+              (a.title ?? "").toLowerCase().localeCompare((b.title ?? "").toLowerCase()) ||
+              a.book_id - b.book_id,
+          );
+      case "list_book_annotations": {
+        const bookId = args.bookId as number;
+        if (!books.some((b) => b.id === bookId)) throw `no book with id ${bookId}`;
+        const entry = (blockId: number, h: Highlight | null, note: Note | undefined): BookAnnotation => {
+          const { content, block } = blockPlace(blockId);
+          return {
+            content_block_id: blockId,
+            chapter_id: content.chapter_id,
+            chapter_idx: content.chapter_idx,
+            chapter_title: content.chapter_title,
+            highlight_id: h?.id ?? null,
+            color: h?.color ?? null,
+            text: h
+              ? Array.from(block.text).slice(h.start_offset, h.end_offset).join("")
+              : block.text,
+            note_id: note?.id ?? null,
+            note_body: note?.body ?? null,
+          };
+        };
+        return [
+          ...highlights
+            .filter((h) => bookOf(h.content_block_id) === bookId)
+            .map((h) => entry(h.content_block_id, h, notes.find((n) => n.highlight_id === h.id))),
+          ...notes
+            .filter((n) => n.highlight_id == null && bookOf(n.content_block_id) === bookId)
+            .map((n) => entry(n.content_block_id, null, n)),
+        ].sort(byReadingOrder((e) => readingOrder(e.content_block_id, e.highlight_id)));
       }
       case "plugin:dialog|open":
         return openPath;

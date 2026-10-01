@@ -12,12 +12,17 @@ pub struct BookSummary {
     pub chapter_count: i64,
     /// Bookmarks of the book's paragraphs, across all folders.
     pub bookmark_count: i64,
+    pub highlight_count: i64,
+    /// Notes on highlights and on whole paragraphs.
+    pub note_count: i64,
 }
 
 pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
     let mut stmt = conn.prepare(
         "SELECT b.id, b.title, b.author, COUNT(ch.id),
-                (SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id)
+                (SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id),
+                (SELECT COUNT(*) FROM highlights h WHERE h.book_id = b.id),
+                (SELECT COUNT(*) FROM notes n WHERE n.book_id = b.id)
          FROM books b
          LEFT JOIN chapters ch ON ch.book_id = b.id
          GROUP BY b.id
@@ -30,6 +35,8 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
             author: row.get(2)?,
             chapter_count: row.get(3)?,
             bookmark_count: row.get(4)?,
+            highlight_count: row.get(5)?,
+            note_count: row.get(6)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)

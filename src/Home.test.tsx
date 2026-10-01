@@ -15,7 +15,7 @@ describe("home", () => {
   it("opens on home with a card per section and their counts", async () => {
     renderApp();
     await waitFor(() => expect(detail("Books")).toBe("2 books"));
-    expect(detail("Bookmarks")).toBe("1 folder · 2 passages");
+    expect(detail("Bookmarks & notes")).toBe("1 folder · 2 passages · 2 highlights, 2 notes");
     expect(detail("Search")).toBe("Search across 2 books");
     expect(screen.getByRole("heading", { level: 1, name: "Pitaka" })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
@@ -60,7 +60,7 @@ describe("home", () => {
     expect(document.querySelector(".reader")).toBeNull();
   });
 
-  it.each<Section>(["Books", "Bookmarks", "Search"])(
+  it.each<Section>(["Books", "Bookmarks & notes", "Search"])(
     "opens %s from its card and returns home from the header",
     async (section) => {
       const { user } = renderApp();
@@ -95,7 +95,7 @@ describe("home", () => {
     expect((card("Search") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Your library")).toBeNull();
     // The folder outlives its passages.
-    expect(detail("Bookmarks")).toBe("1 folder · 0 passages");
+    expect(detail("Bookmarks & notes")).toBe("1 folder · 0 passages");
   });
 
   it("shows an error when the library can't be loaded", async () => {

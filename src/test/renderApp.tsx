@@ -27,7 +27,7 @@ export function resultItems() {
   return Array.from(document.querySelectorAll<HTMLLIElement>(".results li"));
 }
 
-export type Section = "Home" | "Books" | "Bookmarks" | "Search";
+export type Section = "Home" | "Books" | "Bookmarks & notes" | "Search";
 
 /** Opens a section from the header, or from its home card when on home. */
 export async function goTo(user: ReturnType<typeof userEvent.setup>, section: Section) {

@@ -3,7 +3,7 @@ export type Screen = "home" | "books" | "bookmarks" | "search";
 const SECTIONS: { screen: Screen; label: string }[] = [
   { screen: "home", label: "Home" },
   { screen: "books", label: "Books" },
-  { screen: "bookmarks", label: "Bookmarks" },
+  { screen: "bookmarks", label: "Bookmarks & notes" },
   { screen: "search", label: "Search" },
 ];
 

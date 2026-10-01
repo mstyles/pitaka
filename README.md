@@ -3,8 +3,8 @@
 [![CI](https://github.com/mstyles/pitaka/actions/workflows/ci.yml/badge.svg)](https://github.com/mstyles/pitaka/actions/workflows/ci.yml)
 
 A desktop app for reading and researching your EPUB library: full-text
-search across every book, and bookmark folders for the passages you want
-to keep.
+search across every book, bookmark folders for the passages you want
+to keep, and highlights and notes as you read.
 
 **[Try it in your browser](https://mstyles.github.io/pitaka/demo/)** ·
 [Website](https://mstyles.github.io/pitaka/)
@@ -24,6 +24,10 @@ to keep.
   sent anywhere.
 - **Read with the hit in context.** Opening a result jumps the reader to
   that paragraph, with the book's chapters alongside.
+- **Highlight and write notes.** Select words in a paragraph to
+  highlight them in one of four colours, and note a highlight or a whole
+  paragraph. Notes open in the margin beside the text, and each book's
+  highlights and notes are listed in reading order.
 - **Keep passages in bookmark folders**, one per topic or project, each
   passage linked back to its place in the book.
 - **Local and private.** Your books are indexed into a SQLite database on
@@ -33,9 +37,9 @@ The browser demo is the real interface with one built-in book, the
 Therīgāthā (*Verses of the Senior Nuns*), and a search that works like
 the app's. Importing your own books needs the desktop app.
 
-| Home | Reader | Bookmarks |
-| --- | --- | --- |
-| ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
+| Home | Reader | Notes | Bookmarks |
+| --- | --- | --- | --- |
+| ![Home screen](docs/screenshots/home.jpg) | ![Reader with a highlighted search hit](docs/screenshots/reader.jpg) | ![Highlighted verses with a note in the margin](docs/screenshots/notes.jpg) | ![A bookmark folder](docs/screenshots/bookmarks.jpg) |
 
 **Contents:** [Install](#install) · [Licence](#licence) ·
 [Contributing](#contributing) · [How it's built](#how-its-built) ·
@@ -153,13 +157,30 @@ members, sharing one `Cargo.lock`/`target/`.
   One file per job, each with its unit tests alongside and all
   re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
   `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
-  queries) and `bookmarks.rs`.
+  queries), `bookmarks.rs` and `annotations.rs`.
   Bookmark folders (migration 003): create, rename and delete folders
   (names trimmed and unique ignoring case), bookmark a paragraph into
   several folders at most once each, list a folder's passages in the
   order added, and mark a chapter's bookmarked paragraphs. Unit tests
   cover moving pre-003 bookmarks into a "Bookmarks" folder, and that
   deleting a folder or a book cascades to exactly its bookmarks.
+- `ebook_research_core/src/db/annotations.rs` — highlights and notes
+  (migration 005 adds their indexes and the one-note-per-anchor unique
+  indexes). A highlight is a range in one paragraph counted in
+  characters (`chars()`), so "Paṭācārā" is 0..8; ranges must sit inside
+  the paragraph and not overlap another (touching is fine), and colours
+  are yellow, green, blue or pink. Each highlight and each paragraph
+  has at most one note, trimmed and non-empty. Deleting a highlight
+  deletes its note first, in one transaction, because the schema's
+  `ON DELETE SET NULL` would otherwise turn it into a second paragraph
+  note and fail. `list_book_annotations` gives a book's entries in
+  reading order with the highlighted words cut out by character, and
+  `list_books` counts highlights and notes for the Remove dialog. Unit
+  tests cover each of those rules, the reading order across chapters,
+  and that removing a book cascades to its highlights and notes with
+  both search indexes intact; the integration test highlights and notes
+  a real `test.epub` paragraph, then removes and re-imports the book
+  and finds nothing marked.
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
   case and diacritics ("samsara" matches "saṃsāra"). Each word of the
@@ -241,14 +262,15 @@ members, sharing one `Cargo.lock`/`target/`.
     the first call may download the model. None of this is covered by
     automated tests.
 - The frontend typechecks (`npx tsc --noEmit`):
-  - `src/HomeView.tsx` — the launch screen: Books, Bookmarks and
-    Search cards with counts from `list_books` and
-    `list_bookmark_folders` ("2 books", "1 folder · 2 passages"). An
+  - `src/HomeView.tsx` — the launch screen: Books, Bookmarks & notes
+    and Search cards with counts from `list_books` and
+    `list_bookmark_folders` ("2 books", "1 folder · 2 passages · 2
+    highlights, 2 notes"). An
     empty library points at importing and disables Search. Under the
     cards, "Your library" lists the 3 most recently imported books,
     each opening the reader with `← Home`, and links to the Books
     screen ("All 5 books →") when there are more.
-    `src/NavBar.tsx` is the `Home · Books · Bookmarks · Search` header
+    `src/NavBar.tsx` is the `Home · Books · Bookmarks & notes · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
     book list from `list_books` with Remove.
@@ -266,9 +288,13 @@ members, sharing one `Cargo.lock`/`target/`.
     so a book's `<` or markup shows as text. It stays mounted,
     so the query and results survive leaving the screen, and re-runs
     the last search when books were imported or removed meanwhile.
-  - `src/BookmarksView.tsx` — the list of folders with counts and a
-    new-folder form. `src/FolderView.tsx` shows a folder's passages
-    (click to open in the reader, Remove), with Rename and Delete.
+  - `src/BookmarksView.tsx` — the Bookmarks & notes screen: folders
+    with counts and a new-folder form, then each book with highlights
+    or notes ("2 highlights, 2 notes"). `src/FolderView.tsx` shows a
+    folder's passages (click to open in the reader, Remove), with Rename
+    and Delete. `src/BookAnnotationsView.tsx` shows a book's highlights
+    and notes under chapter headings; an entry opens the reader at its
+    paragraph with its note's card open and `← <book title>` to return.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
     sidebar headed by the book's title and author. Clicking a book opens it at the first chapter; clicking a
     search hit opens its chapter, centres the matching paragraph and
@@ -276,7 +302,15 @@ members, sharing one `Cargo.lock`/`target/`.
     (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
-    `← <folder name>`.
+    `← <folder name>`. Selecting text within a paragraph shows
+    `src/SelectionToolbar.tsx` (four colours and "Add note"); offsets
+    are converted from the DOM's UTF-16 units to characters by
+    `src/annotate.ts`, skipping the note markers. Clicking a highlight
+    opens `src/HighlightPopover.tsx` (recolour, add a note, remove).
+    A note shows as a raised pen after its highlight or paragraph, and
+    clicking it opens `src/NoteCard.tsx` beside the text from 1280px
+    wide, or under the paragraph below that; a pen under the bookmark
+    icon starts or toggles the paragraph's own note.
   - `src-tauri/src/commands.rs` — if the library database can't be
     opened at startup, the app shows the error in a dialog and quits
     when it's dismissed, rather than panicking with nothing on screen.
@@ -325,7 +359,16 @@ members, sharing one `Cargo.lock`/`target/`.
   chapter search: the switch hidden without the feature, results as
   text, opening a chapter at its match and coming back, the indexed-books
   line, "No results", errors, and the indexing progress line across
-  screens. The mock replays
+  screens, and highlights and notes (`src/Annotations.test.tsx`):
+  rendering, highlighting a selection with the right character offsets
+  (including after a note marker), the cross-paragraph message, the
+  overlap error, recolouring and removing (with a confirm when there's
+  a note), notes hidden until their marker is clicked, adding a note
+  from a selection, cancelling it, editing, deleting by saving empty,
+  paragraph notes, and the Bookmarks & notes screen opening an entry
+  with its note showing. `src/annotate.test.ts` checks the offset
+  conversion on emoji and Pali text, and the mock's annotation answers
+  are checked against the core's recorded ones. The mock replays
   `src/test/fixtures/library.json`, which the core test
   `ui_fixtures_are_current` writes from real `db` output for
   `test.epub` plus a synthetic 3×40-paragraph book. Chapter matches are
@@ -361,7 +404,10 @@ members, sharing one `Cargo.lock`/`target/`.
   "the dangers of sensual pleasure" over the demo book, from
   `search_chapters` with the model, fed to the demo's UI through the mock
   with the banner removed. The new section was checked at 720px and
-  1280px wide.
+  1280px wide. The highlights and notes screenshot
+  (`docs/screenshots/notes.jpg`) was made in `npm run dev:demo` by
+  selecting and noting Paṭācārā's verses with the mouse, with the banner
+  removed and the fading hover icons of one paragraph painted out.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
@@ -377,7 +423,17 @@ members, sharing one `Cargo.lock`/`target/`.
   paragraph was bookmarked into a new folder and the existing one from
   the popover, the library counts updated, and a passage opened in the
   reader flashing, with "← Library" returning to the folder. No console
-  errors. Not checked in dark mode.
+  errors. Not checked in dark mode. Walked again for highlights and
+  notes: a dragged selection got the toolbar centred above it and a
+  blue highlight on exactly the selected words; the popover recoloured,
+  added a note and removed a highlight with its note; a paragraph note
+  from the margin pen showed its marker at the paragraph's end; and the
+  Bookmarks & notes screen listed the entries in reading order and
+  opened one in the reader with its card open. At 1920px wide the cards
+  sat in the margin column, opening one left the text where it was, and
+  a long note pushed the next paragraph down; at 884px they opened under
+  the paragraph. The gap under a tall card was then fixed and checked
+  at 884px only. No console errors. Not checked in dark mode.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
@@ -385,7 +441,8 @@ words" toggle was added, and not since `nav.xhtml` started being
 skipped or the paragraph-extraction rewrite: re-imported books haven't
 been checked in the reader). Bookmark folders haven't been clicked
 through in the Tauri window, and migration 003 hasn't been run against
-a real library yet. Chapter search has been partly tried in the Tauri
+a real library yet. Neither have highlights and notes, nor migration
+005. Chapter search has been partly tried in the Tauri
 window: importing a book showed the indexing progress, and found the
 bug where leaving the Books screen hid it. A full walk (search results,
 the model download, a failed run) hasn't been recorded. The build needs
@@ -411,7 +468,8 @@ pitaka/
 │   ├── src/{lib,epub}.rs
 │   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
-│   │                              library / bookmarks / semantic_index,
+│   │                              library / bookmarks / annotations /
+│   │                              semantic_index,
 │   │                              re-exported as db::*
 │   ├── tests/integration.rs
 │   └── tests/semantic_eval/    <- labelled queries for ranking (local/ is git-ignored)
@@ -423,10 +481,11 @@ pitaka/
 │       └── commands.rs           <- import_book / search_library / list_books /
 │                                    get_book_chapters / get_chapter_content /
 │                                    bookmark folder + bookmark commands /
+│                                    highlight + note commands /
 │                                    semantic_status / search_chapters
 ├── src/                         <- React + TS frontend
 │   ├── App.tsx                  <- current screen, reader target and back label
-│   ├── HomeView.tsx             <- launch screen: Books / Bookmarks / Search cards
+│   ├── HomeView.tsx             <- launch screen: Books / Bookmarks & notes / Search
 │   ├── NavBar.tsx               <- header for switching between screens
 │   ├── BooksView.tsx            <- import, book list, remove
 │   ├── SearchView.tsx           <- search box and results (kept mounted)
@@ -434,6 +493,11 @@ pitaka/
 │   ├── FolderView.tsx           <- one folder's passages
 │   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
 │   ├── BookmarkPopover.tsx      <- tick a paragraph into folders
+│   ├── BookAnnotationsView.tsx  <- one book's highlights and notes
+│   ├── SelectionToolbar.tsx     <- highlight or note a text selection
+│   ├── HighlightPopover.tsx     <- recolour or remove a highlight
+│   ├── NoteCard.tsx             <- a note in the reader's margin
+│   ├── annotate.ts              <- highlight runs, selection offsets
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
 │   ├── fonts.css                <- @font-face rules for the bundled fonts
@@ -455,6 +519,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 - 004 adds `chunk_embeddings` for semantic chapter search. It's applied
   in every build, with or without the feature, so a library moves
   between builds unchanged; nothing is backfilled.
+- 005 indexes highlights and notes by paragraph and adds the unique
+  indexes for one note per highlight and one per paragraph. Nothing had
+  written to either table before, so they can't fail on existing data.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -504,10 +571,13 @@ In the same order of priority as the Python version, then newer ones.
    occasionally have genuinely broken markup, so you may want a
    best-effort recovery path (e.g. retry with an HTML-mode parser)
    before shipping.
-6. Bookmarks point at paragraphs, so removing a book (including to
-   re-import it after a parser fix) deletes its bookmarks from every
-   folder; the Remove dialog only warns with a count. Bookmarks cover
-   whole paragraphs, and passages can't be reordered within a folder.
+6. Bookmarks, highlights and notes point at paragraphs, so removing a
+   book (including to re-import it after a parser fix) deletes them all;
+   the Remove dialog only warns with counts. Bookmarks cover whole
+   paragraphs, and passages can't be reordered within a folder. A
+   highlight can't span paragraphs or overlap another highlight, notes
+   are plain text, and neither notes nor highlights are searchable or
+   exportable.
 7. Transliteration variants are a curated list only: unlisted pairs
    aren't inferred, so `nibbāna`/`nirvana` matches because it's in
    `data/term_variants.txt`, not because anything spotted the
@@ -585,6 +655,8 @@ Done:
       script into the app
 - [x] Semantic search, for the chapter case: find chapters by meaning
       with a local embedding model, behind the `semantic` feature
+- [x] Highlights and notes: highlight text in four colours, note a
+      highlight or a paragraph, and browse them per book
 
 Next up (fixes for the known limitations above):
 
@@ -599,8 +671,6 @@ Next up (fixes for the known limitations above):
 
 Later:
 
-- [ ] Highlights and notes UI (the `highlights` and `notes` tables
-      already exist in the schema)
 - [ ] Reorder passages within a bookmark folder
 - [ ] Keep bookmarks when a book is removed and re-imported
       (limitation 6)

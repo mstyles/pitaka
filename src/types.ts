@@ -51,6 +51,8 @@ export type BookSummary = {
   author: string | null;
   chapter_count: number;
   bookmark_count: number;
+  highlight_count: number;
+  note_count: number;
 };
 
 export type ChapterSummary = {
@@ -95,4 +97,53 @@ export type FolderBookmark = {
 export type BlockBookmark = {
   content_block_id: number;
   folder_id: number;
+};
+
+export type HighlightColor = "yellow" | "green" | "blue" | "pink";
+
+/** Offsets count code points (Unicode scalar values), not UTF-16 units. */
+export type Highlight = {
+  id: number;
+  content_block_id: number;
+  start_offset: number;
+  end_offset: number;
+  color: HighlightColor;
+  created_at: string;
+};
+
+/** A note on a highlight, or on its whole paragraph when `highlight_id` is null. */
+export type Note = {
+  id: number;
+  content_block_id: number;
+  highlight_id: number | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChapterAnnotations = {
+  highlights: Highlight[];
+  notes: Note[];
+};
+
+export type AnnotatedBook = {
+  book_id: number;
+  title: string | null;
+  author: string | null;
+  highlight_count: number;
+  note_count: number;
+};
+
+/** A highlight (with its note, if any) or a paragraph note. */
+export type BookAnnotation = {
+  content_block_id: number;
+  chapter_id: number;
+  chapter_idx: number;
+  chapter_title: string | null;
+  highlight_id: number | null;
+  color: HighlightColor | null;
+  /** The highlighted words, or the whole paragraph for a paragraph note. */
+  text: string;
+  note_id: number | null;
+  note_body: string | null;
 };

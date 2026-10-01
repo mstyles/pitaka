@@ -13,19 +13,22 @@ type ReaderTarget = {
   focusBlockId?: number;
   /** Names the screen the book was opened from, which is where back returns. */
   backLabel: string;
+  openNoteId?: number;
 };
 
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [reader, setReader] = useState<ReaderTarget | null>(null);
   const [openFolderId, setOpenFolderId] = useState<number | null>(null);
+  const [openAnnotationsBookId, setOpenAnnotationsBookId] = useState<number | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const { indexing, dismissFinished } = useIndexing();
 
   function navigate(to: Screen) {
     if (screen === "books" && to !== "books") dismissFinished();
-    // The Bookmarks link always shows the folder list.
+    // The Bookmarks & notes link always shows the lists.
     setOpenFolderId(null);
+    setOpenAnnotationsBookId(null);
     setScreen(to);
   }
 
@@ -57,6 +60,17 @@ function App() {
               backLabel: `← ${folder.name}`,
             })
           }
+          openAnnotationsBookId={openAnnotationsBookId}
+          onOpenAnnotations={setOpenAnnotationsBookId}
+          onOpenAnnotation={(e, book) =>
+            setReader({
+              bookId: book.book_id,
+              chapterId: e.chapter_id,
+              focusBlockId: e.content_block_id,
+              backLabel: `← ${book.title ?? "Untitled"}`,
+              openNoteId: e.note_id ?? undefined,
+            })
+          }
         />
       )}
       {/* Kept mounted so the query and results survive leaving the screen. */}
@@ -80,6 +94,7 @@ function App() {
           initialChapterId={reader.chapterId}
           focusBlockId={reader.focusBlockId}
           backLabel={reader.backLabel}
+          openNoteId={reader.openNoteId}
           onBack={() => setReader(null)}
         />
       )}
