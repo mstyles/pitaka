@@ -10,6 +10,12 @@
   --danger: #a33a2b;
   --mark: #f2d8a2;
   --flash: rgba(214, 160, 60, 0.22);
+  /* Highlights: translucent, so the text keeps its contrast. */
+  --hl-yellow: rgba(238, 190, 40, 0.38);
+  --hl-green: rgba(110, 175, 80, 0.32);
+  --hl-blue: rgba(80, 145, 215, 0.28);
+  --hl-pink: rgba(225, 100, 145, 0.28);
+  --rule-neutral: #c9bca4;
 
   --radius: 6px;
   --content: 880px;
@@ -45,6 +51,11 @@
     --danger: #e07a67;
     --mark: rgba(224, 153, 94, 0.35);
     --flash: rgba(224, 153, 94, 0.16);
+    --hl-yellow: rgba(230, 190, 60, 0.3);
+    --hl-green: rgba(120, 190, 100, 0.28);
+    --hl-blue: rgba(100, 160, 230, 0.3);
+    --hl-pink: rgba(235, 120, 160, 0.3);
+    --rule-neutral: #5a4f42;
 
     color-scheme: dark;
   }
@@ -649,6 +660,7 @@ button.button-danger:hover:not(:disabled) {
 }
 
 .reader-text {
+  position: relative; /* for the selection toolbar */
   max-width: 640px;
   margin: 0 auto;
   font-family: var(--font-read);
@@ -764,4 +776,265 @@ button.button-danger:hover:not(:disabled) {
 
 .reader-error {
   color: var(--danger);
+}
+
+/* Highlights and notes */
+
+.hl-yellow { --hl: var(--hl-yellow); }
+.hl-green { --hl: var(--hl-green); }
+.hl-blue { --hl: var(--hl-blue); }
+.hl-pink { --hl: var(--hl-pink); }
+
+mark.hl {
+  color: inherit;
+  background: var(--hl);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  /* The translucent colour over the surface, as it looks on the page. */
+  background: linear-gradient(var(--hl), var(--hl)), var(--surface);
+}
+
+.swatch[aria-pressed="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.selection-toolbar {
+  position: absolute;
+  z-index: 20;
+  transform: translate(-50%, calc(-100% - 8px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 320px;
+  padding: 0.4em 0.5em;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+
+.selection-toolbar-note {
+  min-height: 30px;
+  padding: 0.1em 0.6em;
+}
+
+.selection-toolbar-message {
+  color: var(--muted);
+}
+
+.selection-toolbar-error {
+  flex-basis: 100%;
+  white-space: normal;
+  color: var(--danger);
+  font-size: 0.85em;
+}
+
+.highlight-popover {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  padding: 0.6em;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+
+.highlight-popover-row {
+  display: flex;
+  gap: 0.4em;
+}
+
+.highlight-popover-row button:not(.swatch) {
+  min-height: 30px;
+  padding: 0.1em 0.6em;
+}
+
+/* A raised pen after the text a note belongs to. */
+.note-hint {
+  display: inline-block;
+  vertical-align: super;
+  min-height: 0;
+  margin: 0 0.1em;
+  padding: 0 0.15em;
+  line-height: 1;
+  border: none;
+  background: none;
+  color: var(--accent);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.note-hint svg,
+.note-toggle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.note-hint[aria-expanded="true"] svg {
+  fill: currentColor;
+}
+
+/* Under the bookmark icon in the left margin. */
+.note-toggle {
+  position: absolute;
+  top: 2em;
+  left: -2.1em;
+  min-height: 0;
+  padding: 0.3em 0.4em;
+  line-height: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.note-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+.reader-block:hover .note-toggle,
+.reader-block:focus-within .note-toggle {
+  opacity: 0.8;
+}
+
+.note-toggle:hover,
+.note-toggle:focus-visible,
+.note-toggle[aria-expanded="true"] {
+  opacity: 1 !important;
+}
+
+.note-toggle.noted {
+  color: var(--accent);
+}
+
+.note-margin:empty {
+  display: none;
+}
+
+.note-margin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  margin: -0.25em 0 1em;
+}
+
+.note-card {
+  padding: 0.6em 0.75em;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--rule-neutral);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.note-card-yellow { border-left-color: rgba(220, 170, 20, 0.9); }
+.note-card-green { border-left-color: rgba(90, 160, 60, 0.9); }
+.note-card-blue { border-left-color: rgba(60, 125, 200, 0.9); }
+.note-card-pink { border-left-color: rgba(210, 80, 130, 0.9); }
+
+.note-card-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-card textarea {
+  width: 100%;
+  padding: 0.4em 0.5em;
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  resize: vertical;
+}
+
+.note-card-actions {
+  display: flex;
+  gap: 0.4em;
+  margin-top: 0.4em;
+}
+
+.note-card-actions button {
+  min-height: 30px;
+  padding: 0.1em 0.6em;
+  font-size: 0.9em;
+}
+
+/*
+ * Wide windows get a margin column beside the text (sidebar 272 + padding
+ * 80 + text 640 + gap 24 + margin 240 ≈ 1256). It's always there, so
+ * opening a note doesn't reflow the text, and it's in normal flow, so a
+ * tall card pushes the next paragraph down rather than overlapping it.
+ */
+@media (min-width: 1280px) {
+  .reader-text {
+    max-width: 904px;
+  }
+
+  .reader-block {
+    display: grid;
+    grid-template-columns: 640px 240px;
+    column-gap: 24px;
+    align-items: start;
+  }
+
+  .note-margin,
+  .note-margin:empty {
+    display: flex;
+    margin: 0.3em 0 0;
+  }
+}
+
+/* Bookmarks & notes screen */
+
+.annotated-books {
+  margin-top: 2.5em;
+}
+
+.annotation-chapter .section-label {
+  margin: 1.5em 0 0.5em;
+}
+
+.annotation-quote {
+  font-family: var(--font-read);
+  padding-left: 0.75em;
+  border-left: 3px solid var(--rule-neutral);
+}
+
+.annotation-quote.hl-bar-yellow { border-left-color: rgba(220, 170, 20, 0.9); }
+.annotation-quote.hl-bar-green { border-left-color: rgba(90, 160, 60, 0.9); }
+.annotation-quote.hl-bar-blue { border-left-color: rgba(60, 125, 200, 0.9); }
+.annotation-quote.hl-bar-pink { border-left-color: rgba(210, 80, 130, 0.9); }
+
+.annotation-note {
+  margin-top: 0.4em;
+  padding-left: calc(0.75em + 3px);
+  white-space: pre-wrap;
+  color: var(--muted);
 }

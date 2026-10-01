@@ -74,10 +74,17 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
         ? "No folders yet"
         : `${plural(folders.length, "folder")} · ${plural(passages, "passage")}`;
   }
+  if (books) {
+    const highlights = books.reduce((n, b) => n + b.highlight_count, 0);
+    const notes = books.reduce((n, b) => n + b.note_count, 0);
+    if (highlights + notes > 0) {
+      foldersDetail += ` · ${plural(highlights, "highlight")}, ${plural(notes, "note")}`;
+    }
+  }
 
   const cards: { screen: Exclude<Screen, "home">; title: string; detail: string; disabled?: boolean }[] = [
     { screen: "books", title: "Books", detail: booksDetail },
-    { screen: "bookmarks", title: "Bookmarks", detail: foldersDetail },
+    { screen: "bookmarks", title: "Bookmarks & notes", detail: foldersDetail },
     { screen: "search", title: "Search", detail: searchDetail, disabled: emptyLibrary },
   ];
 

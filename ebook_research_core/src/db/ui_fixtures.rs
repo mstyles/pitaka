@@ -66,6 +66,8 @@ fn ui_fixtures_are_current() {
     )
     .unwrap();
 
+    let annotations = annotation_fixtures(&conn, long_id);
+
     let mut searches = BTreeMap::new();
     for (mode, name, query) in [
         (SearchMode::Stemmed, "stemmed", "neural networks"),
@@ -91,7 +93,58 @@ fn ui_fixtures_are_current() {
     fixtures["search"] = to_value(searches).unwrap();
     fixtures["semantic_status"] = to_value(status).unwrap();
     fixtures["chapter_matches"] = chapter_matches;
+    for (key, value) in annotations {
+        fixtures[key] = value;
+    }
     check_fixture("src/test/fixtures/library.json", &fixtures);
+}
+
+/// On the long book's first chapter: a yellow highlight with a note, a
+/// green one without, and a note on a whole paragraph. Timestamps are
+/// pinned so the file is stable.
+fn annotation_fixtures(conn: &Connection, book_id: i64) -> [(&'static str, serde_json::Value); 3] {
+    use serde_json::{to_value, Map};
+
+    let chapter = &get_book_chapters(conn, book_id).unwrap()[0];
+    let blocks = get_chapter_content(conn, chapter.id).unwrap().blocks;
+    // "Part One, paragraph 3: filler text …": "filler text", then "wrap".
+    // The text is ASCII, so byte offsets are character offsets.
+    let p3 = &blocks[2];
+    let at = |text: &str, word: &str| text.find(word).unwrap() as i64;
+    let start = at(&p3.text, "filler text");
+    let noted = add_highlight(conn, p3.id, start, start + 11, "yellow").unwrap();
+    add_highlight_note(conn, noted.id, "Why call it filler?").unwrap();
+    let start = at(&p3.text, "wrap");
+    add_highlight(conn, p3.id, start, start + 4, "green").unwrap();
+    add_paragraph_note(conn, blocks[4].id, "A note on the whole paragraph.").unwrap();
+    for table in ["highlights", "notes"] {
+        conn.execute(
+            &format!("UPDATE {table} SET created_at = '2026-09-02 12:00:00'"),
+            [],
+        )
+        .unwrap();
+    }
+    conn.execute("UPDATE notes SET updated_at = '2026-09-02 12:00:00'", [])
+        .unwrap();
+
+    let mut chapter_annotations = Map::new();
+    chapter_annotations.insert(
+        chapter.id.to_string(),
+        to_value(get_chapter_annotations(conn, chapter.id).unwrap()).unwrap(),
+    );
+    let mut book_annotations = Map::new();
+    book_annotations.insert(
+        book_id.to_string(),
+        to_value(list_book_annotations(conn, book_id).unwrap()).unwrap(),
+    );
+    [
+        ("chapter_annotations", chapter_annotations.into()),
+        (
+            "annotated_books",
+            to_value(list_annotated_books(conn).unwrap()).unwrap(),
+        ),
+        ("book_annotations", book_annotations.into()),
+    ]
 }
 
 /// Chapter search results for a few queries, keyed by query. Embedding

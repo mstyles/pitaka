@@ -20,6 +20,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/002_search_indexes.sql")),
         M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
         M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
+        M::up(include_str!("../../migrations/005_annotations.sql")),
     ])
 }
 
@@ -47,6 +48,7 @@ fn baseline_unversioned_db(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+mod annotations;
 mod bookmarks;
 mod import;
 mod library;
@@ -57,6 +59,12 @@ mod test_util;
 #[cfg(test)]
 mod ui_fixtures;
 
+pub use annotations::{
+    add_highlight, add_highlight_note, add_paragraph_note, delete_highlight, delete_note,
+    get_chapter_annotations, list_annotated_books, list_book_annotations, set_highlight_color,
+    update_note, AnnotatedBook, BookAnnotation, ChapterAnnotations, Highlight, Note,
+    HIGHLIGHT_COLORS,
+};
 pub use bookmarks::{
     add_bookmark, create_bookmark_folder, delete_bookmark_folder, get_chapter_bookmarks,
     list_bookmark_folders, list_folder_bookmarks, remove_bookmark, rename_bookmark_folder,

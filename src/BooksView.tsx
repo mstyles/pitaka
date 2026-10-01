@@ -100,10 +100,17 @@ function BooksView({ onOpenBook, onLibraryChanged, indexing }: Props) {
 
   async function removeBook(book: BookSummary) {
     const title = book.title ?? "Untitled";
-    const n = book.bookmark_count;
-    const bookmarks = n > 0 ? ` Its ${n} bookmark${n === 1 ? "" : "s"} will be deleted too.` : "";
+    const marked = [
+      [book.bookmark_count, "bookmark"],
+      [book.highlight_count, "highlight"],
+      [book.note_count, "note"],
+    ] as const;
+    const parts = marked.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
+    const list =
+      parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+    const lost = list ? ` Its ${list} will be deleted too.` : "";
     const confirmed = await ask(
-      `Remove "${title}" from the library?${bookmarks} The EPUB file won't be deleted.`,
+      `Remove "${title}" from the library?${lost} The EPUB file won't be deleted.`,
       { title: "Remove book", kind: "warning", okLabel: "Remove", cancelLabel: "Cancel" },
     );
     if (!confirmed) return;
