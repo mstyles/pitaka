@@ -14,6 +14,7 @@ import type {
   ChapterContent,
   ChapterMatch,
   ChapterSummary,
+  EpubScan,
   FolderBookmark,
   Highlight,
   ImportOutcome,
@@ -38,6 +39,8 @@ export type Fixtures = {
   /** Absent in the demo's data: the demo has no chapter search. */
   semantic_status?: SemanticStatus;
   chapter_matches?: Record<string, ChapterMatch[]>;
+  /** What scanning a folder returns; absent in the demo's data. */
+  find_epubs?: EpubScan;
   /** Absent in the demo's data, which starts with nothing highlighted. */
   chapter_annotations?: Record<string, ChapterAnnotations>;
   annotated_books?: AnnotatedBook[];
@@ -57,8 +60,16 @@ export type MockOptions = {
   search?: (books: BookSummary[], query: string, mode: SearchMode) => SearchResult[];
   /** When set, `import_book` always rejects with this message. */
   importError?: string;
+  /** Paths `import_book` rejects, with the message to reject with. */
+  importErrors?: Record<string, string>;
+  /** When set, each `import_book` call waits for this before answering. */
+  importGate?: Promise<unknown>;
   /** What the "Import EPUB…" file picker returns; null means cancelled. */
   openPath?: string | null;
+  /** What the "Import folder…" picker returns; null means cancelled. */
+  openDir?: string | null;
+  /** Answers `find_epubs`, in place of the fixtures' scan. */
+  scan?: EpubScan;
   /** Whether confirmation dialogs (remove book, delete folder) are accepted. */
   confirm?: boolean;
   /** The library to start with, in place of the fixture books. */
@@ -80,7 +91,11 @@ export function installMockBackend({
   data = fixtures,
   search,
   importError,
+  importErrors = {},
+  importGate,
   openPath = "/books/test.epub",
+  openDir = "/books/folder",
+  scan,
   confirm = true,
   fail = {},
   books: initialBooks = data.books,
@@ -194,12 +209,19 @@ export function installMockBackend({
           ...counts(b.id),
         }));
       case "import_book": {
-        if (importError) throw importError;
-        const imported = data.books.find((b) => b.id === data.import_new!.book_id)!;
-        if (books.some((b) => b.id === imported.id)) return data.import_again;
-        books = [...books, { ...imported }];
-        return data.import_new;
+        const importBook = () => {
+          if (importError) throw importError;
+          const error = importErrors[String(args.path)];
+          if (error) throw error;
+          const imported = data.books.find((b) => b.id === data.import_new!.book_id)!;
+          if (books.some((b) => b.id === imported.id)) return data.import_again;
+          books = [...books, { ...imported }];
+          return data.import_new;
+        };
+        return importGate ? importGate.then(importBook) : importBook();
       }
+      case "find_epubs":
+        return scan ?? data.find_epubs;
       case "delete_book": {
         const id = args.bookId as number;
         if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
@@ -425,8 +447,10 @@ export function installMockBackend({
             .map((n) => entry(n.content_block_id, null, n)),
         ].sort(byReadingOrder((e) => readingOrder(e.content_block_id, e.highlight_id)));
       }
-      case "plugin:dialog|open":
-        return openPath;
+      case "plugin:dialog|open": {
+        const options = args.options as { directory?: boolean } | undefined;
+        return options?.directory ? openDir : openPath;
+      }
       case "plugin:dialog|message": {
         // `ask` resolves true when the answer equals its okLabel.
         const buttons = args.buttons as { OkCancelCustom?: [string, string] } | undefined;

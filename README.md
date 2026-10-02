@@ -30,6 +30,9 @@ to keep, and highlights and notes as you read.
   highlights and notes are listed in reading order.
 - **Keep passages in bookmark folders**, one per topic or project, each
   passage linked back to its place in the book.
+- **Bring in a whole folder.** Import one EPUB, or pick a folder and
+  every EPUB under it is imported, Calibre's `Author/Title/` layout
+  included, skipping the ones already in your library.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -158,6 +161,16 @@ members, sharing one `Cargo.lock`/`target/`.
   re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
   `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
   queries), `bookmarks.rs` and `annotations.rs`.
+  `find_epubs` (in `import.rs`) lists the EPUBs under a folder for a
+  folder import: recursive, following linked folders, skipping hidden
+  files and folders, and returning a book reachable by two paths once.
+  Unit tests cover subfolders, case-insensitive `.EPUB`, a hidden
+  picked folder, links to folders outside the tree, a link loop, a
+  folder linked in twice, an unreadable folder and a broken link
+  (reported, the rest still found), and a missing folder or a file
+  given instead. The integration test `imports_every_book_in_a_folder`
+  imports a scanned folder holding two copies of `test.epub` and a bad
+  file: one book, one duplicate, one error.
   Bookmark folders (migration 003): create, rename and delete folders
   (names trimmed and unique ignoring case), bookmark a paragraph into
   several folders at most once each, list a folder's passages in the
@@ -273,7 +286,17 @@ members, sharing one `Cargo.lock`/`target/`.
     `src/NavBar.tsx` is the `Home · Books · Bookmarks & notes · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
-    book list from `list_books` with Remove.
+    book list from `list_books` with Remove. "Import folder…" picks a
+    folder → `find_epubs`, then calls `import_book` once per book
+    ("Importing 3 of 40…", with Stop), and sums up ("Imported 12 books,
+    3 already in library, 2 failed") with each failure's path and
+    error listed. The loop is in `useFolderImport`, called from
+    `App.tsx`, so it carries on while you're on other screens.
+    `import_book` now runs off the main thread, so the window repaints
+    between books. Checked in the browser against the mocked backend
+    (the button and the "Nothing new" summary); not yet clicked through
+    in the Tauri window, so the repaint, Stop and leaving the screen
+    mid-import are only covered by the tests below.
   - `src/SearchView.tsx` — in a build with semantic search, a
     Passages / Chapters switch; Chapters calls `search_chapters` and
     lists each chapter with a plain-text preview of the part that
@@ -346,7 +369,10 @@ members, sharing one `Cargo.lock`/`target/`.
   rest of a larger library, the
   empty-library state, moving between screens from the cards and the
   header), importing (new, duplicate,
-  cancelled), searching in both modes with highlighted snippets and
+  cancelled), importing a folder (the summary and failures list, a
+  cancelled picker, an empty folder, an unreadable one, Stop after the
+  book in flight, carrying on while on another screen, the import
+  buttons disabled meanwhile), searching in both modes with highlighted snippets and
   chapter titles, markup in a snippet shown as text rather than HTML,
   removing a book (confirmed or not), opening the reader, centring and
   flashing a search hit, switching chapters, going back to the screen
@@ -487,7 +513,7 @@ pitaka/
 │   ├── App.tsx                  <- current screen, reader target and back label
 │   ├── HomeView.tsx             <- launch screen: Books / Bookmarks & notes / Search
 │   ├── NavBar.tsx               <- header for switching between screens
-│   ├── BooksView.tsx            <- import, book list, remove
+│   ├── BooksView.tsx            <- import (file or folder), book list, remove
 │   ├── SearchView.tsx           <- search box and results (kept mounted)
 │   ├── BookmarksView.tsx        <- folder list, new folder
 │   ├── FolderView.tsx           <- one folder's passages
@@ -565,6 +591,8 @@ In the same order of priority as the Python version, then newer ones.
    as a separate book. Parser changes likewise only apply on import:
    books imported before the paragraph-extraction rewrite keep their old
    paragraph splits (and drop-cap spaces) until removed and re-imported.
+   A folder import reports such a changed book as a failure, with the
+   same reason.
 5. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
    first parse error (keeping the text read so far) rather than trying
    to recover — real-world EPUBs
@@ -599,7 +627,9 @@ In the same order of priority as the Python version, then newer ones.
      says how many books are indexed. A run stopped by closing the app
      leaves a book partly indexed, and it counts as indexed.
    - The model is downloaded on first use, so that needs a network
-     connection once, and indexing takes minutes per book.
+     connection once, and indexing takes minutes per book. Books
+     imported together, as in a folder import, are indexed one at a
+     time in no particular order.
    - Results are chapters, not passages, and nothing is highlighted: a
      match needn't share any words with the query. A very long spine
      item (some books have 200,000-char "chapters") gets more chances
@@ -657,6 +687,8 @@ Done:
       with a local embedding model, behind the `semantic` feature
 - [x] Highlights and notes: highlight text in four colours, note a
       highlight or a paragraph, and browse them per book
+- [x] Import a whole directory of books in one go, instead of one file
+      at a time
 
 Next up (fixes for the known limitations above):
 
@@ -692,8 +724,6 @@ Later:
       bookmarks (limitation 6) — a steep price for a search feature
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
-- [ ] Import a whole directory of books in one go, instead of one file
-      at a time
 - [ ] OCR support, so scanned or image-only books can be searched
 
 ## Workflow roadmap

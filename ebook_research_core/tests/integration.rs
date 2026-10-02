@@ -1,6 +1,6 @@
 use ebook_research_core::{
-    db, import_book, open_db, parse_epub, search, search_with_variants, ImportOutcome, SearchMode,
-    VariantIndex,
+    db, find_epubs, import_book, list_books, open_db, parse_epub, search, search_with_variants,
+    ImportOutcome, SearchMode, VariantIndex,
 };
 use rusqlite::Connection;
 
@@ -1079,4 +1079,39 @@ mod semantic_eval {
             score
         }
     }
+}
+
+#[test]
+fn imports_every_book_in_a_folder() {
+    let dir = std::env::temp_dir().join(format!("pitaka-folder-import-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("one")).unwrap();
+    std::fs::create_dir_all(dir.join("two")).unwrap();
+    std::fs::copy("test.epub", dir.join("one/test.epub")).unwrap();
+    std::fs::copy("test.epub", dir.join("two/copy.epub")).unwrap();
+    std::fs::write(dir.join("bad.epub"), b"not a zip").unwrap();
+
+    let scan = find_epubs(dir.to_str().unwrap()).unwrap();
+    assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
+    let mut conn = open_db(":memory:").unwrap();
+    let outcomes: Vec<_> = scan
+        .paths
+        .iter()
+        .map(|path| import_book(&mut conn, path))
+        .collect();
+    std::fs::remove_dir_all(&dir).unwrap();
+
+    // Walk order: bad.epub, one/test.epub, two/copy.epub.
+    assert_eq!(outcomes.len(), 3);
+    assert!(outcomes[0].is_err(), "bad.epub should fail to import");
+    let first = outcomes[1].as_ref().unwrap();
+    assert!(!first.already_imported);
+    assert_eq!(
+        outcomes[2].as_ref().unwrap(),
+        &ImportOutcome {
+            book_id: first.book_id,
+            already_imported: true,
+        }
+    );
+    assert_eq!(list_books(&conn).unwrap().len(), 1);
 }

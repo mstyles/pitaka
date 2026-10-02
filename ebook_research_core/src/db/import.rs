@@ -5,6 +5,8 @@ use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
+use walkdir::{DirEntry, WalkDir};
 
 fn file_hash(path: &str) -> Result<String> {
     let bytes = std::fs::read(path)?;
@@ -59,6 +61,71 @@ pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutco
         book_id,
         already_imported: false,
     })
+}
+
+/// What `find_epubs` found under a folder.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct EpubScan {
+    /// The EPUB files, in walk order: sorted by name within each folder,
+    /// depth first.
+    pub paths: Vec<String>,
+    /// Entries that couldn't be read (a folder without permission, a broken
+    /// link), skipped so one bad entry doesn't sink the whole scan.
+    pub unreadable: Vec<String>,
+}
+
+/// Finds every `.epub` file under `dir`, recursively, for importing a whole
+/// folder one book at a time. Linked folders are followed; hidden files and
+/// folders (`.Trash-1000`, macOS `._Book.epub` files) are skipped, and a book
+/// reachable by two paths is returned once.
+pub fn find_epubs(dir: &str) -> Result<EpubScan> {
+    match std::fs::metadata(dir) {
+        Err(e) => bail!("couldn't read {dir}: {e}"),
+        Ok(meta) if !meta.is_dir() => bail!("{dir} isn't a folder"),
+        Ok(_) => {}
+    }
+
+    let mut scan = EpubScan {
+        paths: Vec::new(),
+        unreadable: Vec::new(),
+    };
+    let mut seen = HashSet::new();
+    let walk = WalkDir::new(dir)
+        .follow_links(true)
+        .sort_by_file_name()
+        .into_iter()
+        // Depth 0 is the picked folder itself, which may be hidden.
+        .filter_entry(|e| e.depth() == 0 || !is_hidden(e));
+    for entry in walk {
+        let entry = match entry {
+            Ok(entry) => entry,
+            // Expected when following links; the folder is walked already.
+            Err(err) if err.loop_ancestor().is_some() => continue,
+            Err(err) => {
+                if let Some(path) = err.path() {
+                    scan.unreadable.push(path.to_string_lossy().into_owned());
+                }
+                continue;
+            }
+        };
+        let is_epub = entry
+            .path()
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("epub"));
+        if !entry.file_type().is_file() || !is_epub {
+            continue;
+        }
+        // A folder linked into the tree twice yields the same books twice.
+        let real = std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path().into());
+        if seen.insert(real) {
+            scan.paths.push(entry.path().to_string_lossy().into_owned());
+        }
+    }
+    Ok(scan)
+}
+
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry.file_name().to_string_lossy().starts_with('.')
 }
 
 /// Inserts a parsed book, its chapters, and its paragraphs in one
@@ -160,6 +227,118 @@ mod tests {
             conn.execute(&sql, [])
                 .unwrap_or_else(|e| panic!("{fts} integrity check failed: {e}"));
         }
+    }
+
+    /// A fresh folder under the system temp dir, removed when dropped.
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!("pitaka-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            TempDir(path)
+        }
+
+        fn add(&self, file: &str) {
+            let path = self.0.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"").unwrap();
+        }
+
+        fn str(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The scan's paths relative to `root`, for comparing exact lists.
+    fn relative(paths: &[String], root: &TempDir) -> Vec<String> {
+        let prefix = format!("{}/", root.str());
+        paths
+            .iter()
+            .map(|p| p.strip_prefix(&prefix).unwrap_or(p).to_string())
+            .collect()
+    }
+
+    #[test]
+    fn find_epubs_walks_subfolders() {
+        let scan = find_epubs("tests/fixtures/epub-dir").unwrap();
+        assert_eq!(
+            scan,
+            EpubScan {
+                // Bytewise order puts `Nested` before `a`.
+                paths: vec![
+                    "tests/fixtures/epub-dir/Nested/b.EPUB".to_string(),
+                    "tests/fixtures/epub-dir/a.epub".to_string(),
+                ],
+                unreadable: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn find_epubs_walks_a_hidden_root() {
+        let scan = find_epubs("tests/fixtures/epub-dir/.hidden").unwrap();
+        assert_eq!(scan.paths, vec!["tests/fixtures/epub-dir/.hidden/c.epub"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn find_epubs_follows_linked_folders() {
+        use std::os::unix::fs::symlink;
+        let root = TempDir::new("scan-links");
+        let elsewhere = TempDir::new("scan-links-target");
+        root.add("a.epub");
+        root.add("other/c.epub");
+        elsewhere.add("d.epub");
+        symlink(&elsewhere.0, root.0.join("linked")).unwrap();
+        std::fs::create_dir(root.0.join("sub")).unwrap();
+        symlink("..", root.0.join("sub/loop")).unwrap();
+        symlink("../other", root.0.join("sub/again")).unwrap();
+
+        let scan = find_epubs(root.str()).unwrap();
+        assert_eq!(
+            relative(&scan.paths, &root),
+            ["a.epub", "linked/d.epub", "other/c.epub"]
+        );
+        assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn find_epubs_reports_unreadable_paths() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let root = TempDir::new("scan-unreadable");
+        root.add("a.epub");
+        root.add("locked/b.epub");
+        let locked = root.0.join("locked");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        symlink("nowhere", root.0.join("gone.epub")).unwrap();
+        // Root reads a mode 000 folder anyway, so there's nothing to check.
+        let as_root = std::fs::read_dir(&locked).is_ok();
+
+        let scan = find_epubs(root.str());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if as_root {
+            return;
+        }
+        let scan = scan.unwrap();
+        assert_eq!(relative(&scan.paths, &root), ["a.epub"]);
+        assert_eq!(relative(&scan.unreadable, &root), ["gone.epub", "locked"]);
+    }
+
+    #[test]
+    fn find_epubs_needs_a_readable_folder() {
+        let err = find_epubs("tests/fixtures/no-such-dir").unwrap_err();
+        assert!(err.to_string().contains("couldn't read"), "{err}");
+        let err = find_epubs("tests/fixtures/epub-dir/a.epub").unwrap_err();
+        assert!(err.to_string().contains("isn't a folder"), "{err}");
     }
 
     #[test]
