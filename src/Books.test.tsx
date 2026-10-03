@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { indexingEvents } from "./test/mockBackend";
+import { fixtures, indexingEvents } from "./test/mockBackend";
 import { goTo, renderApp } from "./test/renderApp";
 
 const TEST_BOOK = "Test Book of Research";
@@ -84,6 +84,105 @@ describe("books", () => {
     const { user } = renderApp({ fail: { list_books: "database is locked" } });
     await goTo(user, "Books");
     expect(await screen.findByText("Loading library failed: database is locked")).toBeTruthy();
+  });
+});
+
+describe("importing a folder", () => {
+  const scan = {
+    paths: ["/books/folder/a/test.epub", "/books/folder/b/copy.epub", "/books/folder/bad.epub"],
+    unreadable: [],
+  };
+  const importErrors = { "/books/folder/bad.epub": "invalid Zip archive" };
+  // Without the test book, so the first copy of it is new.
+  const books = fixtures.books.filter((b) => b.title !== TEST_BOOK);
+  const importButtons = () =>
+    ["Import EPUB…", "Import folder…"].map(
+      (name) => screen.getByRole("button", { name }) as HTMLButtonElement,
+    );
+
+  /** An `importGate` that stays pending until `release` is called. */
+  function gate() {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => (release = resolve));
+    return { promise, release };
+  }
+
+  it("imports every book found, then sums up", async () => {
+    const { user, callsTo } = renderApp({ scan, importErrors, books });
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+
+    await screen.findByText("Imported 1 book, 1 already in library, 1 failed");
+    expect(callsTo("find_epubs")).toEqual([{ dir: "/books/folder" }]);
+    expect(callsTo("import_book")).toEqual(scan.paths.map((path) => ({ path })));
+    const failures = document.querySelector(".import-failures")!;
+    expect(failures.textContent).toBe("bad.epub: invalid Zip archive");
+    expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+  });
+
+  it("does nothing when the folder picker is cancelled", async () => {
+    const { user, callsTo } = renderApp({ openDir: null });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
+    expect(callsTo("find_epubs")).toEqual([]);
+    expect(callsTo("import_book")).toEqual([]);
+  });
+
+  it("says when the folder has no books", async () => {
+    const { user } = renderApp({ scan: { paths: [], unreadable: [] } });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    expect(await screen.findByText("No EPUB files in /books/folder")).toBeTruthy();
+  });
+
+  it("stops after the book in flight", async () => {
+    const { promise, release } = gate();
+    const { user, callsTo } = renderApp({ scan, importErrors, books, importGate: promise });
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await screen.findByText("Importing 1 of 3…");
+    expect(importButtons().every((b) => b.disabled)).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await act(async () => release());
+    await screen.findByText("Stopped after 1 of 3: Imported 1 book");
+    expect(callsTo("import_book")).toHaveLength(1);
+    expect(importButtons().every((b) => !b.disabled)).toBe(true);
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  });
+
+  it("keeps going while you're on another screen", async () => {
+    const { promise, release } = gate();
+    const { user, callsTo } = renderApp({ scan, importErrors, books, importGate: promise });
+    await goTo(user, "Books");
+    await screen.findByText(LONG_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await screen.findByText("Importing 1 of 3…");
+
+    await goTo(user, "Bookmarks & notes");
+    await act(async () => release());
+    await waitFor(() => expect(callsTo("import_book")).toHaveLength(3));
+    await goTo(user, "Books");
+    expect(await screen.findByText("Imported 1 book, 1 already in library, 1 failed")).toBeTruthy();
+    expect(document.querySelector(".import-failures")!.textContent).toBe(
+      "bad.epub: invalid Zip archive",
+    );
+    expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+  });
+
+  it("reports a folder that can't be read", async () => {
+    const { user } = renderApp({ fail: { find_epubs: "couldn't read /books/folder: denied" } });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    expect(
+      await screen.findByText("Import failed: couldn't read /books/folder: denied"),
+    ).toBeTruthy();
   });
 });
 

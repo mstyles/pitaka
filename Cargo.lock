@@ -1203,6 +1203,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokenizers 0.23.2",
+ "walkdir",
  "zip 0.6.6",
 ]
 

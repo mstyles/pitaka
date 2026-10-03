@@ -93,6 +93,8 @@ fn ui_fixtures_are_current() {
     fixtures["search"] = to_value(searches).unwrap();
     fixtures["semantic_status"] = to_value(status).unwrap();
     fixtures["chapter_matches"] = chapter_matches;
+    // Relative, so the file is the same on every machine.
+    fixtures["find_epubs"] = to_value(find_epubs("tests/fixtures/epub-dir").unwrap()).unwrap();
     for (key, value) in annotations {
         fixtures[key] = value;
     }

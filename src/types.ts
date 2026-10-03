@@ -45,6 +45,13 @@ export type ImportOutcome = {
   already_imported: boolean;
 };
 
+/** What `find_epubs` found under a picked folder, in import order. */
+export type EpubScan = {
+  paths: string[];
+  /** Entries that couldn't be read, such as a folder without permission. */
+  unreadable: string[];
+};
+
 export type BookSummary = {
   id: number;
   title: string | null;

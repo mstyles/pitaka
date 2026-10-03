@@ -5,8 +5,8 @@
 
 use ebook_research_core::{
     db, open_db, AnnotatedBook, BlockBookmark, BookAnnotation, BookSummary, BookmarkFolder,
-    ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary, FolderBookmark, Highlight,
-    ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
+    ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary, EpubScan, FolderBookmark,
+    Highlight, ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -70,21 +70,33 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
 /// Frontend calls: `invoke("import_book", { path: "/path/to/book.epub" })`
 /// (returns the existing book, with `already_imported: true`, for a duplicate).
 /// With semantic search built in, a new book is then indexed in the
-/// background; see `index_in_background`.
+/// background; see `index_in_background`. Async, and run on a blocking
+/// thread, so the window keeps repainting while a book parses — a folder
+/// import calls this once per book.
 #[tauri::command]
-pub fn import_book(
-    path: String,
-    app: AppHandle,
-    state: State<AppState>,
-) -> Result<ImportOutcome, String> {
-    let outcome = {
-        let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
-        db::import_book(&mut conn, &path).map_err(|e| e.to_string())?
-    };
-    if !outcome.already_imported {
-        index_in_background(app, outcome.book_id);
-    }
-    Ok(outcome)
+pub async fn import_book(path: String, app: AppHandle) -> Result<ImportOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app
+            .try_state::<AppState>()
+            .ok_or("the library isn't open")?;
+        let outcome = {
+            let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+            db::import_book(&mut conn, &path).map_err(|e| e.to_string())?
+        };
+        if !outcome.already_imported {
+            index_in_background(app.clone(), outcome.book_id);
+        }
+        Ok(outcome)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Frontend calls: `invoke("find_epubs", { dir: "/path/to/folder" })`. Lists
+/// the EPUBs under a folder; the frontend then imports them one at a time.
+#[tauri::command]
+pub fn find_epubs(dir: String) -> Result<EpubScan, String> {
+    db::find_epubs(&dir).map_err(|e| e.to_string())
 }
 
 /// Emitted as `semantic_index_progress` once before a book's first chapter

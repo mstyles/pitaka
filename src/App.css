@@ -474,6 +474,17 @@ button.button-danger:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--on-accent);
 }
+.import-failures {
+  color: var(--muted);
+  font-size: 0.85em;
+  max-height: 12rem;
+  overflow-y: auto;
+  margin: 0 0 0.75em;
+  padding-left: 1.25em;
+}
+.import-failure-path {
+  color: var(--danger);
+}
 .index-coverage,
 .index-progress {
   color: var(--muted);

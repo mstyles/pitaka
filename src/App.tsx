@@ -1,6 +1,6 @@
 import { useState } from "react";
 import BookmarksView from "./BookmarksView";
-import BooksView, { useIndexing } from "./BooksView";
+import BooksView, { useFolderImport, useIndexing } from "./BooksView";
 import HomeView from "./HomeView";
 import NavBar, { type Screen } from "./NavBar";
 import ReaderView from "./ReaderView";
@@ -23,6 +23,7 @@ function App() {
   const [openAnnotationsBookId, setOpenAnnotationsBookId] = useState<number | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const { indexing, dismissFinished } = useIndexing();
+  const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
 
   function navigate(to: Screen) {
     if (screen === "books" && to !== "books") dismissFinished();
@@ -46,6 +47,7 @@ function App() {
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Books" })}
           onLibraryChanged={() => setLibraryVersion((v) => v + 1)}
           indexing={indexing}
+          {...folderImport}
         />
       )}
       {!reader && screen === "bookmarks" && (
