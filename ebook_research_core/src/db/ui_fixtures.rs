@@ -4,6 +4,7 @@ use super::import::load_book;
 use super::semantic_index::{chapter_matches, store_chapter, StoredChunk};
 use super::*;
 use crate::epub::ParsedBook;
+use crate::semantic::{COMPATIBLE_MODELS, MODEL_ID};
 use rusqlite::Connection;
 
 /// A book long enough to scroll, with one hit ("quincunx") deep in its
@@ -171,7 +172,7 @@ fn chapter_search_fixtures(conn: &mut Connection, book_id: i64) -> serde_json::V
             char_end: char_start + blocks[29].text.chars().count(),
             vec: vec.to_vec(),
         };
-        store_chapter(conn, book_id, chapter.id, "fixture", &[chunk]).unwrap();
+        store_chapter(conn, book_id, chapter.id, MODEL_ID, &[chunk]).unwrap();
     }
 
     let mut matches = BTreeMap::new();
@@ -181,7 +182,7 @@ fn chapter_search_fixtures(conn: &mut Connection, book_id: i64) -> serde_json::V
         ("trees planted in a pattern", [1.0, 0.0, 0.0]),
         ("quarterly earnings guidance", [0.0, 1.0, 0.0]),
     ] {
-        let ranked = rank_chunks(conn, &vec, MIN_SCORE, LENGTH_PENALTY).unwrap();
+        let ranked = rank_chunks(conn, &vec, COMPATIBLE_MODELS, MIN_SCORE, LENGTH_PENALTY).unwrap();
         let found = chapter_matches(conn, &ranked).unwrap();
         matches.insert(query, to_value(found).unwrap());
     }

@@ -503,7 +503,8 @@ fn semantic_eval_labels_name_real_chapters() {
 /// weights, scored anger against quantum physics at 0.95 and returned the
 /// same five chunks for every query. This is the test that catches that.
 /// Passages are embedded as stored, without the query prefix, which is how
-/// the spike measured them. Re-run it whenever `MODEL_REPO` changes.
+/// the spike measured them. Re-run it whenever `MODEL_REPO` or
+/// `MODEL_REVISION` changes.
 #[cfg(feature = "semantic")]
 #[test]
 #[ignore = "downloads the embedding model"]
@@ -563,7 +564,7 @@ fn the_model_discriminates_unrelated_text() {
 #[test]
 #[ignore = "downloads the embedding model"]
 fn indexes_a_book_for_semantic_search() {
-    use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_REPO};
+    use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_ID};
 
     let mut conn = open_db(":memory:").unwrap();
     let book_id = import_book(&mut conn, "../demo/verses-of-the-senior-nuns.epub")
@@ -595,7 +596,7 @@ fn indexes_a_book_for_semantic_search() {
         )
         .unwrap()
     };
-    assert_eq!(rows(&conn), (report.chunks, 384, MODEL_REPO.to_string()));
+    assert_eq!(rows(&conn), (report.chunks, 384, MODEL_ID.to_string()));
 
     let again = index_book(&mut conn, book_id, &embedder, &mut |_, _| {}).unwrap();
     assert_eq!(again, report);
@@ -730,7 +731,7 @@ fn semantic_eval() {
 
 #[cfg(feature = "semantic")]
 mod semantic_eval {
-    use ebook_research_core::semantic::Embedder;
+    use ebook_research_core::semantic::{Embedder, COMPATIBLE_MODELS};
     use ebook_research_core::{db, index_book, open_db};
     use rusqlite::Connection;
     use std::collections::HashMap;
@@ -937,7 +938,16 @@ mod semantic_eval {
         fn rank_all(&self, penalty: f32) -> Vec<Vec<db::RankedChapter>> {
             self.queries
                 .iter()
-                .map(|q| db::rank_chunks(&self.conn, &q.vec, f32::NEG_INFINITY, penalty).unwrap())
+                .map(|q| {
+                    db::rank_chunks(
+                        &self.conn,
+                        &q.vec,
+                        COMPATIBLE_MODELS,
+                        f32::NEG_INFINITY,
+                        penalty,
+                    )
+                    .unwrap()
+                })
                 .collect()
         }
 

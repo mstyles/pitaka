@@ -13,8 +13,32 @@ use std::collections::HashMap;
 #[cfg(feature = "semantic")]
 use {
     super::get_book_chapters,
-    crate::semantic::{chunks, is_indexable, Embedder, MODEL_REPO},
+    crate::semantic::{chunks, is_indexable, Embedder, COMPATIBLE_MODELS, MODEL_ID},
 };
+
+/// `models` as a JSON array, for `model IN (SELECT value FROM json_each(?))`.
+/// Written out by hand because `serde_json` is only a dependency with the
+/// `semantic` feature. Model names are plain ASCII, but quotes, backslashes
+/// and control chars are escaped anyway.
+fn models_json(models: &[&str]) -> String {
+    let quoted: Vec<String> = models
+        .iter()
+        .map(|model| {
+            let mut s = String::from('"');
+            for c in model.chars() {
+                match c {
+                    '"' => s.push_str("\\\""),
+                    '\\' => s.push_str("\\\\"),
+                    c if c.is_control() => s.push_str(&format!("\\u{:04x}", c as u32)),
+                    c => s.push(c),
+                }
+            }
+            s.push('"');
+            s
+        })
+        .collect();
+    format!("[{}]", quoted.join(","))
+}
 
 /// The score a chapter must reach to be returned at all. Cosine similarity
 /// always ranks something first, so without a floor "No results" could
@@ -57,21 +81,29 @@ impl RankedChapter {
 /// best chunk rather than the mean: a long chapter's mean drifts towards
 /// the corpus average while a short front-matter page stays sharp. Brute
 /// force over every row; a large library is tens of thousands of chunks.
+/// Only rows whose `model` is one of `models` are read: vectors from
+/// another model aren't comparable with the query, and skipping them,
+/// rather than failing, keeps one stale book from breaking the search.
 #[doc(hidden)]
 pub fn rank_chunks(
     conn: &Connection,
     query: &[f32],
+    models: &[&str],
     min_score: f32,
     length_penalty: f32,
 ) -> Result<Vec<RankedChapter>> {
-    let mut stmt =
-        conn.prepare("SELECT chapter_id, char_start, char_end, dim, vec FROM chunk_embeddings")?;
-    let mut rows = stmt.query([])?;
+    let mut stmt = conn.prepare(
+        "SELECT chapter_id, char_start, char_end, dim, vec FROM chunk_embeddings
+         WHERE model IN (SELECT value FROM json_each(?1))",
+    )?;
+    let mut rows = stmt.query([models_json(models)])?;
     let mut best: HashMap<i64, RankedChapter> = HashMap::new();
     while let Some(row) = rows.next()? {
         let chapter_id: i64 = row.get(0)?;
         let dim: i64 = row.get(3)?;
         let vec = blob_to_vec(row.get_ref(4)?.as_blob()?)?;
+        // The model name matched, so a different length means a corrupt
+        // row, not a model change.
         if dim as usize != query.len() || vec.len() != query.len() {
             bail!(
                 "chapter {chapter_id} has a {}-dim embedding (dim column {dim}), \
@@ -242,7 +274,7 @@ pub fn index_book(
                 });
             }
         }
-        store_chapter(conn, book_id, chapter.id, MODEL_REPO, &stored)?;
+        store_chapter(conn, book_id, chapter.id, MODEL_ID, &stored)?;
         report.chapters += 1;
         report.chunks += stored.len();
         progress(done + 1, total);
@@ -287,7 +319,7 @@ pub fn search_chapters(
     limit: i64,
 ) -> Result<Vec<ChapterMatch>> {
     let query = embedder.embed_query(query)?;
-    let mut ranked = rank_chunks(conn, &query, MIN_SCORE, LENGTH_PENALTY)?;
+    let mut ranked = rank_chunks(conn, &query, COMPATIBLE_MODELS, MIN_SCORE, LENGTH_PENALTY)?;
     ranked.truncate(limit.max(0) as usize);
     chapter_matches(conn, &ranked)
 }
@@ -388,12 +420,17 @@ pub struct SemanticStatus {
 }
 
 /// Always compiled, so the frontend has one command to ask whether to
-/// offer chapter search at all.
+/// offer chapter search at all. Only rows from [`COMPATIBLE_MODELS`] count,
+/// the same ones search reads, so a book indexed with another model shows
+/// as not indexed.
+///
+/// [`COMPATIBLE_MODELS`]: crate::semantic::COMPATIBLE_MODELS
 pub fn semantic_status(conn: &Connection) -> Result<SemanticStatus> {
     let (indexed_books, total_books) = conn.query_row(
-        "SELECT (SELECT COUNT(DISTINCT book_id) FROM chunk_embeddings),
+        "SELECT (SELECT COUNT(DISTINCT book_id) FROM chunk_embeddings
+                 WHERE model IN (SELECT value FROM json_each(?1))),
                 (SELECT COUNT(*) FROM books)",
-        [],
+        [models_json(crate::semantic::COMPATIBLE_MODELS)],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     Ok(SemanticStatus {
@@ -409,7 +446,7 @@ mod tests {
     use crate::db::import::load_book;
     use crate::db::*;
     use crate::epub::{ParsedBook, ParsedChapter};
-    use crate::semantic::vec_to_blob;
+    use crate::semantic::{vec_to_blob, COMPATIBLE_MODELS, MODEL_ID, MODEL_REPO};
     use rusqlite::params;
 
     /// A book with two chapters, returning its id and theirs.
@@ -429,23 +466,111 @@ mod tests {
         (book_id, chapters[0].id, chapters[1].id)
     }
 
-    fn insert_chunks(conn: &Connection, book_id: i64, chapter_id: i64, vecs: &[[f32; 3]]) {
+    /// The model name the ranking tests store and search with.
+    const TEST: &[&str] = &["test"];
+
+    fn insert_chunks(
+        conn: &Connection,
+        book_id: i64,
+        chapter_id: i64,
+        model: &str,
+        vecs: &[[f32; 3]],
+    ) {
         for (i, vec) in vecs.iter().enumerate() {
             conn.execute(
                 "INSERT INTO chunk_embeddings
                  (chapter_id, book_id, chunk_idx, char_start, char_end, model, dim, vec)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'test', 3, ?6)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 3, ?7)",
                 params![
                     chapter_id,
                     book_id,
                     i as i64,
                     (i * 1400) as i64,
                     (i * 1400 + 1600) as i64,
+                    model,
                     vec_to_blob(vec)
                 ],
             )
             .unwrap();
         }
+    }
+
+    fn ranked_ids(ranked: &[RankedChapter]) -> Vec<i64> {
+        ranked.iter().map(|c| c.chapter_id).collect()
+    }
+
+    #[test]
+    fn rows_from_another_model_are_skipped() {
+        let mut conn = open_db(":memory:").unwrap();
+        let (book_id, one, _) = two_chapter_book(&mut conn);
+        // A second book, so the status count can tell the two apart.
+        let other_book = load_book(
+            &mut conn,
+            "/other.epub",
+            "h2",
+            &ParsedBook {
+                title: Some("Other".to_string()),
+                author: None,
+                chapters: vec![ParsedChapter {
+                    file_name: "o.xhtml".to_string(),
+                    title: "Other".to_string(),
+                    paragraphs: vec![(0, 9, "some text".to_string())],
+                }],
+            },
+        )
+        .unwrap();
+        let two = get_book_chapters(&conn, other_book).unwrap()[0].id;
+        // Both exactly on the query; only the model differs.
+        insert_chunks(&conn, book_id, one, MODEL_ID, &[[1.0, 0.0, 0.0]]);
+        insert_chunks(
+            &conn,
+            other_book,
+            two,
+            "other/model@abc",
+            &[[1.0, 0.0, 0.0]],
+        );
+
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], COMPATIBLE_MODELS, MIN_SCORE, 0.0);
+        assert_eq!(ranked_ids(&ranked.unwrap()), vec![one]);
+        // A different dimension under another model's name is skipped too,
+        // not reported as a corrupt row.
+        let ranked = rank_chunks(&conn, &[1.0, 0.0], &["nothing"], MIN_SCORE, 0.0).unwrap();
+        assert_eq!(ranked, vec![]);
+
+        let status = semantic_status(&conn).unwrap();
+        assert_eq!((status.indexed_books, status.total_books), (1, 2));
+    }
+
+    #[test]
+    fn legacy_rows_without_a_revision_still_rank() {
+        let mut conn = open_db(":memory:").unwrap();
+        let (book_id, one, two) = two_chapter_book(&mut conn);
+        insert_chunks(&conn, book_id, one, MODEL_REPO, &[[1.0, 0.0, 0.0]]);
+        insert_chunks(&conn, book_id, two, MODEL_ID, &[[0.8, 0.6, 0.0]]);
+
+        let ranked =
+            rank_chunks(&conn, &[1.0, 0.0, 0.0], COMPATIBLE_MODELS, MIN_SCORE, 0.0).unwrap();
+
+        assert_eq!(ranked_ids(&ranked), vec![one, two]);
+        assert_eq!(semantic_status(&conn).unwrap().indexed_books, 1);
+    }
+
+    #[test]
+    fn model_lists_are_json_arrays() {
+        assert_eq!(models_json(&[]), "[]");
+        assert_eq!(models_json(&["a/b@c", "d"]), r#"["a/b@c","d"]"#);
+        assert_eq!(models_json(&["q\"\\\n"]), r#"["q\"\\\u000a"]"#);
+        // And SQLite reads them back as the same strings.
+        let conn = open_db(":memory:").unwrap();
+        let names = ["plain", "q\"\\\n", "ā/b"];
+        let back: Vec<String> = conn
+            .prepare("SELECT value FROM json_each(?1)")
+            .unwrap()
+            .query_map([models_json(&names)], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(back, names);
     }
 
     #[test]
@@ -457,6 +582,7 @@ mod tests {
             &conn,
             book_id,
             sharp,
+            "test",
             &[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
         );
         // Every chunk close to it: mean and max both 0.9.
@@ -464,10 +590,11 @@ mod tests {
             &conn,
             book_id,
             steady,
+            "test",
             &[[0.9, 0.435_89, 0.0], [0.9, 0.0, 0.435_89]],
         );
 
-        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 0.0).unwrap();
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], TEST, MIN_SCORE, 0.0).unwrap();
 
         let ids: Vec<i64> = ranked.iter().map(|c| c.chapter_id).collect();
         assert_eq!(ids, vec![sharp, steady]);
@@ -481,19 +608,25 @@ mod tests {
     fn below_the_floor_returns_nothing() {
         let mut conn = open_db(":memory:").unwrap();
         let (book_id, one, two) = two_chapter_book(&mut conn);
-        insert_chunks(&conn, book_id, one, &[[1.0, 0.0, 0.0]]);
-        insert_chunks(&conn, book_id, two, &[[0.0, 1.0, 0.0], [0.6, 0.8, 0.0]]);
+        insert_chunks(&conn, book_id, one, "test", &[[1.0, 0.0, 0.0]]);
+        insert_chunks(
+            &conn,
+            book_id,
+            two,
+            "test",
+            &[[0.0, 1.0, 0.0], [0.6, 0.8, 0.0]],
+        );
 
         assert_eq!(
-            rank_chunks(&conn, &[0.0, 0.0, 1.0], MIN_SCORE, 0.0).unwrap(),
+            rank_chunks(&conn, &[0.0, 0.0, 1.0], TEST, MIN_SCORE, 0.0).unwrap(),
             vec![]
         );
         // 0.6 is under the floor, so only the chapter reaching it comes back.
-        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 0.0).unwrap();
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], TEST, MIN_SCORE, 0.0).unwrap();
         assert_eq!(ranked.len(), 1);
         assert_eq!(ranked[0].chapter_id, one);
 
-        let err = rank_chunks(&conn, &[1.0, 0.0], MIN_SCORE, 0.0).expect_err("a 2-dim query");
+        let err = rank_chunks(&conn, &[1.0, 0.0], TEST, MIN_SCORE, 0.0).expect_err("a 2-dim query");
         assert!(err.to_string().contains("different model"), "{err}");
     }
 
@@ -502,13 +635,13 @@ mod tests {
         let mut conn = open_db(":memory:").unwrap();
         let (book_id, short, long) = two_chapter_book(&mut conn);
         let near = |score: f32| [score, (1.0 - score * score).sqrt(), 0.0];
-        insert_chunks(&conn, book_id, short, &[near(0.80)]);
+        insert_chunks(&conn, book_id, short, "test", &[near(0.80)]);
         // Twenty chunks, one of them a shade better than the short chapter.
         let mut chunks = vec![near(0.70); 19];
         chunks.push(near(0.82));
-        insert_chunks(&conn, book_id, long, &chunks);
+        insert_chunks(&conn, book_id, long, "test", &chunks);
         let order = |penalty: f32| -> Vec<i64> {
-            rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, penalty)
+            rank_chunks(&conn, &[1.0, 0.0, 0.0], TEST, MIN_SCORE, penalty)
                 .unwrap()
                 .iter()
                 .map(|c| c.chapter_id)
@@ -521,7 +654,7 @@ mod tests {
         // The floor sees the uncorrected score: a penalty that drives the
         // corrected score under it still returns the chapter.
         assert_eq!(order(1.0), vec![short, long]);
-        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], MIN_SCORE, 1.0).unwrap();
+        let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], TEST, MIN_SCORE, 1.0).unwrap();
         assert!((ranked[1].score - 0.82).abs() < 1e-6);
         assert_eq!(ranked[1].n_chunks, 20);
     }
@@ -602,7 +735,13 @@ mod tests {
             }
         );
 
-        insert_chunks(&conn, book_id, one, &[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        insert_chunks(
+            &conn,
+            book_id,
+            one,
+            MODEL_ID,
+            &[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        );
         assert_eq!(status(&conn).indexed_books, 1);
     }
 
@@ -684,8 +823,8 @@ mod tests {
     fn deleting_a_book_removes_its_embeddings() {
         let mut conn = open_db(":memory:").unwrap();
         let (book_id, one, two) = two_chapter_book(&mut conn);
-        insert_chunks(&conn, book_id, one, &[[1.0, 0.0, 0.0]]);
-        insert_chunks(&conn, book_id, two, &[[0.0, 1.0, 0.0]]);
+        insert_chunks(&conn, book_id, one, "test", &[[1.0, 0.0, 0.0]]);
+        insert_chunks(&conn, book_id, two, "test", &[[0.0, 1.0, 0.0]]);
 
         delete_book(&conn, book_id).unwrap();
 
