@@ -9,7 +9,7 @@ repository = "https://github.com/mstyles/pitaka"
 
 [dependencies]
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
-zip = "0.6"
+zip = "8.6"
 quick-xml = "0.31"
 sha2 = "0.10"
 anyhow = "1.0"
