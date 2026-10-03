@@ -249,7 +249,7 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                 }
             }
             Event::Text(e) => {
-                let text = e.unescape()?.to_string();
+                let text = unescape_lenient(&String::from_utf8_lossy(&e));
                 if in_title_tag && title.is_none() {
                     title = Some(text.clone());
                 }
@@ -395,8 +395,8 @@ fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
                 _ => {}
             },
             Ok(Event::Text(e)) => {
-                if let (Some((_, label)), Ok(text)) = (link.as_mut(), e.unescape()) {
-                    label.push_str(&text);
+                if let Some((_, label)) = link.as_mut() {
+                    label.push_str(&unescape_lenient(&String::from_utf8_lossy(&e)));
                 }
             }
             Ok(Event::End(e)) => match local_name(e.name().as_ref()) {
@@ -475,9 +475,11 @@ fn parse_ncx(xml: &str) -> Vec<(String, String)> {
                 }
             }
             Ok(Event::Text(e)) if in_label_text => {
-                if let (Some(entry), Ok(text)) = (open.last_mut(), e.unescape()) {
+                if let Some(entry) = open.last_mut() {
                     if !entry.2 {
-                        entry.0.push_str(&text);
+                        entry
+                            .0
+                            .push_str(&unescape_lenient(&String::from_utf8_lossy(&e)));
                     }
                 }
             }
@@ -626,66 +628,84 @@ fn head_title(nodes: &[Node]) -> Option<String> {
 
 /// Parses XHTML into a list of top-level nodes, tolerating the malformed
 /// markup real-world EPUBs contain: unclosed void tags, mismatched end
-/// tags, and elements still open at EOF or at a parse error.
+/// tags, and elements still open at EOF.
+///
+/// quick-xml gives up on markup that never closes (a broken comment like
+/// `<!- x ->`, an unclosed `<!--`, a misspelt `<![CDAT[`), and its reader
+/// can't carry on after that. So on a parse error the broken markup is
+/// skipped (see `skip_broken_markup`) and a fresh reader starts after it.
+/// Open elements are kept across the restart, so the text that follows
+/// still lands in the paragraph it belongs to.
 fn build_tree(xhtml: &str) -> Vec<Node> {
-    let mut reader = Reader::from_str(xhtml);
-    reader.trim_text(false);
-    reader.check_end_names(false); // real-world XHTML is sometimes malformed
     let mut buf = Vec::new();
 
     // Open elements, outermost first. The first frame is the document root
     // and is never closed by an end tag.
     let mut stack: Vec<(String, Vec<Node>)> = vec![(String::new(), Vec::new())];
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if VOID_TAGS.contains(&name.as_str()) {
-                    push_child(
-                        &mut stack,
-                        Node::Elem {
-                            name,
-                            children: Vec::new(),
-                        },
-                    );
-                } else {
-                    stack.push((name, Vec::new()));
-                }
-            }
-            Ok(Event::Empty(e)) => {
-                let name = local_name(e.name().as_ref()).to_string();
-                if !SKIP_TAGS.contains(&name.as_str()) {
-                    push_child(
-                        &mut stack,
-                        Node::Elem {
-                            name,
-                            children: Vec::new(),
-                        },
-                    );
-                }
-            }
-            Ok(Event::Text(e)) => {
-                if let Ok(t) = e.unescape() {
-                    push_child(&mut stack, Node::Text(t.into_owned()));
-                }
-            }
-            Ok(Event::End(e)) => {
-                // Close up to the nearest open element with this name; an
-                // end tag with no matching open element is ignored.
-                let qname = e.name();
-                let name = local_name(qname.as_ref());
-                if let Some(pos) = stack.iter().skip(1).rposition(|(n, _)| n == name) {
-                    while stack.len() > pos + 1 {
-                        close_top(&mut stack);
+    // The byte offset in `xhtml` the current reader started at.
+    let mut base = 0;
+    'restart: while base < xhtml.len() {
+        let mut reader = Reader::from_str(&xhtml[base..]);
+        reader.trim_text(false);
+        reader.check_end_names(false); // real-world XHTML is sometimes malformed
+
+        loop {
+            let at = base + reader.buffer_position();
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(e)) => {
+                    let name = local_name(e.name().as_ref()).to_string();
+                    if VOID_TAGS.contains(&name.as_str()) {
+                        push_child(
+                            &mut stack,
+                            Node::Elem {
+                                name,
+                                children: Vec::new(),
+                            },
+                        );
+                    } else {
+                        stack.push((name, Vec::new()));
                     }
                 }
+                Ok(Event::Empty(e)) => {
+                    let name = local_name(e.name().as_ref()).to_string();
+                    if !SKIP_TAGS.contains(&name.as_str()) {
+                        push_child(
+                            &mut stack,
+                            Node::Elem {
+                                name,
+                                children: Vec::new(),
+                            },
+                        );
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    let text = unescape_lenient(&String::from_utf8_lossy(&e));
+                    push_child(&mut stack, Node::Text(text));
+                }
+                Ok(Event::End(e)) => {
+                    // Close up to the nearest open element with this name; an
+                    // end tag with no matching open element is ignored.
+                    let qname = e.name();
+                    let name = local_name(qname.as_ref());
+                    if let Some(pos) = stack.iter().skip(1).rposition(|(n, _)| n == name) {
+                        while stack.len() > pos + 1 {
+                            close_top(&mut stack);
+                        }
+                    }
+                }
+                Ok(Event::Eof) => break 'restart,
+                Err(_) => {
+                    // The reader is stuck at EOF after an error, so skip the
+                    // broken markup and start a new reader after it.
+                    buf.clear();
+                    base = skip_broken_markup(xhtml, at);
+                    continue 'restart;
+                }
+                _ => {}
             }
-            Ok(Event::Eof) => break,
-            Err(_) => break, // tolerate malformed XHTML rather than aborting the whole book
-            _ => {}
+            buf.clear();
         }
-        buf.clear();
     }
 
     // Implicitly close whatever is still open, keeping its text.
@@ -696,6 +716,69 @@ fn build_tree(xhtml: &str) -> Vec<Node> {
         .pop()
         .map(|(_, children)| children)
         .unwrap_or_default()
+}
+
+/// Where parsing resumes after the broken markup starting at byte `at`:
+/// just past the next `>` (so `<![CDAT[x]]> after` keeps " after"), or
+/// just before the next `<` if that comes first (so an unclosed
+/// `<!-- x <p>next</p>` keeps the `<p>`), or the end of the input. Always
+/// past `at`, so `build_tree`'s restarts end.
+fn skip_broken_markup(xhtml: &str, at: usize) -> usize {
+    let bytes = xhtml.as_bytes();
+    let from = (at + 1).min(bytes.len());
+    bytes[from..]
+        .iter()
+        .position(|&b| b == b'>' || b == b'<')
+        .map_or(bytes.len(), |i| {
+            let pos = from + i;
+            if bytes[pos] == b'>' {
+                pos + 1
+            } else {
+                pos
+            }
+        })
+}
+
+/// Unescapes a text node's entities, keeping what can't be unescaped
+/// instead of failing. With quick-xml's `escape-html` feature every HTML5
+/// named entity (`&nbsp;`, `&mdash;`) is known; a bare `&` ("Faith &
+/// Reason") or an unknown `&foo;` is kept as written.
+fn unescape_lenient(raw: &str) -> String {
+    if let Ok(text) = quick_xml::escape::unescape(raw) {
+        return text.into_owned();
+    }
+    // The longest HTML entity, `&CounterClockwiseContourIntegral;`, has its
+    // `;` 32 bytes after the `&`.
+    const MAX_ENTITY_LEN: usize = 32;
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let tail = &rest[amp..];
+        let entity = tail
+            .bytes()
+            .skip(1)
+            .take(MAX_ENTITY_LEN)
+            .position(|b| b == b';')
+            .and_then(|i| {
+                let span = &tail[..i + 2];
+                quick_xml::escape::unescape(span)
+                    .ok()
+                    .map(|text| (text.into_owned(), span.len()))
+            });
+        match entity {
+            Some((text, len)) => {
+                out.push_str(&text);
+                rest = &tail[len..];
+            }
+            None => {
+                out.push('&');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn push_child(stack: &mut [(String, Vec<Node>)], node: Node) {
@@ -779,7 +862,7 @@ fn normalize_whitespace(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_chapter;
+    use super::{extract_chapter, unescape_lenient};
 
     fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
         extract_chapter(xhtml).blocks
@@ -876,6 +959,58 @@ mod tests {
     #[test]
     fn unclosed_blocks_at_eof_keep_their_text() {
         assert_eq!(texts("<p>one</p><p>two"), vec!["one", "two"]);
+    }
+
+    #[test]
+    fn html_entities_are_decoded() {
+        assert_eq!(texts("<p>a&nbsp;b&mdash;c</p>"), vec!["a b\u{2014}c"]);
+    }
+
+    #[test]
+    fn bare_ampersand_is_kept() {
+        assert_eq!(
+            texts("<p>Faith & Reason &amp; more</p>"),
+            vec!["Faith & Reason & more"]
+        );
+        assert_eq!(texts("<p>x &bogus; y</p>"), vec!["x &bogus; y"]);
+    }
+
+    #[test]
+    fn parsing_resumes_after_a_broken_comment() {
+        assert_eq!(texts("<p>one</p><!- bad -><p>two</p>"), vec!["one", "two"]);
+    }
+
+    #[test]
+    fn unclosed_comment_loses_only_its_own_text() {
+        assert_eq!(
+            texts("<p>one</p><!-- x <p>two</p><p>three</p>"),
+            vec!["one", "two", "three"]
+        );
+    }
+
+    #[test]
+    fn broken_markup_inside_a_paragraph_keeps_the_paragraph() {
+        assert_eq!(
+            texts("<p>before <![CDAT[x]]> after</p>"),
+            vec!["before after"]
+        );
+    }
+
+    #[test]
+    fn unescape_lenient_keeps_what_it_cannot_unescape() {
+        assert_eq!(unescape_lenient(""), "");
+        assert_eq!(unescape_lenient("A & B &amp; C"), "A & B & C");
+        // A `&` at the very end.
+        assert_eq!(unescape_lenient("A &amp; B &"), "A & B &");
+        // The longest HTML entity, its `;` exactly 32 bytes on, still
+        // decodes.
+        assert_eq!(
+            unescape_lenient("& &CounterClockwiseContourIntegral;"),
+            "& \u{2233}"
+        );
+        // A `;` more than 32 bytes away leaves the `&` literal.
+        let far = format!("& &amp{}; x", "a".repeat(40));
+        assert_eq!(unescape_lenient(&far), far);
     }
 
     #[test]
