@@ -150,6 +150,21 @@ members, sharing one `Cargo.lock`/`target/`.
   real text such as notes. Checked against *Understanding Our Mind*
   (div-based) by running the parser directly: drop-cap words are no
   longer split, and each footnote is one paragraph with its number.
+  Text using HTML named entities (`&nbsp;`, `&mdash;`, via quick-xml's
+  `escape-html` feature) is decoded, and a bare `&` ("Faith & Reason")
+  or an unknown `&foo;` is kept as written, in chapter text, TOC labels
+  and the OPF title and author; before, such a text node was dropped,
+  and a bare `&` in `<dc:title>` failed the import. Markup that never
+  closes (a broken `<!- x ->` comment, an unclosed `<!--`, a misspelt
+  `<![CDAT[`) is skipped and parsing resumes after it with the open
+  elements kept, instead of the rest of the chapter being lost. Unit
+  tests in `epub.rs` cover each case, and running the parser over the
+  six books in `~/Documents/books` and `test.epub` gives output
+  identical to the previous parser's (210 chapters, 7,196 paragraphs),
+  so well-formed books import exactly as before. No book in that
+  library has broken markup, so recovery is checked only by the unit
+  tests. Not re-imported in the Tauri window; no UI code changed, so
+  it wasn't clicked through against the mocked backend either.
 - `ebook_research_core/src/db/` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
   imports books (each in one transaction, skipping any whose file
@@ -592,21 +607,17 @@ In the same order of priority as the Python version, then newer ones.
    books imported before the paragraph-extraction rewrite keep their old
    paragraph splits (and drop-cap spaces) until removed and re-imported.
    A folder import reports such a changed book as a failure, with the
-   same reason.
-5. `extract_paragraphs` tolerates malformed XHTML by bailing out on the
-   first parse error (keeping the text read so far) rather than trying
-   to recover — real-world EPUBs
-   occasionally have genuinely broken markup, so you may want a
-   best-effort recovery path (e.g. retry with an HTML-mode parser)
-   before shipping.
-6. Bookmarks, highlights and notes point at paragraphs, so removing a
+   same reason. Books imported before malformed-XHTML recovery likewise
+   keep any text the old parser dropped (after broken markup, or in a
+   text node with an HTML entity or a bare `&`) until re-imported.
+5. Bookmarks, highlights and notes point at paragraphs, so removing a
    book (including to re-import it after a parser fix) deletes them all;
    the Remove dialog only warns with counts. Bookmarks cover whole
    paragraphs, and passages can't be reordered within a folder. A
    highlight can't span paragraphs or overlap another highlight, notes
    are plain text, and neither notes nor highlights are searchable or
    exportable.
-7. Transliteration variants are a curated list only: unlisted pairs
+6. Transliteration variants are a curated list only: unlisted pairs
    aren't inferred, so `nibbāna`/`nirvana` matches because it's in
    `data/term_variants.txt`, not because anything spotted the
    similarity. The file is embedded at compile time, so adding a pair
@@ -616,14 +627,14 @@ In the same order of priority as the Python version, then newer ones.
    widened. Looking a term up folds only the Indic diacritics in
    `fold_term`'s table, so a term spelled with some other accent won't
    be expanded (it still matches literally, as FTS5 folds the text).
-8. Search highlighting relies on `snippet()`'s `[`/`]` delimiters, so
+7. Search highlighting relies on `snippet()`'s `[`/`]` delimiters, so
    a book's own square brackets are ambiguous with them: text like
    "[sic]" in a snippet is shown highlighted as "sic". It is shown as
    text, never as markup.
-9. Semantic chapter search:
+8. Semantic chapter search:
    - It covers only books imported while the feature was built in.
      There's no backfill, so the rest need removing and re-importing,
-     which deletes their bookmarks (limitation 6); the Search screen
+     which deletes their bookmarks (limitation 5); the Search screen
      says how many books are indexed. A run stopped by closing the app
      leaves a book partly indexed, and it counts as indexed.
    - The model is downloaded on first use, so that needs a network
@@ -689,23 +700,23 @@ Done:
       highlight or a paragraph, and browse them per book
 - [x] Import a whole directory of books in one go, instead of one file
       at a time
+- [x] Recover from malformed XHTML instead of bailing on the first
+      parse error, and keep text with HTML entities or a bare `&`
 
 Next up (fixes for the known limitations above):
 
-- [ ] Recover from malformed XHTML instead of bailing on the first
-      parse error (limitation 5)
 - [ ] Pin the embedding model to a Hugging Face commit rather than the
       repo's `main` branch, and check `chunk_embeddings.model` at search
       time. Today a new upload to `BAAI/bge-small-en-v1.5` would change
       what fresh installs download, and a different model of the same
       dimension would mix with stored vectors silently, since
-      `rank_chunks` only compares lengths (limitation 9)
+      `rank_chunks` only compares lengths (limitation 8)
 
 Later:
 
 - [ ] Reorder passages within a bookmark folder
 - [ ] Keep bookmarks when a book is removed and re-imported
-      (limitation 6)
+      (limitation 5)
 - [ ] Export bookmarks, notes and highlights
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
@@ -715,13 +726,13 @@ Later:
 - [ ] Paragraph-level semantic search, with results that open on the
       passage rather than the chapter
 - [ ] Infer transliteration variant pairs rather than listing them
-      (limitation 7)
+      (limitation 6)
 - [ ] Recalibrate `MIN_SCORE` and the ranking on a larger, more varied
-      library, with labels checked by a reader (limitation 9)
+      library, with labels checked by a reader (limitation 8)
 - [ ] An "Index this book" action, so a book already in the library can
       be added to semantic chapter search in place. Without one the only
       way in is to remove and re-import the book, which deletes its
-      bookmarks (limitation 6) — a steep price for a search feature
+      bookmarks (limitation 5) — a steep price for a search feature
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
