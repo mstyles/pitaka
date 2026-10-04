@@ -9,6 +9,25 @@ use anyhow::{bail, Result};
 /// ships F16 and collapses every vector into the same direction.
 pub const MODEL_REPO: &str = "BAAI/bge-small-en-v1.5";
 
+/// The commit of [`MODEL_REPO`] the model is loaded at, so new weights
+/// pushed to the repo's `main` can't silently change the vectors a fresh
+/// install makes. Change it together with `MODEL_REPO`, then re-run the
+/// ignored `the_model_discriminates_unrelated_text` probe and
+/// `semantic_eval` in `tests/integration.rs`.
+pub const MODEL_REVISION: &str = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
+
+/// What new `chunk_embeddings.model` values hold: [`MODEL_REPO`]`@`
+/// [`MODEL_REVISION`]. Spelled out because `concat!` can't take `const`s;
+/// a test checks the two agree.
+pub const MODEL_ID: &str = "BAAI/bge-small-en-v1.5@5c38ec7c405ec4b44b94cc5a9bb96e735b38267a";
+
+/// The `chunk_embeddings.model` values whose vectors can be compared with
+/// a query from the current model; rows with any other value are ignored.
+/// Rows stored before the revision was pinned hold the bare repo name.
+/// They came from the same commit, the only one the repo has had since
+/// before semantic search existed, so they stay valid.
+pub const COMPATIBLE_MODELS: &[&str] = &[MODEL_ID, MODEL_REPO];
+
 /// Prepended to queries, never to stored chunks. bge is asymmetric, and
 /// leaving this off degrades results in a way that looks like a weak model.
 pub const QUERY_PREFIX: &str = "Represent this sentence for searching relevant passages: ";
@@ -18,11 +37,12 @@ pub use embedder::{Embedder, Embedding};
 
 #[cfg(feature = "semantic")]
 mod embedder {
-    use super::{MODEL_REPO, QUERY_PREFIX};
+    use super::{MODEL_REPO, MODEL_REVISION, QUERY_PREFIX};
     use anyhow::{bail, Context, Result};
     use candle_core::{safetensors::MmapedSafetensors, DType, Device, IndexOp, Tensor};
     use candle_nn::VarBuilder;
     use candle_transformers::models::bert::{BertModel, Config, DTYPE};
+    use hf_hub::{api::sync::Api, Cache, Repo, RepoType};
     use tokenizers::{PaddingParams, Tokenizer, TruncationParams};
 
     /// The model's context window, in tokens. Longer text is cut to fit.
@@ -37,7 +57,8 @@ mod embedder {
         pub truncated: bool,
     }
 
-    /// The embedding model, [`MODEL_REPO`], run on the CPU.
+    /// The embedding model, [`MODEL_REPO`] at [`MODEL_REVISION`], run on
+    /// the CPU.
     pub struct Embedder {
         model: BertModel,
         tokenizer: Tokenizer,
@@ -49,14 +70,25 @@ mod embedder {
         /// it there first if it isn't cached, so the first run needs network
         /// and later ones don't.
         pub fn load() -> Result<Self> {
-            Self::load_repo(MODEL_REPO)
+            Self::load_repo(MODEL_REPO, MODEL_REVISION)
         }
 
-        fn load_repo(model_repo: &str) -> Result<Self> {
-            let repo = hf_hub::api::sync::Api::new()?.model(model_repo.to_string());
+        fn load_repo(model_repo: &str, revision: &str) -> Result<Self> {
+            let repo = Repo::with_revision(
+                model_repo.to_string(),
+                RepoType::Model,
+                revision.to_string(),
+            );
+            // The cache finds a snapshot through `refs/<revision>`, and a
+            // copy downloaded before the revision was pinned only has
+            // `refs/main`. Writing the ref lets it reuse that snapshot
+            // instead of downloading the model again. A cache we can't
+            // write to only costs that download, so the error is ignored.
+            let _ = Cache::default().repo(repo.clone()).create_ref(revision);
+            let api = Api::new()?.repo(repo);
             let fetch = |file: &str| {
-                repo.get(file)
-                    .with_context(|| format!("fetching {file} for {model_repo}"))
+                api.get(file)
+                    .with_context(|| format!("fetching {file} for {model_repo}@{revision}"))
             };
 
             let config: Config =
@@ -152,7 +184,7 @@ mod embedder {
         #[test]
         #[ignore = "downloads thenlper/gte-small"]
         fn half_precision_weights_are_refused() {
-            let err = Embedder::load_repo("thenlper/gte-small")
+            let err = Embedder::load_repo("thenlper/gte-small", "main")
                 .err()
                 .expect("gte-small should be refused");
             assert!(err.to_string().contains("must ship F32 weights"), "{err}");
@@ -300,6 +332,21 @@ mod tests {
             is_indexable(&verse),
             "verse lines, half ending in punctuation"
         );
+    }
+
+    #[test]
+    fn model_id_is_repo_at_revision() {
+        assert_eq!(MODEL_ID, format!("{MODEL_REPO}@{MODEL_REVISION}"));
+    }
+
+    /// A full commit sha, so a branch or tag name, which can move, can't
+    /// be pinned by mistake.
+    #[test]
+    fn revision_is_a_full_commit_sha() {
+        assert_eq!(MODEL_REVISION.len(), 40);
+        assert!(MODEL_REVISION
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
     }
 
     #[test]

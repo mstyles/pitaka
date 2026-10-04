@@ -283,6 +283,16 @@ members, sharing one `Cargo.lock`/`target/`.
     transactions and the cascade from a deleted book. Tests needing the
     model are `#[ignore]`d so CI never downloads it; CI runs clippy
     with the feature on.
+  - The model is loaded at a pinned commit (`MODEL_REVISION`), not the
+    repo's `main`, and new rows record it as `MODEL_ID`
+    (`repo@commit`). A copy cached before the pin is reused without a
+    download: the three ignored model tests passed with the network
+    off (`unshare -rn`) against an existing cache, which still held
+    one snapshot afterwards. Search and the indexed-books count read
+    only rows whose `model` is in `COMPATIBLE_MODELS`, the pinned id
+    and the bare repo name older rows hold; unit tests check that
+    rows from another model are skipped and don't count their book as
+    indexed, and that the older rows still rank.
   - In the app, `import_book` returns once the book is in the library
     and indexes it on its own thread and database connection (with a
     30-second busy timeout), one book at a time, sending progress and
@@ -650,8 +660,9 @@ In the same order of priority as the Python version, then newer ones.
      checked by a reader. Off-corpus queries return nothing, but
      plausible questions the library doesn't answer usually still get
      weak matches.
-   - The model isn't pinned to a version, and a model change isn't
-     detected at search time (see the roadmap).
+   - Chunks embedded by a different model are ignored at search time,
+     and their books count as not indexed until removed and
+     re-imported.
    - The front-matter filter is a heuristic: it drops one-verse
      chapters under 200 chars, and verse chapters with very short
      lines can look like a contents page.
@@ -702,15 +713,8 @@ Done:
       at a time
 - [x] Recover from malformed XHTML instead of bailing on the first
       parse error, and keep text with HTML entities or a bare `&`
-
-Next up (fixes for the known limitations above):
-
-- [ ] Pin the embedding model to a Hugging Face commit rather than the
-      repo's `main` branch, and check `chunk_embeddings.model` at search
-      time. Today a new upload to `BAAI/bge-small-en-v1.5` would change
-      what fresh installs download, and a different model of the same
-      dimension would mix with stored vectors silently, since
-      `rank_chunks` only compares lengths (limitation 8)
+- [x] Pin the embedding model to a Hugging Face commit and ignore
+      vectors from any other model
 
 Later:
 
