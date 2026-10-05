@@ -413,6 +413,7 @@ button.button-danger:hover:not(:disabled) {
   flex: 1;
 }
 
+.book-index,
 .book-remove,
 .folder-passage-remove {
   min-height: 32px;
@@ -421,12 +422,25 @@ button.button-danger:hover:not(:disabled) {
 }
 
 /* Shown on hover, and on keyboard focus so it can still be reached. */
+.book-index,
 .book-remove,
 .folder-passage-remove {
   opacity: 0;
   transition: opacity 0.15s;
 }
 
+/* Index sits close beside Remove, rather than the row's full gap away. */
+.book-index + .book-remove {
+  margin-left: -0.5em;
+}
+
+/* "Queued" and "Indexing…" stay in sight: they're progress, not actions. */
+.book-index:disabled {
+  opacity: 0.55;
+}
+
+.book-row:hover .book-index:not(:disabled),
+.book-row:focus-within .book-index:not(:disabled),
 .book-row:hover .book-remove,
 .book-row:focus-within .book-remove,
 .folder-passage:hover .folder-passage-remove,

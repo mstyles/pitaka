@@ -1,7 +1,7 @@
 //! Writes and checks the UI test fixtures from real db output.
 
 use super::import::load_book;
-use super::semantic_index::{chapter_matches, store_chapter, StoredChunk};
+use super::semantic_index::{chapter_matches, mark_indexed, store_chapter, StoredChunk};
 use super::*;
 use crate::epub::ParsedBook;
 use crate::semantic::{COMPATIBLE_MODELS, MODEL_ID};
@@ -179,6 +179,9 @@ fn chapter_search_fixtures(conn: &mut Connection, book_id: i64) -> serde_json::V
         };
         store_chapter(conn, book_id, chapter.id, MODEL_ID, &[chunk]).unwrap();
     }
+    // As a finished run leaves it, so the Books screen has an indexed
+    // book beside the test book's unindexed one.
+    mark_indexed(conn, book_id, MODEL_ID).unwrap();
 
     let mut matches = BTreeMap::new();
     // Part Two, then Part One; the second query's best score is 0.6,

@@ -306,7 +306,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
         let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
@@ -325,6 +325,58 @@ fn upgrades_unversioned_library() {
         assert_eq!(hits("wander", SearchMode::Stemmed), 1);
         assert_eq!(hits("wander", SearchMode::Exact), 0);
     }
+}
+
+/// Migration 006 marks books that already had embeddings as indexed, so
+/// a library from before it counts the same books as indexed as it did.
+#[test]
+fn upgrading_to_006_marks_indexed_books() {
+    use ebook_research_core::semantic::MODEL_ID;
+    use ebook_research_core::{books_to_index, semantic_status, IndexState};
+
+    let db_path = &temp_path("test_library_at_005.db");
+    let _ = std::fs::remove_file(db_path);
+    {
+        let conn = Connection::open(db_path).unwrap();
+        for sql in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_search_indexes.sql"),
+            include_str!("../migrations/003_bookmark_folders.sql"),
+            include_str!("../migrations/004_chunk_embeddings.sql"),
+            include_str!("../migrations/005_annotations.sql"),
+        ] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        conn.execute_batch(&format!(
+            "INSERT INTO books (id, file_path, file_hash, title, format)
+             VALUES (1, '/a.epub', 'a', 'Indexed', 'epub'),
+                    (2, '/b.epub', 'b', 'Not indexed', 'epub');
+             INSERT INTO chapters (id, book_id, idx, title) VALUES (1, 1, 0, 'Ch'), (2, 2, 0, 'Ch');
+             INSERT INTO chunk_embeddings
+                 (chapter_id, book_id, chunk_idx, char_start, char_end, model, dim, vec)
+             VALUES (1, 1, 0, 0, 10, '{MODEL_ID}', 1, x'0000803f');"
+        ))
+        .unwrap();
+    }
+
+    let conn = open_db(db_path).unwrap();
+    let markers: Vec<(i64, String)> = conn
+        .prepare("SELECT book_id, model FROM book_embeddings")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(markers, vec![(1, MODEL_ID.to_string())]);
+    assert_eq!(semantic_status(&conn).unwrap().indexed_books, 1);
+    assert_eq!(books_to_index(&conn).unwrap(), vec![2]);
+    let states: Vec<IndexState> = list_books(&conn)
+        .unwrap()
+        .iter()
+        .map(|b| b.index_state)
+        .collect();
+    assert_eq!(states, vec![IndexState::None, IndexState::Indexed]);
 }
 
 /// Bookmarks a real paragraph into a folder, reads it back with its book and
@@ -566,13 +618,15 @@ fn the_model_discriminates_unrelated_text() {
 
 /// Indexes the demo book end to end: every chapter is embedded or skipped,
 /// progress counts up to the chapter total, the rows carry the model and
-/// its dimension, and indexing again replaces rows rather than adding them.
-/// The demo book, not `test.epub`, whose chapters are too short to index.
+/// its dimension, and the book is marked as indexed. Indexing again keeps
+/// the chapters that have rows instead of embedding them again. The demo
+/// book, not `test.epub`, whose chapters are too short to index.
 #[cfg(feature = "semantic")]
 #[test]
 #[ignore = "downloads the embedding model"]
 fn indexes_a_book_for_semantic_search() {
     use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_ID};
+    use std::ops::ControlFlow;
 
     let mut conn = open_db(":memory:").unwrap();
     let book_id = import_book(&mut conn, "../demo/verses-of-the-senior-nuns.epub")
@@ -584,7 +638,8 @@ fn indexes_a_book_for_semantic_search() {
     let mut calls = Vec::new();
     let started = std::time::Instant::now();
     let report = index_book(&mut conn, book_id, &embedder, &mut |done, total| {
-        calls.push((done, total))
+        calls.push((done, total));
+        ControlFlow::Continue(())
     })
     .unwrap();
 
@@ -593,6 +648,7 @@ fn indexes_a_book_for_semantic_search() {
     // Chapter 2 is a single verse, under the length floor.
     assert!(report.chapters > 0 && report.skipped > 0, "{report:?}");
     assert_eq!(report.truncated, 0, "{report:?}");
+    assert!(!report.stopped);
     let expected: Vec<(usize, usize)> = (0..=chapters).map(|done| (done, chapters)).collect();
     assert_eq!(calls, expected);
 
@@ -605,10 +661,102 @@ fn indexes_a_book_for_semantic_search() {
         .unwrap()
     };
     assert_eq!(rows(&conn), (report.chunks, 384, MODEL_ID.to_string()));
+    assert_eq!(markers(&conn, book_id), vec![MODEL_ID.to_string()]);
 
-    let again = index_book(&mut conn, book_id, &embedder, &mut |_, _| {}).unwrap();
-    assert_eq!(again, report);
+    let again = index_book(&mut conn, book_id, &embedder, &mut |_, _| {
+        ControlFlow::Continue(())
+    })
+    .unwrap();
+    assert_eq!(
+        (again.already, again.chapters, again.chunks),
+        (report.chapters, 0, 0)
+    );
+    assert_eq!(again.skipped, report.skipped);
     assert_eq!(rows(&conn).0, report.chunks);
+}
+
+/// The models a book's finished indexing runs used.
+#[cfg(feature = "semantic")]
+fn markers(conn: &Connection, book_id: i64) -> Vec<String> {
+    conn.prepare("SELECT model FROM book_embeddings WHERE book_id = ?1")
+        .unwrap()
+        .query_map([book_id], |r| r.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap()
+}
+
+/// A run stopped after its first chapter keeps that chapter and doesn't
+/// mark the book; the next run carries on from there and does.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model"]
+fn a_stopped_run_resumes_where_it_ended() {
+    use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_ID};
+    use std::ops::ControlFlow;
+
+    let mut conn = open_db(":memory:").unwrap();
+    let book_id = import_book(&mut conn, "../demo/verses-of-the-senior-nuns.epub")
+        .unwrap()
+        .book_id;
+    let chapters = db::get_book_chapters(&conn, book_id).unwrap().len();
+    let embedder = Embedder::load().expect("load failed");
+
+    let stopped = index_book(&mut conn, book_id, &embedder, &mut |done, _| {
+        if done >= 1 {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
+    })
+    .unwrap();
+    assert!(stopped.stopped, "{stopped:?}");
+    assert_eq!(stopped.chapters + stopped.skipped, 1, "{stopped:?}");
+    assert_eq!(markers(&conn, book_id), Vec::<String>::new());
+
+    let rest = index_book(&mut conn, book_id, &embedder, &mut |_, _| {
+        ControlFlow::Continue(())
+    })
+    .unwrap();
+    assert!(!rest.stopped);
+    assert_eq!(rest.already, stopped.chapters, "{rest:?}");
+    assert_eq!(
+        rest.already + rest.chapters + rest.skipped,
+        chapters,
+        "{rest:?}"
+    );
+    assert_eq!(markers(&conn, book_id), vec![MODEL_ID.to_string()]);
+}
+
+/// `test.epub`'s chapters are all too short to index, so a run embeds
+/// nothing, but the book still counts as indexed once it's been through.
+#[cfg(feature = "semantic")]
+#[test]
+#[ignore = "downloads the embedding model"]
+fn a_book_with_nothing_to_embed_is_marked_indexed() {
+    use ebook_research_core::{index_book, semantic::Embedder, semantic::MODEL_ID};
+    use ebook_research_core::{semantic_status, IndexState};
+    use std::ops::ControlFlow;
+
+    let mut conn = open_db(":memory:").unwrap();
+    let book_id = import_book(&mut conn, "test.epub").unwrap().book_id;
+    let embedder = Embedder::load().expect("load failed");
+    let report = index_book(&mut conn, book_id, &embedder, &mut |_, _| {
+        ControlFlow::Continue(())
+    })
+    .unwrap();
+    assert_eq!(report.chunks, 0, "{report:?}");
+    assert_eq!(markers(&conn, book_id), vec![MODEL_ID.to_string()]);
+    assert_eq!(semantic_status(&conn).unwrap().indexed_books, 1);
+    assert_eq!(
+        list_books(&conn).unwrap()[0].index_state,
+        IndexState::Indexed
+    );
+
+    let err = index_book(&mut conn, 999, &embedder, &mut |_, _| {
+        ControlFlow::Continue(())
+    });
+    assert_eq!(err.unwrap_err().to_string(), "no book with id 999");
 }
 
 /// A thematic query that appears nowhere in the book word for word finds
@@ -776,7 +924,10 @@ mod semantic_eval {
         let mut conn = open_db(db_path.to_str().unwrap()).unwrap();
         for book in db::list_books(&conn).unwrap() {
             let started = std::time::Instant::now();
-            let report = index_book(&mut conn, book.id, embedder, &mut |_, _| {}).unwrap();
+            let report = index_book(&mut conn, book.id, embedder, &mut |_, _| {
+                std::ops::ControlFlow::Continue(())
+            })
+            .unwrap();
             eprintln!(
                 "{name}: indexed {:?} in {:.0?}: {report:?}",
                 book.title,

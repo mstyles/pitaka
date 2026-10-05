@@ -14,9 +14,13 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[cfg(feature = "semantic")]
-use ebook_research_core::semantic::Embedder;
+use ebook_research_core::{semantic::Embedder, IndexQueue};
 #[cfg(feature = "semantic")]
 use serde::Serialize;
+#[cfg(feature = "semantic")]
+use std::ops::ControlFlow;
+#[cfg(feature = "semantic")]
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "semantic")]
 use std::sync::Arc;
 #[cfg(feature = "semantic")]
@@ -35,10 +39,10 @@ pub struct AppState {
     /// to finish with it.
     #[cfg(feature = "semantic")]
     embedder: Mutex<Option<Arc<Embedder>>>,
-    /// Held while a book is indexed, so books imported together are indexed
-    /// one after another rather than competing for the CPU.
+    /// Books waiting to be indexed, which one worker thread takes one at
+    /// a time in the order they were queued; see `start_indexer`.
     #[cfg(feature = "semantic")]
-    indexing: Mutex<()>,
+    index_queue: Arc<IndexQueue>,
 }
 
 fn db_path(app: &AppHandle) -> Result<String, String> {
@@ -63,14 +67,14 @@ pub fn init_state(app: &AppHandle) -> Result<AppState, String> {
         #[cfg(feature = "semantic")]
         embedder: Mutex::new(None),
         #[cfg(feature = "semantic")]
-        indexing: Mutex::new(()),
+        index_queue: Arc::new(IndexQueue::new()),
     })
 }
 
 /// Frontend calls: `invoke("import_book", { path: "/path/to/book.epub" })`
 /// (returns the existing book, with `already_imported: true`, for a duplicate).
-/// With semantic search built in, a new book is then indexed in the
-/// background; see `index_in_background`. Async, and run on a blocking
+/// With semantic search built in, a new book is then queued for indexing,
+/// unless Stop indexing paused that; see `index_in_background`. Async, and run on a blocking
 /// thread, so the window keeps repainting while a book parses — a folder
 /// import calls this once per book.
 #[tauri::command]
@@ -107,6 +111,8 @@ struct IndexProgress {
     book_id: i64,
     done: usize,
     total: usize,
+    /// Books queued behind this one.
+    queued: usize,
 }
 
 /// Emitted as `semantic_index_failed` when indexing stops early, e.g. the
@@ -118,39 +124,84 @@ struct IndexFailed {
     error: String,
 }
 
-/// Embeds a newly imported book's chapters on a thread of its own, so the
-/// import returns as soon as the book is in the library.
+/// Emitted as `semantic_index_stopped` when Stop indexing ends a run
+/// partway. Chapters finished before it stay indexed, and the next run
+/// carries on from them.
+#[cfg(feature = "semantic")]
+#[derive(Clone, Serialize)]
+struct IndexStopped {
+    book_id: i64,
+    done: usize,
+    total: usize,
+}
+
+/// Queues a newly imported book for indexing, so the import returns as
+/// soon as the book is in the library.
 #[cfg(feature = "semantic")]
 fn index_in_background(app: AppHandle, book_id: i64) {
-    std::thread::spawn(move || {
-        if let Err(error) = index(&app, book_id) {
-            eprintln!("couldn't index book {book_id} for chapter search: {error}");
-            let _ = app.emit("semantic_index_failed", IndexFailed { book_id, error });
-        }
-    });
+    if let Some(state) = app.try_state::<AppState>() {
+        state.index_queue.push_import(book_id);
+    }
 }
 
 #[cfg(not(feature = "semantic"))]
 fn index_in_background(_app: AppHandle, _book_id: i64) {}
 
+/// Starts the one thread that indexes queued books, for the app's
+/// lifetime. One at a time, so books don't compete for the CPU, and in
+/// the order they were queued.
 #[cfg(feature = "semantic")]
-fn index(app: &AppHandle, book_id: i64) -> Result<(), String> {
+fn start_indexer(app: AppHandle, queue: Arc<IndexQueue>) {
+    std::thread::spawn(move || loop {
+        let (book_id, cancel) = queue.next();
+        let result = index(&app, &queue, book_id, &cancel);
+        let cancelled = queue.finish(book_id);
+        match result {
+            // A run cancelled because its book was removed can fail on the
+            // missing book, which nobody needs to hear about.
+            Err(_) if cancelled => {}
+            Err(error) => {
+                eprintln!("couldn't index book {book_id} for chapter search: {error}");
+                let _ = app.emit("semantic_index_failed", IndexFailed { book_id, error });
+            }
+            Ok(Some(stopped)) => {
+                let _ = app.emit("semantic_index_stopped", stopped);
+            }
+            Ok(None) => {}
+        }
+    });
+}
+
+/// Indexes one book, returning where it stopped if `cancel` ended it early.
+#[cfg(feature = "semantic")]
+fn index(
+    app: &AppHandle,
+    queue: &IndexQueue,
+    book_id: i64,
+    cancel: &AtomicBool,
+) -> Result<Option<IndexStopped>, String> {
     let state = app
         .try_state::<AppState>()
         .ok_or("the library isn't open")?;
-    // The guard protects no data, so a run that panicked doesn't matter.
-    let _one_at_a_time = state.indexing.lock().unwrap_or_else(|e| e.into_inner());
     let embedder = embedder(&state)?;
     let mut conn = open_db(&state.db_path).map_err(|e| format!("{e:#}"))?;
+    let mut at = (0, 0);
     let report = db::index_book(&mut conn, book_id, &embedder, &mut |done, total| {
+        at = (done, total);
         let _ = app.emit(
             "semantic_index_progress",
             IndexProgress {
                 book_id,
                 done,
                 total,
+                queued: queue.waiting_count(),
             },
         );
+        if cancel.load(Ordering::SeqCst) {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        }
     })
     .map_err(|e| format!("{e:#}"))?;
     if report.truncated > 0 {
@@ -159,7 +210,73 @@ fn index(app: &AppHandle, book_id: i64) -> Result<(), String> {
             report.truncated, report.chunks
         );
     }
+    let (done, total) = at;
+    Ok(report.stopped.then_some(IndexStopped {
+        book_id,
+        done,
+        total,
+    }))
+}
+
+/// Frontend calls: `invoke("queue_index", { bookId: 1 })`. Queues a book
+/// for indexing, and ends a pause from Stop indexing. Returns how many
+/// books were queued: 0 if it already was.
+#[tauri::command]
+pub fn queue_index(book_id: i64, state: State<AppState>) -> Result<usize, String> {
+    queue_books(&state, |_| Ok(vec![book_id]))
+}
+
+/// Frontend calls: `invoke("queue_index_all")`. Queues every book no
+/// indexing run has finished, newest first, and ends a pause from Stop
+/// indexing. Returns how many books were queued.
+#[tauri::command]
+pub fn queue_index_all(state: State<AppState>) -> Result<usize, String> {
+    queue_books(&state, |conn| {
+        db::books_to_index(conn).map_err(|e| e.to_string())
+    })
+}
+
+#[cfg(feature = "semantic")]
+fn queue_books(
+    state: &AppState,
+    ids: impl FnOnce(&Connection) -> Result<Vec<i64>, String>,
+) -> Result<usize, String> {
+    let ids = {
+        let conn = state.conn.lock().map_err(|e| e.to_string())?;
+        ids(&conn)?
+    };
+    Ok(state.index_queue.push(&ids))
+}
+
+#[cfg(not(feature = "semantic"))]
+fn queue_books(
+    _state: &AppState,
+    _ids: impl FnOnce(&Connection) -> Result<Vec<i64>, String>,
+) -> Result<usize, String> {
+    Err("semantic search isn't available in this build".into())
+}
+
+/// Frontend calls: `invoke("stop_indexing")`. Empties the queue, ends the
+/// current run after the chapter in flight, and pauses the indexing of new
+/// imports until `queue_index` or `queue_index_all` is called.
+#[tauri::command]
+pub fn stop_indexing(app: AppHandle) -> Result<(), String> {
+    stop_index_queue(&app)
+}
+
+#[cfg(feature = "semantic")]
+fn stop_index_queue(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<AppState>()
+        .ok_or("the library isn't open")?;
+    state.index_queue.stop();
+    let _ = app.emit("semantic_index_paused", ());
     Ok(())
+}
+
+#[cfg(not(feature = "semantic"))]
+fn stop_index_queue(_app: &AppHandle) -> Result<(), String> {
+    Err("semantic search isn't available in this build".into())
 }
 
 /// The embedding model, loading it (and downloading it, the first time)
@@ -226,6 +343,8 @@ pub fn search_library(
 /// from the library; the EPUB file itself isn't touched.
 #[tauri::command]
 pub fn delete_book(book_id: i64, state: State<AppState>) -> Result<(), String> {
+    #[cfg(feature = "semantic")]
+    state.index_queue.forget(book_id);
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::delete_book(&conn, book_id).map_err(|e| e.to_string())
 }
@@ -442,7 +561,11 @@ pub fn list_book_annotations(
 pub fn register(app: &mut tauri::App) {
     match init_state(app.handle()) {
         Ok(state) => {
+            #[cfg(feature = "semantic")]
+            let queue = Arc::clone(&state.index_queue);
             app.manage(state);
+            #[cfg(feature = "semantic")]
+            start_indexer(app.handle().clone(), queue);
         }
         Err(err) => {
             let handle = app.handle().clone();

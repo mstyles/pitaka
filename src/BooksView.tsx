@@ -8,40 +8,100 @@ import type {
   ImportOutcome,
   SemanticIndexFailed,
   SemanticIndexProgress,
+  SemanticIndexStopped,
+  SemanticStatus,
 } from "./types";
 
 /** The latest indexing event; see `useIndexing`. */
 export type Indexing =
   | ({ kind: "progress" } & SemanticIndexProgress)
   | ({ kind: "failed" } & SemanticIndexFailed)
+  | ({ kind: "stopped" } & SemanticIndexStopped)
   | null;
 
 /**
- * Follows the background indexing that runs after an import, which takes
- * minutes. Called from App, which stays mounted, so the Books screen shows
- * where a run is up to on every visit, not just once its next chapter ends.
+ * Follows background indexing for chapter search, which takes minutes a
+ * book, and queues books for it. Called from App, which stays mounted, so
+ * the Books screen shows where a run is up to on every visit, not just once
+ * its next chapter ends.
  */
 export function useIndexing() {
   const [indexing, setIndexing] = useState<Indexing>(null);
+  /** Stop indexing was clicked: new imports aren't indexed until Index is. */
+  const [paused, setPaused] = useState(false);
+  /** Books queued from this screen that haven't finished, failed or been stopped. */
+  const [queued, setQueued] = useState<ReadonlySet<number>>(new Set());
+
+  function unqueue(bookId: number) {
+    setQueued((prev) => {
+      if (!prev.has(bookId)) return prev;
+      const next = new Set(prev);
+      next.delete(bookId);
+      return next;
+    });
+  }
+
   useEffect(() => {
     const unlisteners = [
-      listen<SemanticIndexProgress>("semantic_index_progress", (e) =>
-        setIndexing({ kind: "progress", ...e.payload }),
-      ),
-      listen<SemanticIndexFailed>("semantic_index_failed", (e) =>
-        setIndexing({ kind: "failed", ...e.payload }),
-      ),
+      listen<SemanticIndexProgress>("semantic_index_progress", (e) => {
+        setIndexing({ kind: "progress", ...e.payload });
+        if (e.payload.done === e.payload.total) unqueue(e.payload.book_id);
+      }),
+      listen<SemanticIndexFailed>("semantic_index_failed", (e) => {
+        setIndexing({ kind: "failed", ...e.payload });
+        unqueue(e.payload.book_id);
+      }),
+      listen<SemanticIndexStopped>("semantic_index_stopped", (e) => {
+        setIndexing({ kind: "stopped", ...e.payload });
+        unqueue(e.payload.book_id);
+      }),
+      listen("semantic_index_paused", () => setPaused(true)),
     ];
     return () => {
       for (const unlisten of unlisteners) unlisten.then((f) => f());
     };
   }, []);
-  // Once the Books screen has shown a finished or failed run, it's done with.
+
+  // Once the Books screen has shown a finished, failed or stopped run, it's
+  // done with.
   function dismissFinished() {
     setIndexing((prev) => (prev?.kind === "progress" && prev.done < prev.total ? prev : null));
   }
-  return { indexing, dismissFinished };
+
+  function queue(bookIds: number[]) {
+    setPaused(false);
+    setQueued((prev) => new Set([...prev, ...bookIds]));
+  }
+
+  async function queueIndex(bookId: number) {
+    await invoke<number>("queue_index", { bookId });
+    queue([bookId]);
+  }
+
+  /** `bookIds` are the books that aren't indexed, which the backend queues. */
+  async function queueIndexAll(bookIds: number[]) {
+    await invoke<number>("queue_index_all");
+    queue(bookIds);
+  }
+
+  async function stopIndexing() {
+    await invoke("stop_indexing");
+    setPaused(true);
+    setQueued(new Set());
+  }
+
+  return {
+    indexing,
+    paused,
+    queued,
+    dismissFinished,
+    queueIndex,
+    queueIndexAll,
+    stopIndexing,
+  };
 }
+
+export type IndexingControls = Omit<ReturnType<typeof useIndexing>, "dismissFinished">;
 
 /** Where a folder import is up to, or how it ended; see `useFolderImport`. */
 export type FolderImport = {
@@ -144,6 +204,12 @@ export function useFolderImport(onLibraryChanged: () => void) {
   return { folderImport, startFolderImport, stopFolderImport, clearFolderImport };
 }
 
+const INDEX_STATE_NOTES: Record<BookSummary["index_state"], string> = {
+  none: " · not in chapter search",
+  partial: " · partly indexed",
+  indexed: "",
+};
+
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
@@ -176,13 +242,15 @@ type Props = {
   onOpenBook: (bookId: number) => void;
   /** Called after a book is added or removed, so a kept search can re-run. */
   onLibraryChanged: () => void;
-  indexing: Indexing;
+  indexer: IndexingControls;
 } & ReturnType<typeof useFolderImport>;
+
+const PAUSED_NOTE = "New imports won't be indexed until you click Index or Index all books.";
 
 function BooksView({
   onOpenBook,
   onLibraryChanged,
-  indexing,
+  indexer,
   folderImport,
   startFolderImport,
   stopFolderImport,
@@ -190,7 +258,13 @@ function BooksView({
 }: Props) {
   const [importStatus, setImportStatus] = useState("");
   const [books, setBooks] = useState<BookSummary[] | null>(null);
+  /** Whether this build has chapter search; nothing about indexing shows without it. */
+  const [canIndex, setCanIndex] = useState(false);
   const importing = folderImport?.running ?? false;
+  const { indexing, paused, queued } = indexer;
+  /** The book being indexed right now, if any. */
+  const current =
+    indexing?.kind === "progress" && indexing.done < indexing.total ? indexing.book_id : null;
 
   async function refreshBooks() {
     try {
@@ -206,17 +280,49 @@ function BooksView({
     refreshBooks();
   }, [folderImport?.imported]);
 
+  useEffect(() => {
+    invoke<SemanticStatus>("semantic_status")
+      .then((status) => setCanIndex(status.available))
+      .catch(() => setCanIndex(false));
+  }, []);
+
+  // A book that finished, failed or stopped has a new index state to show.
+  const settled =
+    indexing && !(indexing.kind === "progress" && indexing.done < indexing.total)
+      ? `${indexing.kind}:${indexing.book_id}`
+      : null;
+  useEffect(() => {
+    if (settled) refreshBooks();
+  }, [settled]);
+
   function indexingLine() {
-    if (!indexing) return null;
+    if (!indexing) return paused ? `Stopped indexing. ${PAUSED_NOTE}` : null;
     const book = books?.find((b) => b.id === indexing.book_id);
     const title = book ? (book.title ?? "Untitled") : `book #${indexing.book_id}`;
     if (indexing.kind === "failed") {
       return `Indexing ${title} for chapter search failed: ${indexing.error}`;
     }
     const { done, total } = indexing;
+    if (indexing.kind === "stopped") {
+      return `Stopped indexing ${title} at ${done}/${total} chapters. ${PAUSED_NOTE}`;
+    }
     if (done === total) return `Indexed ${title} for chapter search`;
-    return `Indexing ${title} for chapter search… ${done}/${total} chapters`;
+    if (paused) return `Stopping indexing ${title} after the chapter in progress…`;
+    const more = indexing.queued > 0 ? ` · ${plural(indexing.queued, "more book")} queued` : "";
+    return `Indexing ${title} for chapter search… ${done}/${total} chapters${more}`;
   }
+
+  async function act(action: () => Promise<unknown>, failure: string) {
+    try {
+      await action();
+    } catch (err) {
+      setImportStatus(`${failure}: ${err}`);
+    }
+  }
+
+  const unindexed = books?.filter((b) => b.index_state !== "indexed") ?? [];
+  const anyQueued = books?.some((b) => queued.has(b.id)) ?? false;
+  const line = indexingLine();
 
   async function importBook() {
     const path = await open({
@@ -285,7 +391,16 @@ function BooksView({
         <button onClick={importFolder} disabled={importing}>
           Import folder…
         </button>
-        {importing && <button onClick={stopFolderImport}>Stop</button>}
+        {canIndex && unindexed.length > 0 && !anyQueued && (
+          <button
+            onClick={() =>
+              act(() => indexer.queueIndexAll(unindexed.map((b) => b.id)), "Indexing failed")
+            }
+          >
+            Index all books
+          </button>
+        )}
+        {importing && <button onClick={stopFolderImport}>Stop import</button>}
         <span>{importStatus || (folderImport && folderImportLine(folderImport))}</span>
       </div>
       {folderImport && folderImport.failures.length > 0 && (
@@ -298,7 +413,16 @@ function BooksView({
           ))}
         </ul>
       )}
-      {indexing && <p className="index-progress">{indexingLine()}</p>}
+      {canIndex && line && (
+        <div className="row index-progress">
+          <span>{line}</span>
+          {current != null && !paused && (
+            <button onClick={() => act(indexer.stopIndexing, "Stopping failed")}>
+              Stop indexing
+            </button>
+          )}
+        </div>
+      )}
 
       {books?.length === 0 ? (
         <p className="section-empty">No books yet. Import an EPUB to start.</p>
@@ -309,7 +433,20 @@ function BooksView({
               <span className="book-title">{b.title ?? "Untitled"}</span>
               <span className="book-meta">
                 {b.author ?? "Unknown author"} · {b.chapter_count} chapters
+                {canIndex && INDEX_STATE_NOTES[b.index_state]}
               </span>
+              {canIndex && b.index_state !== "indexed" && (
+                <button
+                  className="book-index"
+                  disabled={current === b.id || queued.has(b.id)}
+                  onClick={(e) => {
+                    e.stopPropagation(); // the row itself opens the book
+                    act(() => indexer.queueIndex(b.id), "Indexing failed");
+                  }}
+                >
+                  {current === b.id ? "Indexing…" : queued.has(b.id) ? "Queued" : "Index"}
+                </button>
+              )}
               <button
                 className="book-remove"
                 onClick={(e) => {

@@ -4,7 +4,7 @@
 //! feature; the ranking here works on vectors alone.
 
 use super::{get_chapter_content, ContentBlockRow};
-use crate::semantic::{blob_to_vec, vec_to_blob};
+use crate::semantic::{blob_to_vec, vec_to_blob, COMPATIBLE_MODELS};
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -13,14 +13,15 @@ use std::collections::HashMap;
 #[cfg(feature = "semantic")]
 use {
     super::get_book_chapters,
-    crate::semantic::{chunks, is_indexable, Embedder, COMPATIBLE_MODELS, MODEL_ID},
+    crate::semantic::{chunks, is_indexable, Embedder, MODEL_ID},
+    std::{collections::HashSet, ops::ControlFlow},
 };
 
 /// `models` as a JSON array, for `model IN (SELECT value FROM json_each(?))`.
 /// Written out by hand because `serde_json` is only a dependency with the
 /// `semantic` feature. Model names are plain ASCII, but quotes, backslashes
 /// and control chars are escaped anyway.
-fn models_json(models: &[&str]) -> String {
+pub(super) fn models_json(models: &[&str]) -> String {
     let quoted: Vec<String> = models
         .iter()
         .map(|model| {
@@ -168,6 +169,12 @@ pub struct IndexReport {
     /// embedded. Zero on this library; non-zero means a denser text than
     /// the chunk size assumes.
     pub truncated: usize,
+    /// Chapters that already had embeddings from a compatible model, left
+    /// as they were: an earlier run that was stopped got that far.
+    pub already: usize,
+    /// `progress` asked the run to end before the last chapter, so the
+    /// book isn't marked as indexed.
+    pub stopped: bool,
 }
 
 /// One chunk ready to store: its char offsets in the chapter text and its
@@ -218,68 +225,180 @@ pub(crate) fn store_chapter(
     Ok(())
 }
 
-/// Embeds a book's chapters for semantic search, replacing any embeddings
-/// they already have. Run after the import has committed, never inside it:
-/// at a quarter of a second per chunk a book takes minutes, and holding the
-/// import's write lock that long would block the whole library. Each
-/// chapter is embedded before its transaction opens and committed on its
-/// own, so a run can be stopped at any point and keep what it finished.
+/// Embeds a book's chapters for semantic search, skipping chapters that
+/// already have embeddings from a compatible model, so a run that was
+/// stopped carries on where it ended. Run after the import has committed,
+/// never inside it: at a quarter of a second per chunk a book takes
+/// minutes, and holding the import's write lock that long would block the
+/// whole library. Each chapter is embedded before its transaction opens
+/// and committed on its own, so a run can be stopped at any point and keep
+/// what it finished.
+///
 /// `progress(done, total)` is called once before the first chapter and
-/// after each one, skipped chapters included.
+/// after each one, skipped chapters included. Returning `Break` ends the
+/// run after the chapter just finished, with `stopped` set in the report.
+/// A run that reaches the end marks the book as indexed with
+/// [`MODEL_ID`]; a stopped one doesn't.
 #[cfg(feature = "semantic")]
 pub fn index_book(
     conn: &mut Connection,
     book_id: i64,
     embedder: &Embedder,
-    progress: &mut dyn FnMut(usize, usize),
+    progress: &mut dyn FnMut(usize, usize) -> ControlFlow<()>,
 ) -> Result<IndexReport> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM books WHERE id = ?1)",
+        params![book_id],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        bail!("no book with id {book_id}");
+    }
+    let finished: HashSet<i64> = conn
+        .prepare(
+            "SELECT DISTINCT chapter_id FROM chunk_embeddings
+             WHERE book_id = ?1 AND model IN (SELECT value FROM json_each(?2))",
+        )?
+        .query_map(params![book_id, models_json(COMPATIBLE_MODELS)], |row| {
+            row.get(0)
+        })?
+        .collect::<rusqlite::Result<_>>()?;
     let chapters = get_book_chapters(conn, book_id)?;
     let total = chapters.len();
     let mut report = IndexReport::default();
-    progress(0, total);
-    for (done, chapter) in chapters.iter().enumerate() {
-        let texts: Vec<String> = get_chapter_content(conn, chapter.id)?
-            .blocks
-            .into_iter()
-            .map(|block| block.text)
-            .collect();
-        if !is_indexable(&texts) {
-            report.skipped += 1;
-            progress(done + 1, total);
-            continue;
-        }
-        // The same `\n` join `block_at` counts in.
-        let text = texts.join("\n");
-        let spans = chunks(&text);
-        // Byte offsets of every char, and of the end, to slice by char.
-        let bytes: Vec<usize> = text
-            .char_indices()
-            .map(|(i, _)| i)
-            .chain([text.len()])
-            .collect();
-        let mut stored = Vec::with_capacity(spans.len());
-        for batch in spans.chunks(EMBED_BATCH) {
-            let slices: Vec<&str> = batch
-                .iter()
-                .map(|&(start, end)| &text[bytes[start]..bytes[end]])
-                .collect();
-            for (&(char_start, char_end), embedding) in
-                batch.iter().zip(embedder.embed_batch(&slices)?)
-            {
-                report.truncated += usize::from(embedding.truncated);
-                stored.push(StoredChunk {
-                    char_start,
-                    char_end,
-                    vec: embedding.vec,
-                });
-            }
-        }
-        store_chapter(conn, book_id, chapter.id, MODEL_ID, &stored)?;
-        report.chapters += 1;
-        report.chunks += stored.len();
-        progress(done + 1, total);
+    if progress(0, total).is_break() {
+        report.stopped = true;
+        return Ok(report);
     }
+    for (done, chapter) in chapters.iter().enumerate() {
+        if finished.contains(&chapter.id) {
+            report.already += 1;
+        } else {
+            index_chapter(conn, book_id, chapter.id, embedder, &mut report)?;
+        }
+        if progress(done + 1, total).is_break() && done + 1 < total {
+            report.stopped = true;
+            return Ok(report);
+        }
+    }
+    mark_indexed(conn, book_id, MODEL_ID)?;
     Ok(report)
+}
+
+/// Embeds and stores one chapter, or counts it as skipped when
+/// `is_indexable` turns it away.
+#[cfg(feature = "semantic")]
+fn index_chapter(
+    conn: &mut Connection,
+    book_id: i64,
+    chapter_id: i64,
+    embedder: &Embedder,
+    report: &mut IndexReport,
+) -> Result<()> {
+    let texts: Vec<String> = get_chapter_content(conn, chapter_id)?
+        .blocks
+        .into_iter()
+        .map(|block| block.text)
+        .collect();
+    if !is_indexable(&texts) {
+        report.skipped += 1;
+        return Ok(());
+    }
+    // The same `\n` join `block_at` counts in.
+    let text = texts.join("\n");
+    let spans = chunks(&text);
+    // Byte offsets of every char, and of the end, to slice by char.
+    let bytes: Vec<usize> = text
+        .char_indices()
+        .map(|(i, _)| i)
+        .chain([text.len()])
+        .collect();
+    let mut stored = Vec::with_capacity(spans.len());
+    for batch in spans.chunks(EMBED_BATCH) {
+        let slices: Vec<&str> = batch
+            .iter()
+            .map(|&(start, end)| &text[bytes[start]..bytes[end]])
+            .collect();
+        for (&(char_start, char_end), embedding) in batch.iter().zip(embedder.embed_batch(&slices)?)
+        {
+            report.truncated += usize::from(embedding.truncated);
+            stored.push(StoredChunk {
+                char_start,
+                char_end,
+                vec: embedding.vec,
+            });
+        }
+    }
+    store_chapter(conn, book_id, chapter_id, MODEL_ID, &stored)?;
+    report.chapters += 1;
+    report.chunks += stored.len();
+    Ok(())
+}
+
+/// Records that an indexing run with `model` finished `book_id`.
+#[cfg_attr(not(feature = "semantic"), allow(dead_code))]
+pub(crate) fn mark_indexed(conn: &Connection, book_id: i64, model: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO book_embeddings (book_id, model) VALUES (?1, ?2)",
+        params![book_id, model],
+    )?;
+    Ok(())
+}
+
+/// How far a book is indexed for chapter search, counting only
+/// [`COMPATIBLE_MODELS`]' rows: a book indexed with another model is
+/// `None`, so it's offered for indexing again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IndexState {
+    /// No chapter has embeddings.
+    None,
+    /// Some chapters have embeddings, but no run has finished the book.
+    Partial,
+    /// A run finished the book.
+    Indexed,
+}
+
+impl IndexState {
+    /// Reads the `'none'` / `'partial'` / `'indexed'` that
+    /// [`INDEX_STATE_SQL`] works out.
+    pub(super) fn from_sql(state: &str) -> rusqlite::Result<Self> {
+        match state {
+            "none" => Ok(Self::None),
+            "partial" => Ok(Self::Partial),
+            "indexed" => Ok(Self::Indexed),
+            other => Err(rusqlite::Error::InvalidColumnType(
+                0,
+                format!("index state {other:?}"),
+                rusqlite::types::Type::Text,
+            )),
+        }
+    }
+}
+
+/// A book's [`IndexState`] as `'none'`, `'partial'` or `'indexed'`, for a
+/// query over `books b` with `?1` bound to [`models_json`] of
+/// [`COMPATIBLE_MODELS`].
+pub(super) const INDEX_STATE_SQL: &str = "CASE
+    WHEN EXISTS (SELECT 1 FROM book_embeddings e WHERE e.book_id = b.id
+                 AND e.model IN (SELECT value FROM json_each(?1))) THEN 'indexed'
+    WHEN EXISTS (SELECT 1 FROM chunk_embeddings c WHERE c.book_id = b.id
+                 AND c.model IN (SELECT value FROM json_each(?1))) THEN 'partial'
+    ELSE 'none' END";
+
+/// The ids of books no indexing run has finished, in [`list_books`] order
+/// (newest first), so a queue of them works down the Books screen.
+///
+/// [`list_books`]: super::list_books
+pub fn books_to_index(conn: &Connection) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT b.id FROM books b WHERE ({INDEX_STATE_SQL}) != 'indexed'
+         ORDER BY b.added_at DESC, b.id DESC"
+    ))?;
+    let ids = stmt
+        .query_map([models_json(COMPATIBLE_MODELS)], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(ids)
 }
 
 /// Chunks per forward pass. Batching doesn't speed up the CPU backend, so
@@ -420,17 +539,15 @@ pub struct SemanticStatus {
 }
 
 /// Always compiled, so the frontend has one command to ask whether to
-/// offer chapter search at all. Only rows from [`COMPATIBLE_MODELS`] count,
-/// the same ones search reads, so a book indexed with another model shows
-/// as not indexed.
-///
-/// [`COMPATIBLE_MODELS`]: crate::semantic::COMPATIBLE_MODELS
+/// offer chapter search at all. A book counts as indexed once a run with
+/// one of [`COMPATIBLE_MODELS`], the models search reads, has finished
+/// it, so a book indexed with another model, or partway, doesn't count.
 pub fn semantic_status(conn: &Connection) -> Result<SemanticStatus> {
     let (indexed_books, total_books) = conn.query_row(
-        "SELECT (SELECT COUNT(DISTINCT book_id) FROM chunk_embeddings
+        "SELECT (SELECT COUNT(DISTINCT book_id) FROM book_embeddings
                  WHERE model IN (SELECT value FROM json_each(?1))),
                 (SELECT COUNT(*) FROM books)",
-        [models_json(crate::semantic::COMPATIBLE_MODELS)],
+        [models_json(COMPATIBLE_MODELS)],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     Ok(SemanticStatus {
@@ -530,6 +647,9 @@ mod tests {
             &[[1.0, 0.0, 0.0]],
         );
 
+        mark_indexed(&conn, book_id, MODEL_ID).unwrap();
+        mark_indexed(&conn, other_book, "other/model@abc").unwrap();
+
         let ranked = rank_chunks(&conn, &[1.0, 0.0, 0.0], COMPATIBLE_MODELS, MIN_SCORE, 0.0);
         assert_eq!(ranked_ids(&ranked.unwrap()), vec![one]);
         // A different dimension under another model's name is skipped too,
@@ -547,6 +667,7 @@ mod tests {
         let (book_id, one, two) = two_chapter_book(&mut conn);
         insert_chunks(&conn, book_id, one, MODEL_REPO, &[[1.0, 0.0, 0.0]]);
         insert_chunks(&conn, book_id, two, MODEL_ID, &[[0.8, 0.6, 0.0]]);
+        mark_indexed(&conn, book_id, MODEL_REPO).unwrap();
 
         let ranked =
             rank_chunks(&conn, &[1.0, 0.0, 0.0], COMPATIBLE_MODELS, MIN_SCORE, 0.0).unwrap();
@@ -735,6 +856,8 @@ mod tests {
             }
         );
 
+        // Rows alone don't count: the run that wrote them may have been
+        // cut short.
         insert_chunks(
             &conn,
             book_id,
@@ -742,7 +865,68 @@ mod tests {
             MODEL_ID,
             &[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
         );
+        assert_eq!(status(&conn).indexed_books, 0);
+        mark_indexed(&conn, book_id, MODEL_ID).unwrap();
         assert_eq!(status(&conn).indexed_books, 1);
+
+        // A finished book with no rows, all its chapters front matter,
+        // counts too.
+        let front_matter = load_book(
+            &mut conn,
+            "/front.epub",
+            "h2",
+            &crate::db::test_util::one_chapter_book("Contents", &["One"]),
+        )
+        .unwrap();
+        mark_indexed(&conn, front_matter, MODEL_ID).unwrap();
+        assert_eq!(status(&conn).indexed_books, 2);
+    }
+
+    /// Three more one-chapter books beside [`two_chapter_book`]'s: one
+    /// indexed partway, one finished, one finished with another model.
+    fn books_in_every_state(conn: &mut Connection) -> [i64; 4] {
+        let (none, _, _) = two_chapter_book(conn);
+        let mut book = |hash: &str| {
+            let book = crate::db::test_util::one_chapter_book(hash, &["text"]);
+            let id = load_book(conn, &format!("/{hash}.epub"), hash, &book).unwrap();
+            (id, get_book_chapters(conn, id).unwrap()[0].id)
+        };
+        let (partial, partial_ch) = book("partial");
+        let (indexed, indexed_ch) = book("indexed");
+        let (other, other_ch) = book("other");
+        insert_chunks(conn, partial, partial_ch, MODEL_ID, &[[1.0, 0.0, 0.0]]);
+        insert_chunks(conn, indexed, indexed_ch, MODEL_REPO, &[[1.0, 0.0, 0.0]]);
+        mark_indexed(conn, indexed, MODEL_ID).unwrap();
+        insert_chunks(conn, other, other_ch, "other", &[[1.0, 0.0, 0.0]]);
+        mark_indexed(conn, other, "other").unwrap();
+        [none, partial, indexed, other]
+    }
+
+    #[test]
+    fn books_to_index_leaves_out_finished_books() {
+        let mut conn = open_db(":memory:").unwrap();
+        let [none, partial, _, other] = books_in_every_state(&mut conn);
+        // Newest first, like the Books screen.
+        assert_eq!(books_to_index(&conn).unwrap(), vec![other, partial, none]);
+    }
+
+    #[test]
+    fn list_books_reports_each_books_index_state() {
+        let mut conn = open_db(":memory:").unwrap();
+        let [none, partial, indexed, other] = books_in_every_state(&mut conn);
+        let states: HashMap<i64, IndexState> = list_books(&conn)
+            .unwrap()
+            .into_iter()
+            .map(|b| (b.id, b.index_state))
+            .collect();
+        assert_eq!(states[&none], IndexState::None);
+        assert_eq!(states[&partial], IndexState::Partial);
+        assert_eq!(states[&indexed], IndexState::Indexed);
+        assert_eq!(states[&other], IndexState::None);
+        assert_eq!(
+            serde_json::to_value(IndexState::Partial).unwrap(),
+            "partial"
+        );
     }
 
     #[test]
@@ -825,12 +1009,15 @@ mod tests {
         let (book_id, one, two) = two_chapter_book(&mut conn);
         insert_chunks(&conn, book_id, one, "test", &[[1.0, 0.0, 0.0]]);
         insert_chunks(&conn, book_id, two, "test", &[[0.0, 1.0, 0.0]]);
+        mark_indexed(&conn, book_id, "test").unwrap();
 
         delete_book(&conn, book_id).unwrap();
 
-        let rows: i64 = conn
-            .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(rows, 0);
+        for table in ["chunk_embeddings", "book_embeddings"] {
+            let rows: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(rows, 0, "{table}");
+        }
     }
 }
