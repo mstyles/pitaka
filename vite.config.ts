@@ -34,6 +34,9 @@ export default defineConfig(() => ({
 
   // `npm test`: component tests against the mocked backend in src/test/.
   test: {
+    // Only this checkout's tests: agent worktrees under .claude/worktrees
+    // hold whole copies of the repo, which would otherwise run too.
+    dir: "src",
     environment: "jsdom",
     setupFiles: ["src/test/setup.ts"],
   },
