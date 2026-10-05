@@ -14,8 +14,9 @@
 //!      else its `<head><title>`, else its file path.
 
 use anyhow::{anyhow, Context, Result};
-use quick_xml::events::Event;
-use quick_xml::Reader;
+use quick_xml::events::{BytesEnd, BytesStart, Event};
+use quick_xml::{Reader, XmlVersion};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
 
@@ -136,22 +137,17 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
 }
 
 fn extract_opf_path(container_xml: &str) -> Result<String> {
-    let mut reader = Reader::from_str(container_xml);
-    reader.trim_text(true);
-    let mut buf = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf)? {
-            Event::Empty(e) | Event::Start(e) if e.name().as_ref() == b"rootfile" => {
+    for event in LenientReader::new(container_xml) {
+        match event {
+            XmlEvent::Empty(e) | XmlEvent::Start(e) if e.name().as_ref() == "rootfile" => {
                 for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"full-path" {
-                        return Ok(attr.unescape_value()?.to_string());
+                    if attr.key.as_ref() == "full-path" {
+                        return Ok(attr.normalized_value(XmlVersion::Implicit1_0)?.to_string());
                     }
                 }
             }
-            Event::Eof => break,
             _ => {}
         }
-        buf.clear();
     }
     Err(anyhow!(
         "no <rootfile full-path=...> found in container.xml"
@@ -186,21 +182,19 @@ struct Opf {
 }
 
 fn parse_opf(opf_xml: &str) -> Result<Opf> {
-    let mut reader = Reader::from_str(opf_xml);
-    reader.trim_text(true);
-    let mut buf = Vec::new();
-
     let mut manifest = HashMap::new();
     let mut spine = Vec::new();
     let mut toc_id = None;
     let mut title = None;
     let mut author = None;
-    let mut in_title_tag = false;
-    let mut in_creator_tag = false;
+    // The text so far of the open `<title>` or `<creator>`, which arrives
+    // in pieces split at each entity.
+    let mut title_text: Option<String> = None;
+    let mut creator_text: Option<String> = None;
 
-    loop {
-        match reader.read_event_into(&mut buf)? {
-            Event::Empty(e) | Event::Start(e) => {
+    for event in LenientReader::new(opf_xml) {
+        match event {
+            XmlEvent::Empty(e) | XmlEvent::Start(e) => {
                 let name = e.name();
                 let local = local_name(name.as_ref());
                 match local {
@@ -211,10 +205,24 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                         let mut properties = String::new();
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"id" => id = Some(attr.unescape_value()?.to_string()),
-                                b"href" => href = Some(attr.unescape_value()?.to_string()),
-                                b"media-type" => media_type = attr.unescape_value()?.to_string(),
-                                b"properties" => properties = attr.unescape_value()?.to_string(),
+                                "id" => {
+                                    id = Some(
+                                        attr.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
+                                    )
+                                }
+                                "href" => {
+                                    href = Some(
+                                        attr.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
+                                    )
+                                }
+                                "media-type" => {
+                                    media_type =
+                                        attr.normalized_value(XmlVersion::Implicit1_0)?.to_string()
+                                }
+                                "properties" => {
+                                    properties =
+                                        attr.normalized_value(XmlVersion::Implicit1_0)?.to_string()
+                                }
                                 _ => {}
                             }
                         }
@@ -231,46 +239,47 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                     }
                     "spine" => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"toc" {
-                                toc_id = Some(attr.unescape_value()?.to_string());
+                            if attr.key.as_ref() == "toc" {
+                                toc_id = Some(
+                                    attr.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
+                                );
                             }
                         }
                     }
                     "itemref" => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"idref" {
-                                spine.push(attr.unescape_value()?.to_string());
+                            if attr.key.as_ref() == "idref" {
+                                spine.push(
+                                    attr.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
+                                );
                             }
                         }
                     }
-                    "title" => in_title_tag = true,
-                    "creator" => in_creator_tag = true,
+                    "title" => title_text = Some(String::new()),
+                    "creator" => creator_text = Some(String::new()),
                     _ => {}
                 }
             }
-            Event::Text(e) => {
-                let text = unescape_lenient(&String::from_utf8_lossy(&e));
-                if in_title_tag && title.is_none() {
-                    title = Some(text.clone());
-                }
-                if in_creator_tag && author.is_none() {
-                    author = Some(text.clone());
+            XmlEvent::Text(text) => {
+                for open in [&mut title_text, &mut creator_text].into_iter().flatten() {
+                    open.push_str(&text);
                 }
             }
-            Event::End(e) => {
-                let name = e.name();
-                let local = local_name(name.as_ref());
-                if local == "title" {
-                    in_title_tag = false;
-                }
-                if local == "creator" {
-                    in_creator_tag = false;
+            XmlEvent::End(e) => {
+                // The first non-empty `<title>`/`<creator>` wins.
+                let (open, field) = match local_name(e.name().as_ref()) {
+                    "title" => (&mut title_text, &mut title),
+                    "creator" => (&mut creator_text, &mut author),
+                    _ => continue,
+                };
+                if let Some(text) = open.take() {
+                    let text = text.trim();
+                    if field.is_none() && !text.is_empty() {
+                        *field = Some(text.to_string());
+                    }
                 }
             }
-            Event::Eof => break,
-            _ => {}
         }
-        buf.clear();
     }
 
     Ok(Opf {
@@ -303,6 +312,18 @@ mod opf_tests {
         assert!(!is_nav("navish"));
         assert!(!is_nav("ch1"));
         assert_eq!(manifest["ch1"].href, "ch1.xhtml");
+    }
+
+    #[test]
+    fn opf_title_and_author_keep_entities_and_spacing() {
+        let opf = r#"<package><metadata>
+            <dc:title>  Faith &amp; Reason &mdash; Two  </dc:title>
+            <dc:creator>A & B</dc:creator>
+            <dc:title>Second</dc:title>
+        </metadata></package>"#;
+        let opf = parse_opf(opf).unwrap();
+        assert_eq!(opf.title.as_deref(), Some("Faith & Reason \u{2014} Two"));
+        assert_eq!(opf.author.as_deref(), Some("A & B"));
     }
 }
 
@@ -359,9 +380,6 @@ fn toc_titles<R: Read + std::io::Seek>(
 /// navs such as `landmarks` and `page-list` are ignored, as are links
 /// with no href or an empty label.
 fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
-    let mut reader = Reader::from_str(xml);
-    reader.check_end_names(false);
-    let mut buf = Vec::new();
     let mut entries = Vec::new();
     // Depth of nested `<nav>`s, and the depth at which the toc nav opened.
     let mut nav_depth = 0usize;
@@ -369,15 +387,15 @@ fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
     // The open link's href and label so far.
     let mut link: Option<(String, String)> = None;
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => match local_name(e.name().as_ref()) {
+    for event in LenientReader::new(xml) {
+        match event {
+            XmlEvent::Start(e) => match local_name(e.name().as_ref()) {
                 "nav" => {
                     nav_depth += 1;
                     let is_toc = e.attributes().flatten().any(|attr| {
                         local_name(attr.key.as_ref()) == "type"
                             && attr
-                                .unescape_value()
+                                .normalized_value(XmlVersion::Implicit1_0)
                                 .is_ok_and(|v| v.split_ascii_whitespace().any(|t| t == "toc"))
                     });
                     if is_toc && toc_depth.is_none() {
@@ -388,18 +406,18 @@ fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
                     link = e
                         .attributes()
                         .flatten()
-                        .find(|attr| attr.key.as_ref() == b"href")
-                        .and_then(|attr| attr.unescape_value().ok())
+                        .find(|attr| attr.key.as_ref() == "href")
+                        .and_then(|attr| attr.normalized_value(XmlVersion::Implicit1_0).ok())
                         .map(|href| (href.into_owned(), String::new()));
                 }
                 _ => {}
             },
-            Ok(Event::Text(e)) => {
+            XmlEvent::Text(text) => {
                 if let Some((_, label)) = link.as_mut() {
-                    label.push_str(&unescape_lenient(&String::from_utf8_lossy(&e)));
+                    label.push_str(&text);
                 }
             }
-            Ok(Event::End(e)) => match local_name(e.name().as_ref()) {
+            XmlEvent::End(e) => match local_name(e.name().as_ref()) {
                 "nav" => {
                     if toc_depth == Some(nav_depth) {
                         toc_depth = None;
@@ -416,10 +434,8 @@ fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
                 }
                 _ => {}
             },
-            Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
-        buf.clear();
     }
     entries
 }
@@ -429,9 +445,6 @@ fn parse_nav_toc(xml: &str) -> Vec<(String, String)> {
 /// its parent, so a file's first entry is its outermost one. Entries with
 /// no src or an empty label are dropped.
 fn parse_ncx(xml: &str) -> Vec<(String, String)> {
-    let mut reader = Reader::from_str(xml);
-    reader.check_end_names(false);
-    let mut buf = Vec::new();
     // One (label, src) per open navPoint. An entry is emitted once both
     // are known, which is at the parent's `<content>`, before any child.
     let mut open: Vec<(String, Option<String>, bool)> = Vec::new();
@@ -452,20 +465,22 @@ fn parse_ncx(xml: &str) -> Vec<(String, String)> {
         }
     }
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "navPoint" => {
+    for event in LenientReader::new(xml) {
+        match event {
+            XmlEvent::Start(e) if local_name(e.name().as_ref()) == "navPoint" => {
                 open.push((String::new(), None, false));
             }
-            Ok(Event::Start(e)) if local_name(e.name().as_ref()) == "text" => {
+            XmlEvent::Start(e) if local_name(e.name().as_ref()) == "text" => {
                 in_label_text = !open.is_empty();
             }
-            Ok(Event::Start(e) | Event::Empty(e)) if local_name(e.name().as_ref()) == "content" => {
+            XmlEvent::Start(e) | XmlEvent::Empty(e)
+                if local_name(e.name().as_ref()) == "content" =>
+            {
                 let src = e
                     .attributes()
                     .flatten()
-                    .find(|attr| attr.key.as_ref() == b"src")
-                    .and_then(|attr| attr.unescape_value().ok())
+                    .find(|attr| attr.key.as_ref() == "src")
+                    .and_then(|attr| attr.normalized_value(XmlVersion::Implicit1_0).ok())
                     .map(|src| src.into_owned());
                 if let Some(entry) = open.last_mut() {
                     if entry.1.is_none() {
@@ -474,16 +489,14 @@ fn parse_ncx(xml: &str) -> Vec<(String, String)> {
                     emit(entry, &mut entries);
                 }
             }
-            Ok(Event::Text(e)) if in_label_text => {
+            XmlEvent::Text(text) if in_label_text => {
                 if let Some(entry) = open.last_mut() {
                     if !entry.2 {
-                        entry
-                            .0
-                            .push_str(&unescape_lenient(&String::from_utf8_lossy(&e)));
+                        entry.0.push_str(&text);
                     }
                 }
             }
-            Ok(Event::End(e)) => match local_name(e.name().as_ref()) {
+            XmlEvent::End(e) => match local_name(e.name().as_ref()) {
                 "text" => in_label_text = false,
                 "navPoint" => {
                     if let Some(mut entry) = open.pop() {
@@ -492,10 +505,8 @@ fn parse_ncx(xml: &str) -> Vec<(String, String)> {
                 }
                 _ => {}
             },
-            Ok(Event::Eof) | Err(_) => break,
             _ => {}
         }
-        buf.clear();
     }
     entries
 }
@@ -541,9 +552,8 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// Strips an XML namespace prefix, e.g. "dc:title" -> "title".
-fn local_name(tag: &[u8]) -> &str {
-    let s = std::str::from_utf8(tag).unwrap_or("");
-    s.rsplit(':').next().unwrap_or(s)
+fn local_name(tag: &str) -> &str {
+    tag.rsplit(':').next().unwrap_or(tag)
 }
 
 /// Elements that never have children, even when sloppy markup opens them
@@ -628,83 +638,64 @@ fn head_title(nodes: &[Node]) -> Option<String> {
 
 /// Parses XHTML into a list of top-level nodes, tolerating the malformed
 /// markup real-world EPUBs contain: unclosed void tags, mismatched end
-/// tags, and elements still open at EOF.
-///
-/// quick-xml gives up on markup that never closes (a broken comment like
-/// `<!- x ->`, an unclosed `<!--`, a misspelt `<![CDAT[`), and its reader
-/// can't carry on after that. So on a parse error the broken markup is
-/// skipped (see `skip_broken_markup`) and a fresh reader starts after it.
-/// Open elements are kept across the restart, so the text that follows
-/// still lands in the paragraph it belongs to.
+/// tags, and elements still open at EOF. Broken markup and bare `&`s are
+/// handled by `LenientReader`; open elements are kept across its
+/// restarts, so the text that follows still lands in the paragraph it
+/// belongs to.
 fn build_tree(xhtml: &str) -> Vec<Node> {
-    let mut buf = Vec::new();
-
     // Open elements, outermost first. The first frame is the document root
     // and is never closed by an end tag.
     let mut stack: Vec<(String, Vec<Node>)> = vec![(String::new(), Vec::new())];
 
-    // The byte offset in `xhtml` the current reader started at.
-    let mut base = 0;
-    'restart: while base < xhtml.len() {
-        let mut reader = Reader::from_str(&xhtml[base..]);
-        reader.trim_text(false);
-        reader.check_end_names(false); // real-world XHTML is sometimes malformed
-
-        loop {
-            let at = base + reader.buffer_position();
-            match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(e)) => {
-                    let name = local_name(e.name().as_ref()).to_string();
-                    if VOID_TAGS.contains(&name.as_str()) {
-                        push_child(
-                            &mut stack,
-                            Node::Elem {
-                                name,
-                                children: Vec::new(),
-                            },
-                        );
-                    } else {
-                        stack.push((name, Vec::new()));
-                    }
+    for event in LenientReader::new(xhtml) {
+        match event {
+            XmlEvent::Start(e) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if VOID_TAGS.contains(&name.as_str()) {
+                    push_child(
+                        &mut stack,
+                        Node::Elem {
+                            name,
+                            children: Vec::new(),
+                        },
+                    );
+                } else {
+                    stack.push((name, Vec::new()));
                 }
-                Ok(Event::Empty(e)) => {
-                    let name = local_name(e.name().as_ref()).to_string();
-                    if !SKIP_TAGS.contains(&name.as_str()) {
-                        push_child(
-                            &mut stack,
-                            Node::Elem {
-                                name,
-                                children: Vec::new(),
-                            },
-                        );
-                    }
-                }
-                Ok(Event::Text(e)) => {
-                    let text = unescape_lenient(&String::from_utf8_lossy(&e));
-                    push_child(&mut stack, Node::Text(text));
-                }
-                Ok(Event::End(e)) => {
-                    // Close up to the nearest open element with this name; an
-                    // end tag with no matching open element is ignored.
-                    let qname = e.name();
-                    let name = local_name(qname.as_ref());
-                    if let Some(pos) = stack.iter().skip(1).rposition(|(n, _)| n == name) {
-                        while stack.len() > pos + 1 {
-                            close_top(&mut stack);
-                        }
-                    }
-                }
-                Ok(Event::Eof) => break 'restart,
-                Err(_) => {
-                    // The reader is stuck at EOF after an error, so skip the
-                    // broken markup and start a new reader after it.
-                    buf.clear();
-                    base = skip_broken_markup(xhtml, at);
-                    continue 'restart;
-                }
-                _ => {}
             }
-            buf.clear();
+            XmlEvent::Empty(e) => {
+                let name = local_name(e.name().as_ref()).to_string();
+                if !SKIP_TAGS.contains(&name.as_str()) {
+                    push_child(
+                        &mut stack,
+                        Node::Elem {
+                            name,
+                            children: Vec::new(),
+                        },
+                    );
+                }
+            }
+            XmlEvent::Text(text) => {
+                // Text arrives in pieces split at each entity, so join it
+                // back into one node.
+                if let Some((_, children)) = stack.last_mut() {
+                    match children.last_mut() {
+                        Some(Node::Text(prev)) => prev.push_str(&text),
+                        _ => children.push(Node::Text(text.into_owned())),
+                    }
+                }
+            }
+            XmlEvent::End(e) => {
+                // Close up to the nearest open element with this name; an
+                // end tag with no matching open element is ignored.
+                let qname = e.name();
+                let name = local_name(qname.as_ref());
+                if let Some(pos) = stack.iter().skip(1).rposition(|(n, _)| n == name) {
+                    while stack.len() > pos + 1 {
+                        close_top(&mut stack);
+                    }
+                }
+            }
         }
     }
 
@@ -718,11 +709,100 @@ fn build_tree(xhtml: &str) -> Vec<Node> {
         .unwrap_or_default()
 }
 
+/// An event from `LenientReader`.
+enum XmlEvent<'a> {
+    Start(BytesStart<'a>),
+    Empty(BytesStart<'a>),
+    End(BytesEnd<'a>),
+    /// Text with its entities resolved. Entities come from quick-xml as
+    /// separate events, so one text node can arrive in several pieces.
+    Text(Cow<'a, str>),
+}
+
+/// The start, end and text events of an XML or XHTML document, never
+/// failing on malformed markup. Comments, CDATA, doctypes and processing
+/// instructions are skipped.
+///
+/// quick-xml gives up on markup that never closes (a broken comment like
+/// `<!- x ->`, an unclosed `<!--`, a misspelt `<![CDAT[`) and on a bare
+/// `&` ("Faith & Reason"), and its reader can't carry on after that. So
+/// on an error a bare `&` is returned as text, or else the broken markup
+/// is skipped (see `skip_broken_markup`), and a fresh reader starts after
+/// it.
+struct LenientReader<'a> {
+    xml: &'a str,
+    /// The byte offset in `xml` the current reader started at.
+    base: usize,
+    reader: Reader<&'a [u8]>,
+}
+
+impl<'a> LenientReader<'a> {
+    fn new(xml: &'a str) -> Self {
+        LenientReader {
+            xml,
+            base: 0,
+            reader: Self::reader_at(xml, 0),
+        }
+    }
+
+    fn reader_at(xml: &'a str, base: usize) -> Reader<&'a [u8]> {
+        let mut reader = Reader::from_str(&xml[base..]);
+        let config = reader.config_mut();
+        // Real-world XHTML is sometimes malformed: `build_tree` matches end
+        // tags itself.
+        config.check_end_names = false;
+        config.allow_unmatched_ends = true;
+        reader
+    }
+
+    fn restart(&mut self, at: usize) {
+        self.base = at;
+        self.reader = Self::reader_at(self.xml, at);
+    }
+}
+
+impl<'a> Iterator for LenientReader<'a> {
+    type Item = XmlEvent<'a>;
+
+    fn next(&mut self) -> Option<XmlEvent<'a>> {
+        loop {
+            let at = self.base + self.reader.buffer_position() as usize;
+            match self.reader.read_event() {
+                Ok(Event::Start(e)) => return Some(XmlEvent::Start(e)),
+                Ok(Event::Empty(e)) => return Some(XmlEvent::Empty(e)),
+                Ok(Event::End(e)) => return Some(XmlEvent::End(e)),
+                Ok(Event::Text(e)) => return Some(XmlEvent::Text(e.into_inner())),
+                Ok(Event::GeneralRef(e)) => return Some(XmlEvent::Text(resolve_ref(&e).into())),
+                Ok(Event::Eof) => return None,
+                Ok(_) => {}
+                // The reader is stuck at EOF after an error, so start a new
+                // one past the `&` or the broken markup.
+                Err(_) if self.xml.as_bytes().get(at) == Some(&b'&') => {
+                    self.restart(at + 1);
+                    return Some(XmlEvent::Text(Cow::Borrowed("&")));
+                }
+                Err(_) => self.restart(skip_broken_markup(self.xml, at)),
+            }
+        }
+    }
+}
+
+/// The text of the entity or character reference `&name;`. With
+/// quick-xml's `escape-html` feature every HTML5 named entity (`&nbsp;`,
+/// `&mdash;`) is known; an unknown `&foo;` is kept as written.
+fn resolve_ref(name: &str) -> String {
+    let written = format!("&{name};");
+    match quick_xml::escape::unescape(&written) {
+        Ok(text) => text.into_owned(),
+        Err(_) => written,
+    }
+}
+
 /// Where parsing resumes after the broken markup starting at byte `at`:
 /// just past the next `>` (so `<![CDAT[x]]> after` keeps " after"), or
 /// just before the next `<` if that comes first (so an unclosed
 /// `<!-- x <p>next</p>` keeps the `<p>`), or the end of the input. Always
-/// past `at`, so `build_tree`'s restarts end.
+/// past `at`, so `LenientReader`'s restarts end.
 fn skip_broken_markup(xhtml: &str, at: usize) -> usize {
     let bytes = xhtml.as_bytes();
     let from = (at + 1).min(bytes.len());
@@ -737,48 +817,6 @@ fn skip_broken_markup(xhtml: &str, at: usize) -> usize {
                 pos
             }
         })
-}
-
-/// Unescapes a text node's entities, keeping what can't be unescaped
-/// instead of failing. With quick-xml's `escape-html` feature every HTML5
-/// named entity (`&nbsp;`, `&mdash;`) is known; a bare `&` ("Faith &
-/// Reason") or an unknown `&foo;` is kept as written.
-fn unescape_lenient(raw: &str) -> String {
-    if let Ok(text) = quick_xml::escape::unescape(raw) {
-        return text.into_owned();
-    }
-    // The longest HTML entity, `&CounterClockwiseContourIntegral;`, has its
-    // `;` 32 bytes after the `&`.
-    const MAX_ENTITY_LEN: usize = 32;
-    let mut out = String::with_capacity(raw.len());
-    let mut rest = raw;
-    while let Some(amp) = rest.find('&') {
-        out.push_str(&rest[..amp]);
-        let tail = &rest[amp..];
-        let entity = tail
-            .bytes()
-            .skip(1)
-            .take(MAX_ENTITY_LEN)
-            .position(|b| b == b';')
-            .and_then(|i| {
-                let span = &tail[..i + 2];
-                quick_xml::escape::unescape(span)
-                    .ok()
-                    .map(|text| (text.into_owned(), span.len()))
-            });
-        match entity {
-            Some((text, len)) => {
-                out.push_str(&text);
-                rest = &tail[len..];
-            }
-            None => {
-                out.push('&');
-                rest = &tail[1..];
-            }
-        }
-    }
-    out.push_str(rest);
-    out
 }
 
 fn push_child(stack: &mut [(String, Vec<Node>)], node: Node) {
@@ -862,7 +900,7 @@ fn normalize_whitespace(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_chapter, unescape_lenient};
+    use super::extract_chapter;
 
     fn extract_paragraphs(xhtml: &str) -> Vec<(bool, String)> {
         extract_chapter(xhtml).blocks
@@ -997,20 +1035,26 @@ mod tests {
     }
 
     #[test]
-    fn unescape_lenient_keeps_what_it_cannot_unescape() {
-        assert_eq!(unescape_lenient(""), "");
-        assert_eq!(unescape_lenient("A & B &amp; C"), "A & B & C");
-        // A `&` at the very end.
-        assert_eq!(unescape_lenient("A &amp; B &"), "A & B &");
-        // The longest HTML entity, its `;` exactly 32 bytes on, still
-        // decodes.
+    fn entities_and_bare_ampersands_in_text() {
+        assert_eq!(texts("<p>A &amp; B &</p>"), vec!["A & B &"]);
         assert_eq!(
-            unescape_lenient("& &CounterClockwiseContourIntegral;"),
-            "& \u{2233}"
+            texts("<p>& &CounterClockwiseContourIntegral;</p>"),
+            vec!["& \u{2233}"]
         );
-        // A `;` more than 32 bytes away leaves the `&` literal.
-        let far = format!("& &amp{}; x", "a".repeat(40));
-        assert_eq!(unescape_lenient(&far), far);
+        assert_eq!(
+            texts("<p>&#x41;&#66; &bogus; a & b; c</p>"),
+            vec!["AB &bogus; a & b; c"]
+        );
+        // A bare `&` never swallows the markup up to a later `;`.
+        assert_eq!(
+            texts("<p>Faith & Reason</p><p>x;</p>"),
+            vec!["Faith & Reason", "x;"]
+        );
+    }
+
+    #[test]
+    fn stray_end_tags_are_ignored() {
+        assert_eq!(texts("</div><p>a</p></p></div><p>b</p>"), vec!["a", "b"]);
     }
 
     #[test]
@@ -1124,6 +1168,19 @@ mod toc_tests {
                 ("c02.html", "Chapter 2"),
             ])
         );
+    }
+
+    #[test]
+    fn toc_labels_keep_entities() {
+        let nav = r#"<html><body><nav epub:type="toc"><ol>
+            <li><a href="c.xhtml">One&nbsp;&amp; Two</a></li>
+        </ol></nav></body></html>"#;
+        assert_eq!(parse_nav_toc(nav), pairs(&[("c.xhtml", "One & Two")]));
+        let ncx = r#"<ncx><navMap><navPoint>
+            <navLabel><text>One &amp; Two</text></navLabel>
+            <content src="c.xhtml"/>
+        </navPoint></navMap></ncx>"#;
+        assert_eq!(parse_ncx(ncx), pairs(&[("c.xhtml", "One & Two")]));
     }
 
     #[test]

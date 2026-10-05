@@ -150,19 +150,23 @@ members, sharing one `Cargo.lock`/`target/`.
   real text such as notes. Checked against *Understanding Our Mind*
   (div-based) by running the parser directly: drop-cap words are no
   longer split, and each footnote is one paragraph with its number.
-  Text using HTML named entities (`&nbsp;`, `&mdash;`, via quick-xml's
-  `escape-html` feature) is decoded, and a bare `&` ("Faith & Reason")
-  or an unknown `&foo;` is kept as written, in chapter text, TOC labels
+  Text using HTML named entities (`&nbsp;`, `&mdash;`) is decoded:
+  quick-xml 0.42 reports each entity as its own event, which is
+  resolved through its `escape-html` feature. A bare `&` ("Faith &
+  Reason") or an unknown `&foo;` is kept as written, in chapter text, TOC labels
   and the OPF title and author; before, such a text node was dropped,
   and a bare `&` in `<dc:title>` failed the import. Markup that never
   closes (a broken `<!- x ->` comment, an unclosed `<!--`, a misspelt
   `<![CDAT[`) is skipped and parsing resumes after it with the open
-  elements kept, instead of the rest of the chapter being lost. Unit
+  elements kept, instead of the rest of the chapter being lost; the
+  OPF and TOC readers share this recovery, so broken markup there no
+  longer fails the import or cuts the TOC short. Unit
   tests in `epub.rs` cover each case, and running the parser over the
   six books in `~/Documents/books` and `test.epub` gives output
   identical to the previous parser's (210 chapters, 7,196 paragraphs),
-  so well-formed books import exactly as before. No book in that
-  library has broken markup, so recovery is checked only by the unit
+  so well-formed books import exactly as before. The same diff, run on
+  quick-xml 0.31 and again after the port to 0.42, was also empty. No
+  book in that library has broken markup, so recovery is checked only by the unit
   tests. Not re-imported in the Tauri window; no UI code changed, so
   it wasn't clicked through against the mocked backend either.
 - `ebook_research_core/src/db/` — opens the SQLite DB via `rusqlite`
