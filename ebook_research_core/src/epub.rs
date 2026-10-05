@@ -1145,7 +1145,7 @@ mod toc_tests {
     fn write_epub(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("pitaka-{name}-{}.epub", std::process::id()));
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
-        let options = zip::write::FileOptions::default();
+        let options = zip::write::SimpleFileOptions::default();
         let container = r#"<container><rootfiles>
             <rootfile full-path="OEBPS/content.opf"/>
         </rootfiles></container>"#;
