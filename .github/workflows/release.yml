@@ -1,9 +1,9 @@
 name: Release
 
 # Pushing a version tag builds the installers and attaches them to a draft
-# release, which is published by hand after testing. Running it by hand
-# (workflow_dispatch) builds the installers as a workflow artifact instead,
-# with no release, to test the workflow from a branch.
+# release, which is published by hand after testing. Run any other way (by
+# hand with workflow_dispatch), it builds the installers as workflow
+# artifacts instead, with no release, to test the workflow.
 on:
   push:
     tags: ['v*']
@@ -16,7 +16,7 @@ jobs:
   # Creates the draft, with the CHANGELOG section as its notes, so the build
   # jobs only upload to it and don't race to create it.
   draft:
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -42,7 +42,7 @@ jobs:
 
   build:
     needs: draft
-    # Runs when draft was skipped (workflow_dispatch), but not when it failed.
+    # Runs when draft was skipped (no tag), but not when it failed.
     if: ${{ !failure() && !cancelled() }}
     permissions:
       contents: write
@@ -83,7 +83,7 @@ jobs:
           releaseId: ${{ needs.draft.outputs.release-id }}
           args: --features semantic -- --locked
           uploadUpdaterJson: false
-      - if: github.event_name == 'workflow_dispatch'
+      - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installers-${{ matrix.os }}
@@ -97,7 +97,7 @@ jobs:
 
   checksums:
     needs: [draft, build]
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
