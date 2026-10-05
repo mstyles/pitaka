@@ -509,7 +509,11 @@ alongside the old one. Neither may change. The version comes from
   fallback weren't checked in a browser. The highlights and notes screenshot
   (`docs/screenshots/notes.jpg`) was made in `npm run dev:demo` by
   selecting and noting Paṭācārā's verses with the mouse, with the banner
-  removed and the fading hover icons of one paragraph painted out.
+  removed and the fading hover icons of one paragraph painted out. The
+  reader screenshot (`docs/screenshots/reader.jpg`) is the demo at
+  1200×800 after opening the "patacara" hit "Out of sympathy for me…",
+  with the banner removed. It's below the 1280px breakpoint, so it shows
+  the single-column reader without the empty note margin.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
