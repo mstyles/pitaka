@@ -1,0 +1,113 @@
+name: Release
+
+# Pushing a version tag builds the installers and attaches them to a draft
+# release, which is published by hand after testing. Run any other way (by
+# hand with workflow_dispatch), it builds the installers as workflow
+# artifacts instead, with no release, to test the workflow.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Creates the draft, with the CHANGELOG section as its notes, so the build
+  # jobs only upload to it and don't race to create it.
+  draft:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create.outputs.release-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Check versions and write release notes
+        run: node scripts/release-check.mjs "$GITHUB_REF_NAME" > notes.md
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "Pitaka ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          # The numeric id tauri-action wants is the last part of the API URL.
+          id=$(gh release view "$GITHUB_REF_NAME" --json apiUrl --jq '.apiUrl | split("/") | last')
+          echo "release-id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: draft
+    # Runs when draft was skipped (no tag), but not when it failed.
+    if: ${{ !failure() && !cancelled() }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # An AppImage or .deb only runs on a glibc at least as new as the
+          # build machine's, so build on the oldest supported Ubuntu.
+          - os: ubuntu-22.04
+          - os: windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Tauri system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config \
+            patchelf
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # tauri build runs `npm run build` itself (beforeBuildCommand). Chapter
+      # search is built in: someone installing can't rebuild with a flag.
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.draft.outputs.release-id }}
+          args: --features semantic -- --locked
+          uploadUpdaterJson: false
+      - if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  checksums:
+    needs: [draft, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$GITHUB_REF_NAME"
+          sha256sum -- * > ../SHA256SUMS
+          cat ../SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" ../SHA256SUMS

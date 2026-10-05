@@ -73,3 +73,7 @@ tsc and the Vite build on pushes to `main` and on PRs.
 6. **Merge** after review with `git merge --no-ff` into `main` and push;
    the merge body lists each merged commit's title only, as
    `* <title>` lines. Pushing the merge marks the PR as merged.
+
+Releases follow README's "Releasing" section: a `vx.y.z` tag pushed from
+`main` builds a draft release (`.github/workflows/release.yml`), which
+the user tests and publishes. Don't push a version tag unless asked.

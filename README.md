@@ -17,8 +17,7 @@ to keep, and highlights and notes as you read.
   diacritics are ignored, so `samsara` finds "saṃsāra", and `dharma`
   also finds a text that only writes "dhamma". Quoted phrases,
   `prefix*` and `AND`/`OR`/`NOT` work too.
-- **Find chapters by meaning** (optional, see [Install](#install)).
-  Describe what you're after — "dealing with difficult emotions" — and
+- **Find chapters by meaning.** Describe what you're after — "dealing with difficult emotions" — and
   get the chapters about it, whatever words they use. A small embedding
   model runs on your own computer; it's downloaded once and nothing is
   sent anywhere.
@@ -50,13 +49,45 @@ the app's. Importing your own books needs the desktop app.
 [Project structure](#project-structure) ·
 [Schema migrations](#schema-migrations) · [Setup steps](#setup-steps) ·
 [Known limitations](#known-limitations) · [Roadmap](#roadmap) ·
-[Workflow roadmap](#workflow-roadmap)
+[Releasing](#releasing) · [Workflow roadmap](#workflow-roadmap)
 
 ## Install
 
-There are no prebuilt downloads yet, so Pitaka is built from source. It
-builds and is tested on Linux and Windows; Tauri also targets macOS, but
-that build is untested.
+Download the installer for your system from the
+[Releases](https://github.com/mstyles/pitaka/releases) page. Chapter
+search by meaning is included.
+
+- **Windows**: `Pitaka_x.y.z_x64-setup.exe` installs for your user only,
+  with no admin rights needed; the `.msi` is there too if you'd rather.
+  The installers aren't code-signed yet, so Windows SmartScreen shows
+  "Windows protected your PC" before running them: choose **More info**,
+  then **Run anyway**.
+- **Linux**: the `.AppImage` runs without installing, on any distro
+  (`chmod +x`, then run it). Or install the `.deb` on Debian or Ubuntu
+  (`sudo apt install ./Pitaka_*.deb`), or the `.rpm` on Fedora or
+  openSUSE. All three are built on Ubuntu 22.04, so they need a system
+  at least that new (Debian 12, Fedora 36 and their peers).
+- **macOS**: there's no installer yet; build from source below. The
+  macOS build is untested.
+
+`SHA256SUMS` on each release lists every file's checksum: check a
+download with `sha256sum -c SHA256SUMS --ignore-missing`.
+
+The first time a book is indexed for chapter search, or a chapter search
+is run, the app downloads
+[BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)
+(about 130 MB) into `~/.cache/huggingface` (`%USERPROFILE%\.cache\huggingface`
+on Windows); after that it works offline.
+
+The library lives in `library.db` in the app's data directory
+(`~/.local/share/com.pitaka.app/` on Linux, `%APPDATA%\com.pitaka.app\`
+on Windows). Imported books are indexed there; the EPUB files
+themselves are never modified.
+
+### Build from source
+
+Pitaka builds and is tested on Linux and Windows; Tauri also targets
+macOS, but that build is untested.
 
 1. Install [Rust](https://rustup.rs) and [Node.js](https://nodejs.org)
    (24 is what CI uses), plus Tauri's system libraries. On Debian or
@@ -79,21 +110,13 @@ that build is untested.
    `target/release/bundle/`. Or `npm run tauri dev` to run it straight
    from the checkout.
 
-Chapter search by meaning is behind a Cargo feature, off by default: add
+In a build from source, chapter search by meaning is behind a Cargo
+feature, off by default (the release installers have it on): add
 `-- --features semantic` to either command (`npm run tauri dev --
 --features semantic`). The first build takes longer, as it compiles the
-model runtime ([candle](https://github.com/huggingface/candle)). The
-first time a book is indexed or searched, the app downloads
-[BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)
-(about 130 MB) into `~/.cache/huggingface` (`%USERPROFILE%\.cache\huggingface`
-on Windows); after that it works offline.
-Only books imported while the feature is on are indexed (see
-[Known limitations](#known-limitations)).
-
-The library lives in `library.db` in the app's data directory
-(`~/.local/share/com.pitaka.app/` on Linux, `%APPDATA%\com.pitaka.app\`
-on Windows). Imported books are indexed
-there; the EPUB files themselves are never modified.
+model runtime ([candle](https://github.com/huggingface/candle)); the
+model downloads on first use, as above. Only books imported while the
+feature is on are indexed (see [Known limitations](#known-limitations)).
 
 ## Licence
 
@@ -126,6 +149,14 @@ TypeScript frontend). The Rust side is split into two crates on purpose:
 
 This is a Cargo workspace (root `Cargo.toml`) with both crates as
 members, sharing one `Cargo.lock`/`target/`.
+
+The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
+(`com.pitaka.app`) names the data directory, so changing it would lose
+every user's library. `bundle.windows.wix.upgradeCode` is pinned
+because Tauri would otherwise derive it from `productName`: if it ever
+changes, Windows treats the next MSI as a different app and installs it
+alongside the old one. Neither may change. The version comes from
+`src-tauri/Cargo.toml`.
 
 ## What's actually verified
 
@@ -537,6 +568,28 @@ book works, importing a whole folder works, and `library.db` is in
 `%APPDATA%\com.pitaka.app\`. `npm run tauri build` produces the MSI and
 NSIS installers, and each installs an app that launches.
 
+Release builds: `scripts/release-check.mjs` was run by hand. `v0.2.0`
+prints the 0.2.0 notes and the downloads footer; `v0.2.1` fails with a
+version mismatch for each of the three files; and a matching 0.3.0 with
+no CHANGELOG section, or an empty one, fails with "no notes". A local
+`npm run tauri build -- --features semantic -- --locked` on Ubuntu
+(after the app was renamed "Pitaka") made `Pitaka_0.2.0_amd64.deb` and
+`Pitaka-0.2.0-1.x86_64.rpm` (6.7 MB each, a 16 MB binary with chapter
+search) and `Pitaka_0.2.0_amd64.AppImage` (86 MB, as it carries WebKit
+and GTK). The `.deb`'s package is `pitaka`, with the publisher, homepage
+and description set and a `Pitaka.desktop` entry, and the AppImage
+launches. That build also found the npm Tauri packages a minor version
+behind the crates, which `tauri build` refuses; they're now in step.
+`.github/workflows/release.yml` was run from the PR branch, with a
+temporary push trigger since GitHub only dispatches a workflow that is
+on the default branch. Both builds passed, Linux in 7 minutes and
+Windows in 14, and the artifacts were `Pitaka_0.2.0_x64-setup.exe`
+(4.6 MB), `Pitaka_0.2.0_x64_en-US.msi` (6.2 MB), the `.deb` and `.rpm`
+(7.0 MB each) and the AppImage (85 MB). The CI AppImage, built on
+Ubuntu 22.04, launches on this machine. The tag path (draft release,
+uploads to it, `SHA256SUMS`) hasn't run, and the Windows installers
+haven't been installed; both wait for the first version tag.
+
 ## Project structure
 
 ```
@@ -748,6 +801,8 @@ Done:
       vectors from any other model
 - [x] Build and test on Windows: CI runs clippy, the core tests and a
       semantic build on Windows
+- [x] Release builds for Linux and Windows: a version tag builds the
+      installers and attaches them to a draft GitHub release
 
 Later:
 
@@ -758,8 +813,11 @@ Later:
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
       rendering every block as a plain `<p>` (limitation 3)
-- [ ] Release builds for Linux, macOS and Windows, so the app can be
-      installed without building it
+- [ ] Release builds for macOS: needs an Apple Developer account for
+      signing and notarization, or Gatekeeper blocks the app
+- [ ] Sign the Windows installers, so SmartScreen names the publisher
+      and its warning fades as downloads build reputation (options in
+      `docs/plans/release-builds.md`, section 6)
 - [ ] Paragraph-level semantic search, with results that open on the
       passage rather than the chapter
 - [ ] Infer transliteration variant pairs rather than listing them
@@ -773,6 +831,31 @@ Later:
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
+
+## Releasing
+
+A version is released from `main`:
+
+1. In `CHANGELOG.md`, move `[Unreleased]` into `## [x.y.z] - YYYY-MM-DD`
+   (leaving an empty `[Unreleased]` above it).
+2. Set the version to `x.y.z` in `package.json`, `src-tauri/Cargo.toml`
+   and `ebook_research_core/Cargo.toml`, then run `cargo check` and
+   `npm install` to update the lockfiles. `node scripts/release-check.mjs
+   vx.y.z` checks the versions and prints the release notes.
+3. Commit ("Release x.y.z"), tag it `vx.y.z` and push `main` and the tag.
+4. The tag runs `.github/workflows/release.yml`, which creates a draft
+   release with that version's CHANGELOG section as its notes, builds
+   the Linux and Windows installers into it and adds `SHA256SUMS`.
+   The draft job fails if the versions or the CHANGELOG don't match the
+   tag; fix them, delete the tag (`git push --delete origin vx.y.z`)
+   and tag again.
+5. Download the draft's installers and test them (the checklist is in
+   `docs/plans/release-builds.md`, section 7), then publish it in the
+   GitHub UI or with `gh release edit vx.y.z --draft=false`.
+
+To test the workflow from a branch without a release, run it by hand
+(`gh workflow run release.yml --ref <branch>`): it builds the installers
+and uploads them as workflow artifacts.
 
 ## Workflow roadmap
 
