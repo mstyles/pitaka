@@ -335,12 +335,34 @@ alongside the old one. Neither may change. The version comes from
     and the bare repo name older rows hold; unit tests check that
     rows from another model are skipped and don't count their book as
     indexed, and that the older rows still rank.
-  - In the app, `import_book` returns once the book is in the library
-    and indexes it on its own thread and database connection (with a
-    30-second busy timeout), one book at a time, sending progress and
-    failure events. `search_chapters` runs off the main thread, since
-    the first call may download the model. None of this is covered by
-    automated tests.
+  - A finished run writes a `book_embeddings` row (migration 006), and
+    that marker, not the chunk rows, is what counts a book as indexed:
+    unit tests check that rows without a marker don't count, that a
+    marker with no rows (every chapter front matter) does, that
+    `list_books` reports each book as `none`, `partial` or `indexed`,
+    that `books_to_index` lists the unfinished ones newest first
+    (including a book finished only with another model), and that
+    removing a book removes its marker. An integration test upgrades a
+    library at migration 005 and checks the backfill marks the book
+    that had rows. The ignored model tests check that indexing writes
+    the marker, that a second run re-embeds nothing (`already` equals
+    the chapters indexed), that a run stopped after its first chapter
+    writes no marker and the next run carries on from there, and that
+    `test.epub`, whose chapters are all too short, is still marked.
+    These ran against the real model.
+  - In the app, books to index go into one first-in, first-out queue
+    (`ebook_research_core/src/index_queue.rs`) that a single worker
+    thread takes from, on its own database connection (with a
+    30-second busy timeout), sending progress, failure and stopped
+    events. `import_book` returns once the book is in the library and
+    queues it; `queue_index`, `queue_index_all` and `stop_indexing`
+    drive the Books screen's buttons. The queue's rules have unit
+    tests: no duplicates, first in first out, Stop empties it and
+    cancels the current run, removing a book drops or cancels it, Stop
+    pauses imports until something is queued by hand, and the worker
+    waits for a push from another thread. The Tauri wrapper around it
+    has no automated tests. `search_chapters` runs off the main thread,
+    since the first call may download the model.
 - The frontend typechecks (`npx tsc --noEmit`):
   - `src/HomeView.tsx` — the launch screen: Books, Bookmarks & notes
     and Search cards with counts from `list_books` and
@@ -368,8 +390,16 @@ alongside the old one. Neither may change. The version comes from
     Passages / Chapters switch; Chapters calls `search_chapters` and
     lists each chapter with a plain-text preview of the part that
     matched, plus "1 of 2 books indexed…" when some aren't. The Books
-    screen shows "Indexing {title} for chapter search… 3/24 chapters",
-    followed in `App.tsx` so it survives leaving the screen. Otherwise:
+    screen shows "Indexing {title} for chapter search… 3/24 chapters ·
+    2 more books queued" with Stop indexing, followed in `App.tsx` so
+    it survives leaving the screen. Each book that isn't indexed says
+    "not in chapter search" or "partly indexed" and has an Index button
+    (Queued, then Indexing… while it runs), and "Index all books" queues
+    every one. Stop indexing explains that new imports wait until Index
+    or Index all books is clicked. Checked in the browser against the
+    mocked backend with `?semantic` (Index, Queued, the queued count,
+    Stop and the stopped line); not clicked through in the Tauri
+    window. Otherwise:
     a search box with an "Exact words" toggle →
     `search_library` rendering highlighted snippets, each labelled with
     its book and chapter title (or "Chapter N", counting from 1, when
@@ -451,8 +481,11 @@ alongside the old one. Neither may change. The version comes from
   (tick, untick, new folder, duplicate-name error, closing it), and
   chapter search: the switch hidden without the feature, results as
   text, opening a chapter at its match and coming back, the indexed-books
-  line, "No results", errors, and the indexing progress line across
-  screens, and highlights and notes (`src/Annotations.test.tsx`):
+  line, "No results", errors, the indexing progress line across
+  screens, the Index / Index all books / Stop indexing buttons (and
+  Stop import and Stop indexing acting separately during a folder
+  import), the paused line, and nothing about indexing without the
+  feature, and highlights and notes (`src/Annotations.test.tsx`):
   rendering, highlighting a selection with the right character offsets
   (including after a note marker), the cross-paragraph message, the
   overlap error, recolouring and removing (with a confirm when there's
@@ -668,6 +701,8 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 - 005 indexes highlights and notes by paragraph and adds the unique
   indexes for one note per highlight and one per paragraph. Nothing had
   written to either table before, so they can't fail on existing data.
+- 006 adds `book_embeddings`, one row per book an indexing run
+  finished, backfilled from the books that already had chunk rows.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -739,15 +774,18 @@ In the same order of priority as the Python version, then newer ones.
    "[sic]" in a snippet is shown highlighted as "sic". It is shown as
    text, never as markup.
 8. Semantic chapter search:
-   - It covers only books imported while the feature was built in.
-     There's no backfill, so the rest need removing and re-importing,
-     which deletes their bookmarks (limitation 5); the Search screen
-     says how many books are indexed. A run stopped by closing the app
-     leaves a book partly indexed, and it counts as indexed.
+   - Books imported without the feature, or indexed with another
+     model, aren't searched until they're indexed from the Books screen
+     (Index, or Index all books); the Search screen says how many books
+     are indexed. A run that was stopped, or cut short by closing the
+     app, carries on from the last finished chapter. Books indexed
+     before migration 006 count as done even if their run was cut
+     short, since the backfill can't tell.
    - The model is downloaded on first use, so that needs a network
-     connection once, and indexing takes minutes per book. Books
-     imported together, as in a folder import, are indexed one at a
-     time in no particular order.
+     connection once, and indexing takes minutes per book. Books are
+     indexed one at a time, in the order they were queued. Stop
+     indexing also pauses indexing of new imports until Index or Index
+     all books is clicked, or the app restarts.
    - Results are chapters, not passages, and nothing is highlighted: a
      match needn't share any words with the query. A very long spine
      item (some books have 200,000-char "chapters") gets more chances
@@ -758,8 +796,8 @@ In the same order of priority as the Python version, then newer ones.
      plausible questions the library doesn't answer usually still get
      weak matches.
    - Chunks embedded by a different model are ignored at search time,
-     and their books count as not indexed until removed and
-     re-imported.
+     and their books count as not indexed until indexed again from the
+     Books screen, which replaces them chapter by chapter.
    - The front-matter filter is a heuristic: it drops one-verse
      chapters under 200 chars, and verse chapters with very short
      lines can look like a contents page.
@@ -837,10 +875,8 @@ Later:
       (limitation 6)
 - [ ] Recalibrate `MIN_SCORE` and the ranking on a larger, more varied
       library, with labels checked by a reader (limitation 8)
-- [ ] An "Index this book" action, so a book already in the library can
-      be added to semantic chapter search in place. Without one the only
-      way in is to remove and re-import the book, which deletes its
-      bookmarks (limitation 5) — a steep price for a search feature
+- [x] An "Index this book" action, and "Index all books", so books
+      already in the library join chapter search in place
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched

@@ -1,5 +1,7 @@
 //! The reader's read queries: books, their chapters and a chapter's text.
 
+use super::semantic_index::{models_json, IndexState, INDEX_STATE_SQL};
+use crate::semantic::COMPATIBLE_MODELS;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -15,20 +17,23 @@ pub struct BookSummary {
     pub highlight_count: i64,
     /// Notes on highlights and on whole paragraphs.
     pub note_count: i64,
+    /// How far the book is indexed for chapter search.
+    pub index_state: IndexState,
 }
 
 pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT b.id, b.title, b.author, COUNT(ch.id),
                 (SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id),
                 (SELECT COUNT(*) FROM highlights h WHERE h.book_id = b.id),
-                (SELECT COUNT(*) FROM notes n WHERE n.book_id = b.id)
+                (SELECT COUNT(*) FROM notes n WHERE n.book_id = b.id),
+                {INDEX_STATE_SQL}
          FROM books b
          LEFT JOIN chapters ch ON ch.book_id = b.id
          GROUP BY b.id
-         ORDER BY b.added_at DESC, b.id DESC",
-    )?;
-    let rows = stmt.query_map([], |row| {
+         ORDER BY b.added_at DESC, b.id DESC"
+    ))?;
+    let rows = stmt.query_map([models_json(COMPATIBLE_MODELS)], |row| {
         Ok(BookSummary {
             id: row.get(0)?,
             title: row.get(1)?,
@@ -37,6 +42,7 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
             bookmark_count: row.get(4)?,
             highlight_count: row.get(5)?,
             note_count: row.get(6)?,
+            index_state: IndexState::from_sql(&row.get::<_, String>(7)?)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)

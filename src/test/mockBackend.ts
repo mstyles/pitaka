@@ -18,11 +18,13 @@ import type {
   FolderBookmark,
   Highlight,
   ImportOutcome,
+  IndexState,
   Note,
   SearchMode,
   SearchResult,
   SemanticIndexFailed,
   SemanticIndexProgress,
+  SemanticIndexStopped,
   SemanticStatus,
 } from "../types";
 
@@ -78,6 +80,8 @@ export type MockOptions = {
   fail?: Partial<Record<string, string>>;
   /** Overrides the fixtures' `semantic_status`, e.g. to offer chapter search. */
   semantic?: Partial<SemanticStatus>;
+  /** Overrides books' `index_state`, by book id. */
+  indexStates?: Record<number, IndexState>;
 };
 
 export type MockCall = { cmd: string; args: Record<string, unknown> };
@@ -100,9 +104,10 @@ export function installMockBackend({
   fail = {},
   books: initialBooks = data.books,
   semantic = {},
+  indexStates = {},
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
-  let books = initialBooks.map((b) => ({ ...b }));
+  let books = initialBooks.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
 
   // Bookmark state, seeded from the fixtures and kept consistent the way the
   // SQL is: counts are derived, and deletes cascade.
@@ -239,6 +244,12 @@ export function installMockBackend({
       }
       case "semantic_status":
         return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };
+      case "queue_index":
+        return 1;
+      case "queue_index_all":
+        return books.filter((b) => b.index_state !== "indexed").length;
+      case "stop_indexing":
+        return null;
       case "search_chapters": {
         const matches = data.chapter_matches?.[String(args.query)] ?? [];
         return matches.filter((m) => books.some((b) => b.id === m.book_id));
@@ -469,4 +480,6 @@ export function installMockBackend({
 export const indexingEvents = {
   progress: (payload: SemanticIndexProgress) => emit("semantic_index_progress", payload),
   failed: (payload: SemanticIndexFailed) => emit("semantic_index_failed", payload),
+  stopped: (payload: SemanticIndexStopped) => emit("semantic_index_stopped", payload),
+  paused: () => emit("semantic_index_paused"),
 };

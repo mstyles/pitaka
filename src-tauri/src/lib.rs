@@ -37,6 +37,9 @@ pub fn run() {
             commands::list_book_annotations,
             commands::semantic_status,
             commands::search_chapters,
+            commands::queue_index,
+            commands::queue_index_all,
+            commands::stop_indexing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

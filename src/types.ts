@@ -33,7 +33,19 @@ export type SemanticIndexProgress = {
   book_id: number;
   done: number;
   total: number;
+  /** Books queued behind this one. */
+  queued: number;
 };
+
+/** A run ended partway by Stop indexing; the next run carries on from `done`. */
+export type SemanticIndexStopped = {
+  book_id: number;
+  done: number;
+  total: number;
+};
+
+/** How far a book is indexed for chapter search. */
+export type IndexState = "none" | "partial" | "indexed";
 
 export type SemanticIndexFailed = {
   book_id: number;
@@ -60,6 +72,7 @@ export type BookSummary = {
   bookmark_count: number;
   highlight_count: number;
   note_count: number;
+  index_state: IndexState;
 };
 
 export type ChapterSummary = {

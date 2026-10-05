@@ -60,6 +60,7 @@
       "chapter_count": 3,
       "highlight_count": 2,
       "id": 2,
+      "index_state": "indexed",
       "note_count": 2,
       "title": "A Long Book for Scrolling"
     },
@@ -69,6 +70,7 @@
       "chapter_count": 2,
       "highlight_count": 0,
       "id": 1,
+      "index_state": "none",
       "note_count": 0,
       "title": "Test Book of Research"
     }

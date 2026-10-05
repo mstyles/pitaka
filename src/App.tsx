@@ -22,7 +22,7 @@ function App() {
   const [openFolderId, setOpenFolderId] = useState<number | null>(null);
   const [openAnnotationsBookId, setOpenAnnotationsBookId] = useState<number | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
-  const { indexing, dismissFinished } = useIndexing();
+  const { dismissFinished, ...indexer } = useIndexing();
   const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
 
   function navigate(to: Screen) {
@@ -46,7 +46,7 @@ function App() {
         <BooksView
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Books" })}
           onLibraryChanged={() => setLibraryVersion((v) => v + 1)}
-          indexing={indexing}
+          indexer={indexer}
           {...folderImport}
         />
       )}

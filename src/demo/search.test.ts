@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import coreResults from "../test/fixtures/demo-search.json";
-import type { ChapterContent, SearchMode, SearchResult } from "../types";
+import type { BookSummary, ChapterContent, SearchMode, SearchResult } from "../types";
 import demo from "./library.json";
 import { porterStem } from "./porter";
 import { createSearch } from "./search";
 
 const search = createSearch(Object.values(demo.chapter_content) as ChapterContent[]);
+// JSON imports type `index_state` as a plain string.
+const books = demo.books as BookSummary[];
 
 describe("demo search matches the core's FTS5 search", () => {
   it.each(Object.entries(coreResults as Record<string, SearchResult[]>))("%s", (key, expected) => {
     const [mode, ...rest] = key.split(":");
-    const actual = search(demo.books, rest.join(":"), mode as SearchMode);
+    const actual = search(books, rest.join(":"), mode as SearchMode);
 
     expect(actual.map((r) => r.content_block_id)).toEqual(expected.map((r) => r.content_block_id));
     expect(actual.map((r) => r.snippet)).toEqual(expected.map((r) => r.snippet));
@@ -23,8 +25,8 @@ describe("demo search matches the core's FTS5 search", () => {
   });
 
   it("ignores empty queries and trailing operators", () => {
-    expect(search(demo.books, "  ", "stemmed")).toEqual([]);
-    expect(search(demo.books, "craving OR", "stemmed")).toEqual(search(demo.books, "craving", "stemmed"));
+    expect(search(books, "  ", "stemmed")).toEqual([]);
+    expect(search(books, "craving OR", "stemmed")).toEqual(search(books, "craving", "stemmed"));
   });
 });
 

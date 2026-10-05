@@ -21,6 +21,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
         M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
         M::up(include_str!("../../migrations/005_annotations.sql")),
+        M::up(include_str!("../../migrations/006_book_embeddings.sql")),
     ])
 }
 
@@ -79,11 +80,12 @@ pub use search::{search, search_with_variants, SearchMode, SearchResult, Variant
 #[cfg(feature = "semantic")]
 pub use semantic_index::{index_book, search_chapters};
 // For the evaluation runner, which sweeps the floor and length penalty.
+pub use semantic_index::{
+    books_to_index, semantic_status, ChapterMatch, IndexReport, IndexState, SemanticStatus,
+    LENGTH_PENALTY, MIN_SCORE,
+};
 #[doc(hidden)]
 pub use semantic_index::{rank_chunks, RankedChapter};
-pub use semantic_index::{
-    semantic_status, ChapterMatch, IndexReport, SemanticStatus, LENGTH_PENALTY, MIN_SCORE,
-};
 
 #[cfg(test)]
 mod tests {
