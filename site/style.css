@@ -172,6 +172,11 @@ footer {
   border-color: var(--accent);
 }
 
+.downloads {
+  font-size: 16px;
+  margin: 0 0 16px;
+}
+
 .note {
   color: var(--muted);
   font-size: 16px;

@@ -497,7 +497,16 @@ alongside the old one. Neither may change. The version comes from
   "the dangers of sensual pleasure" over the demo book, from
   `search_chapters` with the model, fed to the demo's UI through the mock
   with the banner removed. The new section was checked at 720px and
-  1280px wide. The highlights and notes screenshot
+  1280px wide. The landing page's download links are filled in by
+  `site/download.js` from GitHub's latest-release API: the main button
+  becomes "Download for Windows" (the `-setup.exe`) or "Download for
+  Linux" (the AppImage) by the visitor's OS, and the line under it
+  links each installer and shows the version. Without the script, or if
+  the API call fails, every link opens the latest release page.
+  Checked in Chrome on Linux from the built site against the real
+  v0.3.0 release, at full width and 390px: the button and all five
+  links pointed at the v0.3.0 files. The Windows branch and the
+  fallback weren't checked in a browser. The highlights and notes screenshot
   (`docs/screenshots/notes.jpg`) was made in `npm run dev:demo` by
   selecting and noting Paṭācārā's verses with the mouse, with the banner
   removed and the fading hover icons of one paragraph painted out.
