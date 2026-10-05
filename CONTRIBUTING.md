@@ -74,6 +74,9 @@ regenerate the mock's fixtures with
 - In the PR, say what you checked and what you didn't (for example,
   "checked in the browser against mocks, not in the Tauri window").
 
+Releases are made by the maintainer from `main`; the steps are under
+[Releasing](README.md#releasing) in the README.
+
 By contributing, you agree that your work is licensed under the
 project's MIT OR Apache-2.0 terms, and you agree to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).

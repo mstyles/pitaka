@@ -49,7 +49,7 @@ Publishing stays manual: after testing the draft (section 7), publish it in the 
 
 ## 4. Chapter search is in the release build
 The installers are built with `--features semantic`. Chapter search is the headline feature of 0.2.0, and someone who downloads an installer can't rebuild with a flag. The `rust-windows` job already proves the feature links with MSVC.
-- Cost: the installer is larger because of candle and `tokenizers`. Record the actual sizes from the first draft in this plan and the README. The model (about 130 MB) still downloads on first use, not with the installer.
+- Cost: the installer is larger because of candle and `tokenizers`. Record the actual sizes from the first draft in this plan and the README. A local Linux build gave a 16 MB binary, 6.7 MB `.deb`/`.rpm` and an 86 MB AppImage (most of which is the bundled WebKit and GTK). The model (about 130 MB) still downloads on first use, not with the installer.
 - One installer per format, not a lean and a chapter-search edition side by side. Two editions double the build jobs and the manual testing. They also make users choose up front, and switching from lean to full later doesn't index books already in the library (limitation 9). Without a re-import, which deletes bookmarks, those books stay out of chapter search. The model download is already deferred to first use, so a lean edition would only save the candle and `tokenizers` code. If the first draft shows that's large, the fix is the roadmap's "Index this book" action plus an opt-in setting, not a second installer.
 
 ## 5. Docs: `README.md`, `CHANGELOG.md`, `site/index.html`, `CONTRIBUTING.md`
@@ -82,11 +82,11 @@ Signing is a follow-up plan, not part of this work. Either route adds one signin
 ## 7. Tests and verification
 - No Rust or Vitest changes. `cargo test -p ebook_research_core`, `cargo clippy --workspace --all-targets`, `npx tsc --noEmit` and `npm test` still pass, and `ci.yml` is untouched.
 - `scripts/release-check.mjs`, run by hand: `v0.2.0` against today's files passes and prints the 0.2.0 notes plus the footer; `v0.2.1` fails with the mismatch message for all three files; a matching version with no CHANGELOG section fails with the "no notes" message.
-- `workflow_dispatch` on the PR branch: both build jobs pass and the artifact contains `Pitaka_<v>_x64-setup.exe`, `Pitaka_<v>_x64_en-US.msi`, `pitaka_<v>_amd64.deb`, `pitaka-<v>-1.x86_64.rpm` and `Pitaka_<v>_amd64.AppImage` (check the exact names in the first run and correct this list).
+- `workflow_dispatch` on the PR branch: both build jobs pass and the artifact contains `Pitaka_<v>_x64-setup.exe`, `Pitaka_<v>_x64_en-US.msi`, `Pitaka_<v>_amd64.deb`, `Pitaka-<v>-1.x86_64.rpm` and `Pitaka_<v>_amd64.AppImage`. The Linux names were checked in a local build (the `.deb`/`.rpm` files take `productName`, though the package inside is `pitaka`); the Windows names are still to check in the first run.
 - After merging, tag `v0.3.0`: the draft release has the notes, five installers and `SHA256SUMS`.
 - By hand on the draft's files, before publishing:
   1. **Windows**: on a Windows 11 VM that has never had Rust, Node or Visual Studio, download the `-setup.exe` from the draft. SmartScreen warns; run it anyway. The app is "Pitaka" in the Start Menu and launches. Go through step 5 of the Windows checklist on the installed app: import (including a folder), search, bookmarks, chapter search. `library.db` is in `%APPDATA%\com.pitaka.app\`. Then uninstall it from Settings → Apps.
   2. **Windows upgrade**: install the `.msi` for 0.3.0. Then build a local 0.3.1 MSI with the same `upgradeCode` and install it over the top. There's only one Pitaka in Settings → Apps, and the library is still there.
-  3. **Linux**: on a stock Ubuntu 22.04 VM, run the AppImage (`chmod +x`) and install the `.deb` with `sudo apt install ./pitaka_*.deb`. Both launch, import a book and search it.
+  3. **Linux**: on a stock Ubuntu 22.04 VM, run the AppImage (`chmod +x`) and install the `.deb` with `sudo apt install ./Pitaka_*.deb`. Both launch, import a book and search it.
   4. `sha256sum -c SHA256SUMS` passes on the downloaded files.
 - Publish only after those pass, and record what was and wasn't tested (e.g. the `.rpm` and Windows 10) in "What's actually verified".

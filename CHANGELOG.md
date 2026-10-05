@@ -1,11 +1,23 @@
 # Changelog
 
 Notable changes to Pitaka, newest first. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). There are no
-release builds yet, so a version here is a tagged commit on `main` to
-build from.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Each version
+is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
+
+### Added
+
+- Installers for Windows (`-setup.exe` and `.msi`) and Linux
+  (`.AppImage`, `.deb` and `.rpm`) on each GitHub release, with chapter
+  search by meaning built in. The Windows installers aren't code-signed
+  yet, so SmartScreen warns before running them.
+
+### Changed
+
+- The app is named "Pitaka" (capitalised) in its window title, the
+  Start Menu and the installed apps list. The library stays where it
+  was.
 
 ## [0.2.0] - 2026-09-24
 
