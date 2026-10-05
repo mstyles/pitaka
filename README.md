@@ -580,9 +580,15 @@ and GTK). The `.deb`'s package is `pitaka`, with the publisher, homepage
 and description set and a `Pitaka.desktop` entry, and the AppImage
 launches. That build also found the npm Tauri packages a minor version
 behind the crates, which `tauri build` refuses; they're now in step.
-`.github/workflows/release.yml` hasn't run yet: not by hand on a branch,
-and no tag has been pushed, so no draft release or Windows installer
-from it has been tested.
+`.github/workflows/release.yml` was run from the PR branch, with a
+temporary push trigger since GitHub only dispatches a workflow that is
+on the default branch. Both builds passed, Linux in 7 minutes and
+Windows in 14, and the artifacts were `Pitaka_0.2.0_x64-setup.exe`
+(4.6 MB), `Pitaka_0.2.0_x64_en-US.msi` (6.2 MB), the `.deb` and `.rpm`
+(7.0 MB each) and the AppImage (85 MB). The CI AppImage, built on
+Ubuntu 22.04, launches on this machine. The tag path (draft release,
+uploads to it, `SHA256SUMS`) hasn't run, and the Windows installers
+haven't been installed; both wait for the first version tag.
 
 ## Project structure
 
