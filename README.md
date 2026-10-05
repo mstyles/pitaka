@@ -494,13 +494,26 @@ alongside the old one. Neither may change. The version comes from
   Chapters switch doesn't show, and the banner and landing page say it
   needs the desktop app. The landing page's chapter-search screenshot
   (`docs/screenshots/chapter-search.jpg`) is real bge-small output for
-  "the dangers of sensual pleasure" over the demo book, from
+  "the peace of letting go" over the demo book, from
   `search_chapters` with the model, fed to the demo's UI through the mock
   with the banner removed. The new section was checked at 720px and
-  1280px wide. The highlights and notes screenshot
+  1280px wide. The landing page's download links are filled in by
+  `site/download.js` from GitHub's latest-release API: the main button
+  becomes "Download for Windows" (the `-setup.exe`) or "Download for
+  Linux" (the AppImage) by the visitor's OS, and the line under it
+  links each installer and shows the version. Without the script, or if
+  the API call fails, every link opens the latest release page.
+  Checked in Chrome on Linux from the built site against the real
+  v0.3.0 release, at full width and 390px: the button and all five
+  links pointed at the v0.3.0 files. The Windows branch and the
+  fallback weren't checked in a browser. The highlights and notes screenshot
   (`docs/screenshots/notes.jpg`) was made in `npm run dev:demo` by
   selecting and noting Paṭācārā's verses with the mouse, with the banner
-  removed and the fading hover icons of one paragraph painted out.
+  removed and the fading hover icons of one paragraph painted out. The
+  reader screenshot (`docs/screenshots/reader.jpg`) is the demo at
+  1200×800 after opening the "patacara" hit "Out of sympathy for me…",
+  with the banner removed. It's below the 1280px breakpoint, so it shows
+  the single-column reader without the empty note margin.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
