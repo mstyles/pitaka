@@ -25,8 +25,10 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri`, and the workspace's
+      //    `target`: on Windows, watching a build script's .exe while
+      //    Cargo has it locked crashes the dev server with EBUSY
+      ignored: ["**/src-tauri/**", "**/target/**"],
     },
   },
 
