@@ -6,18 +6,43 @@ is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-04
+
 ### Added
 
 - Installers for Windows (`-setup.exe` and `.msi`) and Linux
   (`.AppImage`, `.deb` and `.rpm`) on each GitHub release, with chapter
   search by meaning built in. The Windows installers aren't code-signed
   yet, so SmartScreen warns before running them.
+- Highlight and write notes while reading: select text in a paragraph
+  to highlight it in one of four colours, and add a note to a highlight
+  or a whole paragraph. Notes open in the margin beside the text. The
+  Bookmarks screen becomes "Bookmarks & notes" and lists each book's
+  highlights and notes in reading order.
+- Import a whole folder: "Import folder…" on the Books screen imports
+  every EPUB under it, Calibre's `Author/Title/` layout included, with
+  progress, a Stop button and a summary of what was imported, skipped
+  or failed.
+- Windows support: Pitaka builds and runs on Windows, and CI checks it
+  there.
 
 ### Changed
 
 - The app is named "Pitaka" (capitalised) in its window title, the
   Start Menu and the installed apps list. The library stays where it
   was.
+- Chapter search loads its embedding model at a pinned version, so a
+  change to the published model can't silently mix with chunks indexed
+  by the old one.
+
+### Fixed
+
+- Malformed XHTML no longer loses the rest of a chapter: broken markup
+  is skipped and parsing carries on after it. Text using HTML entities
+  such as `&nbsp;` or `&mdash;`, or a bare `&` ("Faith & Reason"), is
+  kept instead of dropped, and a bare `&` in a book's title no longer
+  fails the import. Books already in the library need re-importing to
+  pick this up.
 
 ## [0.2.0] - 2026-09-24
 
