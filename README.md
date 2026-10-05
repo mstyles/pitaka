@@ -523,10 +523,19 @@ On Windows, CI (the `rust-windows` job on `windows-2025`) runs clippy
 and the core tests, and builds the workspace with the semantic feature,
 which links candle and `tokenizers`' `onig` with MSVC. A
 `.gitattributes` checks text out with LF on every OS, so the byte-for-byte
-UI fixture tests pass on a Windows checkout. The app itself hasn't been
-run on Windows yet: the manual walk in `docs/plans/windows-support.md`
-(import through the native picker, search, bookmarks, chapter search,
-`npm run tauri build`) is still to do.
+UI fixture tests pass on a Windows checkout.
+
+The app has also been checked by hand on a Windows PC, from a fresh
+clone: the core and frontend tests pass there, and `npm run tauri dev
+-- --features semantic` opens with the bundled fonts. Importing through
+the native file picker from a folder with a space in its name shows the
+`C:\...` path, and importing it again says "Already in library". Both
+search modes work and a result opens at its paragraph. A passage can be
+bookmarked into a new folder, chapter search downloads the model into
+`%USERPROFILE%\.cache\huggingface` and returns chapters, removing the
+book works, importing a whole folder works, and `library.db` is in
+`%APPDATA%\com.pitaka.app\`. `npm run tauri build` produces the MSI and
+NSIS installers, and each installs an app that launches.
 
 ## Project structure
 
