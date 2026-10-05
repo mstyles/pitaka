@@ -247,8 +247,10 @@ mod tests {
     }
 
     /// A fresh folder under the system temp dir, removed when dropped.
+    #[cfg(unix)]
     struct TempDir(std::path::PathBuf);
 
+    #[cfg(unix)]
     impl TempDir {
         fn new(name: &str) -> Self {
             let path = std::env::temp_dir().join(format!("pitaka-{name}-{}", std::process::id()));
@@ -268,6 +270,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for TempDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
@@ -275,12 +278,21 @@ mod tests {
     }
 
     /// The scan's paths relative to `root`, for comparing exact lists.
+    #[cfg(unix)]
     fn relative(paths: &[String], root: &TempDir) -> Vec<String> {
         let prefix = format!("{}/", root.str());
         paths
             .iter()
             .map(|p| p.strip_prefix(&prefix).unwrap_or(p).to_string())
             .collect()
+    }
+
+    /// A path as `find_epubs` prints it: `root` as given, then each level
+    /// below it joined with the OS separator, which is `\` on Windows.
+    fn walked(root: &str, parts: &[&str]) -> String {
+        let mut path = std::path::PathBuf::from(root);
+        path.extend(parts);
+        path.to_string_lossy().into_owned()
     }
 
     #[test]
@@ -291,8 +303,8 @@ mod tests {
             EpubScan {
                 // Bytewise order puts `Nested` before `a`.
                 paths: vec![
-                    "tests/fixtures/epub-dir/Nested/b.EPUB".to_string(),
-                    "tests/fixtures/epub-dir/a.epub".to_string(),
+                    walked("tests/fixtures/epub-dir", &["Nested", "b.EPUB"]),
+                    walked("tests/fixtures/epub-dir", &["a.epub"]),
                 ],
                 unreadable: vec![],
             }
@@ -302,7 +314,10 @@ mod tests {
     #[test]
     fn find_epubs_walks_a_hidden_root() {
         let scan = find_epubs("tests/fixtures/epub-dir/.hidden").unwrap();
-        assert_eq!(scan.paths, vec!["tests/fixtures/epub-dir/.hidden/c.epub"]);
+        assert_eq!(
+            scan.paths,
+            vec![walked("tests/fixtures/epub-dir/.hidden", &["c.epub"])]
+        );
     }
 
     #[cfg(unix)]

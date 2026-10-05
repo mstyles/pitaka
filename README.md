@@ -55,8 +55,8 @@ the app's. Importing your own books needs the desktop app.
 ## Install
 
 There are no prebuilt downloads yet, so Pitaka is built from source. It
-has only been run on Linux so far; Tauri also targets macOS and Windows,
-but those builds are untested.
+builds and is tested on Linux and Windows; Tauri also targets macOS, but
+that build is untested.
 
 1. Install [Rust](https://rustup.rs) and [Node.js](https://nodejs.org)
    (24 is what CI uses), plus Tauri's system libraries. On Debian or
@@ -67,6 +67,11 @@ but those builds are untested.
      libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev \
      libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
    ```
+
+   On Windows, use Rust's default MSVC toolchain and install
+   [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   with "Desktop development with C++". The WebView2 runtime comes with
+   Windows 10 and 11.
 
    Other systems: see [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/).
 2. `git clone https://github.com/mstyles/pitaka && cd pitaka && npm install`
@@ -80,12 +85,14 @@ Chapter search by meaning is behind a Cargo feature, off by default: add
 model runtime ([candle](https://github.com/huggingface/candle)). The
 first time a book is indexed or searched, the app downloads
 [BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)
-(about 130 MB) into `~/.cache/huggingface`; after that it works offline.
+(about 130 MB) into `~/.cache/huggingface` (`%USERPROFILE%\.cache\huggingface`
+on Windows); after that it works offline.
 Only books imported while the feature is on are indexed (see
 [Known limitations](#known-limitations)).
 
 The library lives in `library.db` in the app's data directory
-(`~/.local/share/com.pitaka.app/` on Linux). Imported books are indexed
+(`~/.local/share/com.pitaka.app/` on Linux, `%APPDATA%\com.pitaka.app\`
+on Windows). Imported books are indexed
 there; the EPUB files themselves are never modified.
 
 ## Licence
@@ -512,6 +519,24 @@ sudo apt update && sudo apt install -y libwebkit2gtk-4.1-dev \
 
 then `npm run tauri dev` to launch the app.
 
+On Windows, CI (the `rust-windows` job on `windows-2025`) runs clippy
+and the core tests, and builds the workspace with the semantic feature,
+which links candle and `tokenizers`' `onig` with MSVC. A
+`.gitattributes` checks text out with LF on every OS, so the byte-for-byte
+UI fixture tests pass on a Windows checkout.
+
+The app has also been checked by hand on a Windows PC, from a fresh
+clone: the core and frontend tests pass there, and `npm run tauri dev
+-- --features semantic` opens with the bundled fonts. Importing through
+the native file picker from a folder with a space in its name shows the
+`C:\...` path, and importing it again says "Already in library". Both
+search modes work and a result opens at its paragraph. A passage can be
+bookmarked into a new folder, chapter search downloads the model into
+`%USERPROFILE%\.cache\huggingface` and returns chapters, removing the
+book works, importing a whole folder works, and `library.db` is in
+`%APPDATA%\com.pitaka.app\`. `npm run tauri build` produces the MSI and
+NSIS installers, and each installs an app that launches.
+
 ## Project structure
 
 ```
@@ -587,7 +612,7 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 
 ## Setup steps
 
-1. Install the Tauri Linux prerequisites (see command above).
+1. Install the Tauri prerequisites for your OS (see [Install](#install)).
 2. `npm install` at the repo root.
 3. `npm run tauri dev` — opens the app with hot-reload (add
    `-- --features semantic` for chapter search).
@@ -595,6 +620,8 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
 5. `npm test` — frontend tests; `npm run dev:mock` — the UI in a
    browser on :1430 against the mocked backend (`?semantic` in the URL
    offers chapter search).
+6. `npm run build:site` — builds the GitHub Pages site. It needs a Unix
+   shell (Git Bash or WSL on Windows).
 
 ## Known limitations
 
@@ -719,6 +746,8 @@ Done:
       parse error, and keep text with HTML entities or a bare `&`
 - [x] Pin the embedding model to a Hugging Face commit and ignore
       vectors from any other model
+- [x] Build and test on Windows: CI runs clippy, the core tests and a
+      semantic build on Windows
 
 Later:
 

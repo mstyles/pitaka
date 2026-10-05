@@ -94,8 +94,13 @@ fn ui_fixtures_are_current() {
     fixtures["search"] = to_value(searches).unwrap();
     fixtures["semantic_status"] = to_value(status).unwrap();
     fixtures["chapter_matches"] = chapter_matches;
-    // Relative, so the file is the same on every machine.
-    fixtures["find_epubs"] = to_value(find_epubs("tests/fixtures/epub-dir").unwrap()).unwrap();
+    // Relative, and with `/` where the walk joins folders with `\` on
+    // Windows, so the file is the same on every machine.
+    let mut scan = find_epubs("tests/fixtures/epub-dir").unwrap();
+    for path in scan.paths.iter_mut().chain(&mut scan.unreadable) {
+        *path = path.replace('\\', "/");
+    }
+    fixtures["find_epubs"] = to_value(scan).unwrap();
     for (key, value) in annotations {
         fixtures[key] = value;
     }
