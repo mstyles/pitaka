@@ -9,7 +9,7 @@ repository = "https://github.com/mstyles/pitaka"
 
 [dependencies]
 rusqlite = { version = "0.40", features = ["bundled", "functions"] }
-zip = "0.6"
+zip = "8.6"
 # `escape-html` so text using HTML named entities (`&nbsp;`, `&mdash;`)
 # unescapes instead of being dropped.
 quick-xml = { version = "0.31", features = ["escape-html"] }
