@@ -12,7 +12,11 @@ fn file_hash(path: &str) -> Result<String> {
     let bytes = std::fs::read(path)?;
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
@@ -192,6 +196,19 @@ mod tests {
     use super::*;
     use crate::db::test_util::*;
     use crate::db::*;
+
+    #[test]
+    fn file_hash_is_lowercase_hex_sha256() {
+        // Stored hashes detect re-imports, so the format must not drift.
+        let path = std::env::temp_dir().join(format!("pitaka-hash-{}", std::process::id()));
+        std::fs::write(&path, "abc").unwrap();
+        let hash = file_hash(path.to_str().unwrap()).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            hash,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     #[test]
     fn delete_book_leaves_other_books_alone() {
