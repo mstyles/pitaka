@@ -23,7 +23,7 @@ describe("books", () => {
     const { user, callsTo } = renderApp();
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import EPUB…" }));
+    await user.click(screen.getByRole("button", { name: "Import book…" }));
     await screen.findByText("Already in library as book #1");
     expect(callsTo("import_book")).toEqual([{ path: "/books/test.epub" }]);
   });
@@ -35,16 +35,28 @@ describe("books", () => {
     await user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(screen.queryByText(TEST_BOOK)).toBeNull());
 
-    await user.click(screen.getByRole("button", { name: "Import EPUB…" }));
+    await user.click(screen.getByRole("button", { name: "Import book…" }));
     await screen.findByText("Imported book #1");
     expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+  });
+
+  it("lets the file picker choose an EPUB or a PDF", async () => {
+    const { user, callsTo } = renderApp({ openPath: null });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
+    const { options } = callsTo("plugin:dialog|open")[0] as {
+      options: { filters: { extensions: string[] }[] };
+    };
+    expect(options.filters.map((f) => f.extensions)).toEqual([["epub", "pdf"]]);
   });
 
   it("does nothing when the file picker is cancelled", async () => {
     const { user, callsTo } = renderApp({ openPath: null });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import EPUB…" }));
+    await user.click(screen.getByRole("button", { name: "Import book…" }));
     await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
     expect(callsTo("import_book")).toEqual([]);
   });
@@ -96,7 +108,7 @@ describe("importing a folder", () => {
   // Without the test book, so the first copy of it is new.
   const books = fixtures.books.filter((b) => b.title !== TEST_BOOK);
   const importButtons = () =>
-    ["Import EPUB…", "Import folder…"].map(
+    ["Import book…", "Import folder…"].map(
       (name) => screen.getByRole("button", { name }) as HTMLButtonElement,
     );
 
@@ -114,7 +126,7 @@ describe("importing a folder", () => {
     await user.click(screen.getByRole("button", { name: "Import folder…" }));
 
     await screen.findByText("Imported 1 book, 1 already in library, 1 failed");
-    expect(callsTo("find_epubs")).toEqual([{ dir: "/books/folder" }]);
+    expect(callsTo("find_books")).toEqual([{ dir: "/books/folder" }]);
     expect(callsTo("import_book")).toEqual(scan.paths.map((path) => ({ path })));
     const failures = document.querySelector(".import-failures")!;
     expect(failures.textContent).toBe("bad.epub: invalid Zip archive");
@@ -127,7 +139,7 @@ describe("importing a folder", () => {
     await screen.findByText(TEST_BOOK);
     await user.click(screen.getByRole("button", { name: "Import folder…" }));
     await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
-    expect(callsTo("find_epubs")).toEqual([]);
+    expect(callsTo("find_books")).toEqual([]);
     expect(callsTo("import_book")).toEqual([]);
   });
 
@@ -136,7 +148,7 @@ describe("importing a folder", () => {
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
     await user.click(screen.getByRole("button", { name: "Import folder…" }));
-    expect(await screen.findByText("No EPUB files in /books/folder")).toBeTruthy();
+    expect(await screen.findByText("No EPUB or PDF files in /books/folder")).toBeTruthy();
   });
 
   it("stops after the book in flight", async () => {
@@ -176,7 +188,7 @@ describe("importing a folder", () => {
   });
 
   it("reports a folder that can't be read", async () => {
-    const { user } = renderApp({ fail: { find_epubs: "couldn't read /books/folder: denied" } });
+    const { user } = renderApp({ fail: { find_books: "couldn't read /books/folder: denied" } });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
     await user.click(screen.getByRole("button", { name: "Import folder…" }));

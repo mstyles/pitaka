@@ -37,6 +37,7 @@ fn long_book() -> ParsedBook {
     ParsedBook {
         title: Some("A Long Book for Scrolling".to_string()),
         author: Some("Fixture Author".to_string()),
+        format: "epub",
         chapters,
     }
 }
@@ -96,11 +97,11 @@ fn ui_fixtures_are_current() {
     fixtures["chapter_matches"] = chapter_matches;
     // Relative, and with `/` where the walk joins folders with `\` on
     // Windows, so the file is the same on every machine.
-    let mut scan = find_epubs("tests/fixtures/epub-dir").unwrap();
+    let mut scan = find_books("tests/fixtures/epub-dir").unwrap();
     for path in scan.paths.iter_mut().chain(&mut scan.unreadable) {
         *path = path.replace('\\', "/");
     }
-    fixtures["find_epubs"] = to_value(scan).unwrap();
+    fixtures["find_books"] = to_value(scan).unwrap();
     for (key, value) in annotations {
         fixtures[key] = value;
     }

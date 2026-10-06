@@ -33,7 +33,7 @@ describe("browser demo", () => {
   it("explains that importing needs the desktop app", async () => {
     const { user } = renderApp(demoOptions());
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Import EPUB…" }));
+    await user.click(screen.getByRole("button", { name: "Import book…" }));
     expect(await screen.findByText(`Import failed: ${DEMO_IMPORT_ERROR}`)).toBeTruthy();
   });
 

@@ -1,6 +1,8 @@
-//! Importing books from EPUB files and removing them from the library.
+//! Importing books from EPUB and PDF files and removing them from the
+//! library.
 
 use crate::epub::{parse_epub, ParsedBook};
+use crate::pdf::parse_pdf;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -27,11 +29,11 @@ pub struct ImportOutcome {
     pub already_imported: bool,
 }
 
-/// Imports an EPUB unless a book with the same file contents is already in
-/// the library. The file is hashed before it's parsed, so duplicates are
-/// cheap to skip.
-pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutcome> {
-    let hash = file_hash(epub_path)?;
+/// Imports an EPUB or PDF unless a book with the same file contents is
+/// already in the library. The file is hashed before it's parsed, so
+/// duplicates are cheap to skip.
+pub fn import_book(conn: &mut Connection, path: &str) -> Result<ImportOutcome> {
+    let hash = file_hash(path)?;
 
     let existing: Option<i64> = conn
         .query_row(
@@ -49,47 +51,65 @@ pub fn import_book(conn: &mut Connection, epub_path: &str) -> Result<ImportOutco
 
     let path_taken: bool = conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM books WHERE file_path = ?1)",
-        params![epub_path],
+        params![path],
         |row| row.get(0),
     )?;
     if path_taken {
         bail!(
-            "{epub_path} is already in the library, but the file has changed since it was \
+            "{path} is already in the library, but the file has changed since it was \
              imported. Remove the book from the library, then import it again."
         );
     }
 
-    let parsed = parse_epub(epub_path)?;
-    let book_id = load_book(conn, epub_path, &hash, &parsed)?;
+    let parsed = parse_book(path)?;
+    let book_id = load_book(conn, path, &hash, &parsed)?;
     Ok(ImportOutcome {
         book_id,
         already_imported: false,
     })
 }
 
-/// What `find_epubs` found under a folder.
+/// Parses a book with the parser for its extension, in any case.
+fn parse_book(path: &str) -> Result<ParsedBook> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("epub") => parse_epub(path),
+        Some("pdf") => parse_pdf(path),
+        _ => bail!("{path} isn't an EPUB or PDF"),
+    }
+}
+
+/// Whether `find_books` picks up a file: `.epub` or `.pdf`, in any case.
+fn is_book_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("epub") || ext.eq_ignore_ascii_case("pdf"))
+}
+
+/// What `find_books` found under a folder.
 #[derive(Serialize, Debug, PartialEq, Eq)]
-pub struct EpubScan {
-    /// The EPUB files, in walk order: sorted by name within each folder,
-    /// depth first.
+pub struct BookScan {
+    /// The EPUB and PDF files, in walk order: sorted by name within each
+    /// folder, depth first.
     pub paths: Vec<String>,
     /// Entries that couldn't be read (a folder without permission, a broken
     /// link), skipped so one bad entry doesn't sink the whole scan.
     pub unreadable: Vec<String>,
 }
 
-/// Finds every `.epub` file under `dir`, recursively, for importing a whole
+/// Finds every `.epub` and `.pdf` file under `dir`, recursively, for importing a whole
 /// folder one book at a time. Linked folders are followed; hidden files and
 /// folders (`.Trash-1000`, macOS `._Book.epub` files) are skipped, and a book
 /// reachable by two paths is returned once.
-pub fn find_epubs(dir: &str) -> Result<EpubScan> {
+pub fn find_books(dir: &str) -> Result<BookScan> {
     match std::fs::metadata(dir) {
         Err(e) => bail!("couldn't read {dir}: {e}"),
         Ok(meta) if !meta.is_dir() => bail!("{dir} isn't a folder"),
         Ok(_) => {}
     }
 
-    let mut scan = EpubScan {
+    let mut scan = BookScan {
         paths: Vec::new(),
         unreadable: Vec::new(),
     };
@@ -112,11 +132,7 @@ pub fn find_epubs(dir: &str) -> Result<EpubScan> {
                 continue;
             }
         };
-        let is_epub = entry
-            .path()
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("epub"));
-        if !entry.file_type().is_file() || !is_epub {
+        if !entry.file_type().is_file() || !is_book_file(entry.path()) {
             continue;
         }
         // A folder linked into the tree twice yields the same books twice.
@@ -137,7 +153,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
 /// book_id.
 pub(super) fn load_book(
     conn: &mut Connection,
-    epub_path: &str,
+    path: &str,
     hash: &str,
     parsed: &ParsedBook,
 ) -> Result<i64> {
@@ -145,8 +161,8 @@ pub(super) fn load_book(
 
     tx.execute(
         "INSERT INTO books (file_path, file_hash, title, author, format, last_indexed_at)
-         VALUES (?1, ?2, ?3, ?4, 'epub', datetime('now'))",
-        params![epub_path, hash, parsed.title, parsed.author],
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+        params![path, hash, parsed.title, parsed.author, parsed.format],
     )?;
     let book_id = tx.last_insert_rowid();
 
@@ -179,10 +195,10 @@ pub(super) fn load_book(
 }
 
 /// Removes a book and everything that belongs to it from the library. The
-/// EPUB file on disk is left alone. Chapters, content blocks and annotations
-/// go with it via `ON DELETE CASCADE`, and the `content_blocks_ad` trigger
-/// drops its text from both search indexes, so this relies on the
-/// `foreign_keys` pragma that `open_db` turns on.
+/// book's file on disk is left alone. Chapters, content blocks and
+/// annotations go with it via `ON DELETE CASCADE`, and the
+/// `content_blocks_ad` trigger drops its text from both search indexes, so
+/// this relies on the `foreign_keys` pragma that `open_db` turns on.
 pub fn delete_book(conn: &Connection, book_id: i64) -> Result<()> {
     let deleted = conn.execute("DELETE FROM books WHERE id = ?1", params![book_id])?;
     if deleted == 0 {
@@ -287,7 +303,7 @@ mod tests {
             .collect()
     }
 
-    /// A path as `find_epubs` prints it: `root` as given, then each level
+    /// A path as `find_books` prints it: `root` as given, then each level
     /// below it joined with the OS separator, which is `\` on Windows.
     fn walked(root: &str, parts: &[&str]) -> String {
         let mut path = std::path::PathBuf::from(root);
@@ -296,15 +312,16 @@ mod tests {
     }
 
     #[test]
-    fn find_epubs_walks_subfolders() {
-        let scan = find_epubs("tests/fixtures/epub-dir").unwrap();
+    fn find_books_walks_subfolders() {
+        let scan = find_books("tests/fixtures/epub-dir").unwrap();
         assert_eq!(
             scan,
-            EpubScan {
+            BookScan {
                 // Bytewise order puts `Nested` before `a`.
                 paths: vec![
                     walked("tests/fixtures/epub-dir", &["Nested", "b.EPUB"]),
                     walked("tests/fixtures/epub-dir", &["a.epub"]),
+                    walked("tests/fixtures/epub-dir", &["c.PDF"]),
                 ],
                 unreadable: vec![],
             }
@@ -312,8 +329,8 @@ mod tests {
     }
 
     #[test]
-    fn find_epubs_walks_a_hidden_root() {
-        let scan = find_epubs("tests/fixtures/epub-dir/.hidden").unwrap();
+    fn find_books_walks_a_hidden_root() {
+        let scan = find_books("tests/fixtures/epub-dir/.hidden").unwrap();
         assert_eq!(
             scan.paths,
             vec![walked("tests/fixtures/epub-dir/.hidden", &["c.epub"])]
@@ -322,7 +339,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn find_epubs_follows_linked_folders() {
+    fn find_books_follows_linked_folders() {
         use std::os::unix::fs::symlink;
         let root = TempDir::new("scan-links");
         let elsewhere = TempDir::new("scan-links-target");
@@ -334,7 +351,7 @@ mod tests {
         symlink("..", root.0.join("sub/loop")).unwrap();
         symlink("../other", root.0.join("sub/again")).unwrap();
 
-        let scan = find_epubs(root.str()).unwrap();
+        let scan = find_books(root.str()).unwrap();
         assert_eq!(
             relative(&scan.paths, &root),
             ["a.epub", "linked/d.epub", "other/c.epub"]
@@ -344,7 +361,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn find_epubs_reports_unreadable_paths() {
+    fn find_books_reports_unreadable_paths() {
         use std::os::unix::fs::{symlink, PermissionsExt};
         let root = TempDir::new("scan-unreadable");
         root.add("a.epub");
@@ -355,7 +372,7 @@ mod tests {
         // Root reads a mode 000 folder anyway, so there's nothing to check.
         let as_root = std::fs::read_dir(&locked).is_ok();
 
-        let scan = find_epubs(root.str());
+        let scan = find_books(root.str());
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         if as_root {
             return;
@@ -366,11 +383,18 @@ mod tests {
     }
 
     #[test]
-    fn find_epubs_needs_a_readable_folder() {
-        let err = find_epubs("tests/fixtures/no-such-dir").unwrap_err();
+    fn find_books_needs_a_readable_folder() {
+        let err = find_books("tests/fixtures/no-such-dir").unwrap_err();
         assert!(err.to_string().contains("couldn't read"), "{err}");
-        let err = find_epubs("tests/fixtures/epub-dir/a.epub").unwrap_err();
+        let err = find_books("tests/fixtures/epub-dir/a.epub").unwrap_err();
         assert!(err.to_string().contains("isn't a folder"), "{err}");
+    }
+
+    #[test]
+    fn import_needs_an_epub_or_pdf() {
+        let mut conn = open_db(":memory:").unwrap();
+        let err = err_of(import_book(&mut conn, "tests/fixtures/epub-dir/notes.txt"));
+        assert!(err.contains("isn't an EPUB or PDF"), "{err}");
     }
 
     #[test]

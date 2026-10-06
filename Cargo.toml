@@ -7,5 +7,7 @@ members = ["ebook_research_core", "src-tauri"]
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# No `panic = "abort"`: the PDF importer catches pdf-extract's panics on
+# fonts it can't read with `catch_unwind`, so a malformed PDF is an import
+# error instead of a crash.
 strip = true

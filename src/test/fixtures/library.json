@@ -848,10 +848,11 @@
       }
     ]
   },
-  "find_epubs": {
+  "find_books": {
     "paths": [
       "tests/fixtures/epub-dir/Nested/b.EPUB",
-      "tests/fixtures/epub-dir/a.epub"
+      "tests/fixtures/epub-dir/a.epub",
+      "tests/fixtures/epub-dir/c.PDF"
     ],
     "unreadable": []
   },

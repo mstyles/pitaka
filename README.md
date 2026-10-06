@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/mstyles/pitaka/actions/workflows/ci.yml/badge.svg)](https://github.com/mstyles/pitaka/actions/workflows/ci.yml)
 
-A desktop app for reading and researching your EPUB library: full-text
+A desktop app for reading and researching your EPUB and PDF library: full-text
 search across every book, bookmark folders for the passages you want
 to keep, and highlights and notes as you read.
 
@@ -29,9 +29,10 @@ to keep, and highlights and notes as you read.
   highlights and notes are listed in reading order.
 - **Keep passages in bookmark folders**, one per topic or project, each
   passage linked back to its place in the book.
-- **Bring in a whole folder.** Import one EPUB, or pick a folder and
-  every EPUB under it is imported, Calibre's `Author/Title/` layout
-  included, skipping the ones already in your library.
+- **Bring in a whole folder.** Import one EPUB or PDF, or pick a folder
+  and every EPUB and PDF under it is imported, Calibre's `Author/Title/`
+  layout included, skipping the ones already in your library. PDFs need
+  a text layer: scanned ones are refused.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -81,7 +82,7 @@ on Windows); after that it works offline.
 
 The library lives in `library.db` in the app's data directory
 (`~/.local/share/com.pitaka.app/` on Linux, `%APPDATA%\com.pitaka.app\`
-on Windows). Imported books are indexed there; the EPUB files
+on Windows). Imported books are indexed there; the EPUB and PDF files
 themselves are never modified.
 
 ### Build from source
@@ -137,10 +138,10 @@ Changes between versions are in [CHANGELOG.md](CHANGELOG.md).
 
 ## How it's built
 
-EPUB parsing + SQLite/FTS5 search, wrapped in a Tauri v2 shell (React +
+EPUB and PDF parsing + SQLite/FTS5 search, wrapped in a Tauri v2 shell (React +
 TypeScript frontend). The Rust side is split into two crates on purpose:
 
-- `ebook_research_core/` — all the real logic (EPUB parsing, offsets,
+- `ebook_research_core/` — all the real logic (EPUB and PDF parsing, offsets,
   DB schema/search ranking). No Tauri or UI dependency at all, so the
   hard parts are unit/integration-testable without ever spinning up a
   webview.
@@ -207,6 +208,46 @@ alongside the old one. Neither may change. The version comes from
   book in that library has broken markup, so recovery is checked only by the unit
   tests. Not re-imported in the Tauri window; no UI code changed, so
   it wasn't clicked through against the mocked backend either.
+- `ebook_research_core/src/pdf.rs` — imports PDFs that have a text
+  layer, into the same chapters and paragraphs as an EPUB, so search,
+  the reader, bookmarks, highlights and notes work on them unchanged.
+  lopdf loads the file (one with only an owner password opens; one
+  needing a password to open is refused) and pdf-extract reads each
+  page's text, inside `catch_unwind` because it panics on fonts it
+  doesn't understand; the release profile no longer sets
+  `panic = "abort"` so that works there too. A PDF averaging under 50
+  characters a page is refused as a scan. A page's first or last line
+  is dropped when it's only a page number, or when (page numbers
+  aside) it's at that position on 3 or more pages, which removes
+  running headers and footers. Paragraphs split on blank lines; a
+  line ending "gen-" followed by "erosity" joins as "generosity",
+  while "Attribution-" + "NonCommercial" keeps its hyphen; a paragraph
+  that doesn't end a sentence joins one starting lowercase on the
+  next page. Chapters start at the pages of the outline's top-level
+  entries, with "Front matter" before the first, or are 20-page
+  blocks without an outline. The title comes from `/Info`, then XMP
+  `dc:title`, then the largest text on pages 1–5 (if 1.5× the body
+  size), then the most frequent running header, then the tidied file
+  name, skipping junk like "Microsoft Word - draft.docx".
+  Checked against *Buddhist Life/Buddhist Path* (242 pages, a
+  LibreOffice export with no metadata title) by running the parser
+  directly: it's titled from its title page, its chapters are "Front
+  matter", "Contents", "Preface", "PART ONE: BUDDHIST LIFE", "1.
+  Buddha" … "References", "Lexicon of main concepts", and its Pali
+  diacritics come through. Unit tests in `pdf.rs` cover the header,
+  hyphen, page-join, chapter, offset and title rules on plain
+  strings, and parse fixtures in `tests/fixtures/pdf/` made with
+  LibreOffice (an outline and running header, no outline with a
+  metadata title, both kinds of password, a scan) plus a hand-written
+  PDF that makes pdf-extract panic; the integration test
+  `imports_a_pdf` imports one, searches it and re-imports it. A
+  scratch binary built with the workspace's release profile parsed the
+  panicking PDF as an error and carried on (with `panic = "abort"` it
+  died), and parsed the 242-page book in 0.39s. Dropping
+  `panic = "abort"` grew the release binary from 10.8 MB to 12.5 MB.
+  Not yet imported in the Tauri window, and the Books screen's new
+  copy and picker filter were checked only by the frontend tests, not
+  clicked through.
 - `ebook_research_core/src/db/` — opens the SQLite DB via `rusqlite`
   and brings its schema up to date (see [Schema migrations](#schema-migrations)),
   imports books (each in one transaction, skipping any whose file
@@ -218,10 +259,10 @@ alongside the old one. Neither may change. The version comes from
   re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
   `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
   queries), `bookmarks.rs` and `annotations.rs`.
-  `find_epubs` (in `import.rs`) lists the EPUBs under a folder for a
+  `find_books` (in `import.rs`) lists the EPUBs and PDFs under a folder for a
   folder import: recursive, following linked folders, skipping hidden
   files and folders, and returning a book reachable by two paths once.
-  Unit tests cover subfolders, case-insensitive `.EPUB`, a hidden
+  Unit tests cover subfolders, case-insensitive `.EPUB` and `.PDF`, a hidden
   picked folder, links to folders outside the tree, a link loop, a
   folder linked in twice, an unreadable folder and a broken link
   (reported, the rest still found), and a missing folder or a file
@@ -376,7 +417,7 @@ alongside the old one. Neither may change. The version comes from
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
     book list from `list_books` with Remove. "Import folder…" picks a
-    folder → `find_epubs`, then calls `import_book` once per book
+    folder → `find_books`, then calls `import_book` once per book
     ("Importing 3 of 40…", with Stop), and sums up ("Imported 12 books,
     3 already in library, 2 failed") with each failure's path and
     error listed. The loop is in `useFolderImport`, called from
@@ -644,7 +685,7 @@ pitaka/
 ├── ebook_research_core/        <- core crate, no UI/Tauri dependency
 │   ├── Cargo.toml
 │   ├── migrations/             <- numbered schema migrations (001 = base schema)
-│   ├── src/{lib,epub}.rs
+│   ├── src/{lib,epub,pdf}.rs
 │   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
 │   │                              library / bookmarks / annotations /
@@ -804,6 +845,28 @@ In the same order of priority as the Python version, then newer ones.
    - Single Pali terms do poorly (recall@5 0.33): bare "anatta" misses
      the chapter using it most. Keyword search is the tool for a
      single term.
+9. PDFs:
+   - They're read as plain text: scanned PDFs are refused (no OCR),
+     and there are no page numbers in results or the reader.
+   - Chapters come from the outline's top level and start on a page
+     boundary, so a chapter that starts mid-page also holds the end of
+     the previous one. Two outline entries with the same title count
+     as one (lopdf merges them). Without an outline, chapters are
+     20-page blocks.
+   - Footnotes, note markers ("say.1") and running headers that
+     repeat on fewer than three pages stay in the text, and a book's
+     own title line is dropped from its title page when it's also the
+     running header.
+   - Multi-column layouts may interleave, a block quote with no gap
+     before the next paragraph is joined to it, a real hyphen at a
+     line end followed by a lowercase word is removed, and text a PDF
+     draws twice comes out doubled.
+   - A PDF without a usable `/Info` or XMP title is titled from the
+     largest text on pages 1–5, its most frequent running header, or
+     its file name, so a decorative cover word or a series name can
+     win. A title with no letters ("1984") is skipped as junk, falling
+     back to the file name.
+   - A page pdf-extract can't read fails the whole import.
 
 ## Roadmap
 
@@ -854,6 +917,7 @@ Done:
       semantic build on Windows
 - [x] Release builds for Linux and Windows: a version tag builds the
       installers and attaches them to a draft GitHub release
+- [x] Import text-layer PDFs, with chapters from the outline
 
 Later:
 
@@ -880,6 +944,7 @@ Later:
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
+- [ ] PDF page numbers in search results and the reader
 - [ ] Edit a book's title and author from the library, for books whose
       metadata is missing or wrong
 
