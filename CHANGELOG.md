@@ -6,6 +6,28 @@ is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-06
+
+### Added
+
+- Import PDFs: "Import book…" and "Import folder…" now take PDFs that
+  have a text layer, alongside EPUBs. Chapters come from the PDF's
+  outline (or are 20-page blocks without one), running headers and page
+  numbers are dropped, and words hyphenated across lines are rejoined.
+  The title comes from the PDF's metadata, else its title page. Scanned
+  PDFs and ones that need a password to open are refused with a message
+  saying why.
+- Index books already in the library for chapter search: the Books
+  screen has an Index button on each book that isn't fully indexed,
+  Index all books, and Stop indexing. Books are indexed one at a time
+  in the order queued, and a stopped run carries on from the last
+  finished chapter.
+
+### Changed
+
+- "Import EPUB…" is now "Import book…", and the folder import's Stop is
+  now Stop import.
+
 ## [0.3.0] - 2026-10-04
 
 ### Added
