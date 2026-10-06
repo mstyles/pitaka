@@ -87,10 +87,10 @@ describe("home", () => {
       await user.click(within(row).getByRole("button", { name: "Remove" }));
       await waitFor(() => expect(screen.queryByText(title)).toBeNull());
     }
-    expect(screen.getByText("No books yet. Import an EPUB to start.")).toBeTruthy();
+    expect(screen.getByText("No books yet. Import an EPUB or PDF to start.")).toBeTruthy();
 
     await goTo(user, "Home");
-    await waitFor(() => expect(detail("Books")).toBe("Import your first EPUB"));
+    await waitFor(() => expect(detail("Books")).toBe("Import your first book"));
     expect(detail("Search")).toBe("Import a book to search");
     expect((card("Search") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Your library")).toBeNull();

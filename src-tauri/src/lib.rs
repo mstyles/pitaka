@@ -11,7 +11,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::import_book,
-            commands::find_epubs,
+            commands::find_books,
             commands::search_library,
             commands::delete_book,
             commands::list_books,

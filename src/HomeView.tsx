@@ -60,7 +60,7 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
   let booksDetail = "";
   let searchDetail = "";
   if (books) {
-    booksDetail = emptyLibrary ? "Import your first EPUB" : plural(books.length, "book");
+    booksDetail = emptyLibrary ? "Import your first book" : plural(books.length, "book");
     searchDetail = emptyLibrary
       ? "Import a book to search"
       : `Search across ${plural(books.length, "book")}`;

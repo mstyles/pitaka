@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import type {
   BookSummary,
-  EpubScan,
+  BookScan,
   ImportOutcome,
   SemanticIndexFailed,
   SemanticIndexProgress,
@@ -106,7 +106,7 @@ export type IndexingControls = Omit<ReturnType<typeof useIndexing>, "dismissFini
 /** Where a folder import is up to, or how it ended; see `useFolderImport`. */
 export type FolderImport = {
   dir: string;
-  /** EPUBs found; 0 while the folder is still being scanned. */
+  /** Books found; 0 while the folder is still being scanned. */
   total: number;
   done: number;
   imported: number;
@@ -120,8 +120,8 @@ export type FolderImport = {
 };
 
 /**
- * Imports every EPUB under a folder, one `import_book` call per book, so the
- * library lock is released between books. Called from App, which stays
+ * Imports every EPUB and PDF under a folder, one `import_book` call per
+ * book, so the library lock is released between books. Called from App, which stays
  * mounted, so the import carries on while you're on other screens.
  */
 export function useFolderImport(onLibraryChanged: () => void) {
@@ -148,9 +148,9 @@ export function useFolderImport(onLibraryChanged: () => void) {
       stopped: false,
     });
     try {
-      let scan: EpubScan;
+      let scan: BookScan;
       try {
-        scan = await invoke<EpubScan>("find_epubs", { dir });
+        scan = await invoke<BookScan>("find_books", { dir });
       } catch (err) {
         update((p) => ({ ...p, running: false, scanError: String(err) }));
         return;
@@ -221,7 +221,7 @@ function folderImportLine(f: FolderImport) {
       ? `Looking for books in ${f.dir}…`
       : `Importing ${Math.min(f.done + 1, f.total)} of ${f.total}…`;
   }
-  if (f.total === 0) return `No EPUB files in ${f.dir}`;
+  if (f.total === 0) return `No EPUB or PDF files in ${f.dir}`;
   const prefix = f.stopped ? `Stopped after ${f.done} of ${f.total}: ` : "";
   if (f.imported === 0 && f.failures.length === 0 && f.already > 0) {
     return `${prefix}Nothing new: ${f.already} already in library`;
@@ -327,7 +327,7 @@ function BooksView({
   async function importBook() {
     const path = await open({
       multiple: false,
-      filters: [{ name: "EPUB", extensions: ["epub"] }],
+      filters: [{ name: "EPUB or PDF", extensions: ["epub", "pdf"] }],
     });
     if (!path || Array.isArray(path)) return;
 
@@ -365,7 +365,7 @@ function BooksView({
       parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
     const lost = list ? ` Its ${list} will be deleted too.` : "";
     const confirmed = await ask(
-      `Remove "${title}" from the library?${lost} The EPUB file won't be deleted.`,
+      `Remove "${title}" from the library?${lost} The book's file won't be deleted.`,
       { title: "Remove book", kind: "warning", okLabel: "Remove", cancelLabel: "Cancel" },
     );
     if (!confirmed) return;
@@ -386,7 +386,7 @@ function BooksView({
 
       <div className="row">
         <button className="button-primary" onClick={importBook} disabled={importing}>
-          Import EPUB…
+          Import book…
         </button>
         <button onClick={importFolder} disabled={importing}>
           Import folder…
@@ -425,7 +425,7 @@ function BooksView({
       )}
 
       {books?.length === 0 ? (
-        <p className="section-empty">No books yet. Import an EPUB to start.</p>
+        <p className="section-empty">No books yet. Import an EPUB or PDF to start.</p>
       ) : (
         <ul className="book-list">
           {books?.map((b) => (

@@ -14,7 +14,7 @@ import type {
   ChapterContent,
   ChapterMatch,
   ChapterSummary,
-  EpubScan,
+  BookScan,
   FolderBookmark,
   Highlight,
   ImportOutcome,
@@ -42,7 +42,7 @@ export type Fixtures = {
   semantic_status?: SemanticStatus;
   chapter_matches?: Record<string, ChapterMatch[]>;
   /** What scanning a folder returns; absent in the demo's data. */
-  find_epubs?: EpubScan;
+  find_books?: BookScan;
   /** Absent in the demo's data, which starts with nothing highlighted. */
   chapter_annotations?: Record<string, ChapterAnnotations>;
   annotated_books?: AnnotatedBook[];
@@ -66,12 +66,12 @@ export type MockOptions = {
   importErrors?: Record<string, string>;
   /** When set, each `import_book` call waits for this before answering. */
   importGate?: Promise<unknown>;
-  /** What the "Import EPUB…" file picker returns; null means cancelled. */
+  /** What the "Import book…" file picker returns; null means cancelled. */
   openPath?: string | null;
   /** What the "Import folder…" picker returns; null means cancelled. */
   openDir?: string | null;
-  /** Answers `find_epubs`, in place of the fixtures' scan. */
-  scan?: EpubScan;
+  /** Answers `find_books`, in place of the fixtures' scan. */
+  scan?: BookScan;
   /** Whether confirmation dialogs (remove book, delete folder) are accepted. */
   confirm?: boolean;
   /** The library to start with, in place of the fixture books. */
@@ -225,8 +225,8 @@ export function installMockBackend({
         };
         return importGate ? importGate.then(importBook) : importBook();
       }
-      case "find_epubs":
-        return scan ?? data.find_epubs;
+      case "find_books":
+        return scan ?? data.find_books;
       case "delete_book": {
         const id = args.bookId as number;
         if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;

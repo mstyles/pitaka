@@ -180,7 +180,7 @@ describe("bookmark folders", () => {
     await user.click(within(bookRow).getByRole("button", { name: "Remove" }));
     await screen.findByText(`Removed "${LONG_BOOK}"`);
     expect(callsTo("plugin:dialog|message")[0].message).toBe(
-      `Remove "${LONG_BOOK}" from the library? Its 1 bookmark, 2 highlights and 2 notes will be deleted too. The EPUB file won't be deleted.`,
+      `Remove "${LONG_BOOK}" from the library? Its 1 bookmark, 2 highlights and 2 notes will be deleted too. The book's file won't be deleted.`,
     );
     await goTo(user, "Bookmarks & notes");
     await waitFor(() =>

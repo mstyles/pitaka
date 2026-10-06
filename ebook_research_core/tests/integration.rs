@@ -1,5 +1,5 @@
 use ebook_research_core::{
-    db, find_epubs, import_book, list_books, open_db, parse_epub, search, search_with_variants,
+    db, find_books, import_book, list_books, open_db, parse_epub, search, search_with_variants,
     ImportOutcome, SearchMode, VariantIndex,
 };
 use rusqlite::Connection;
@@ -1260,7 +1260,7 @@ fn imports_every_book_in_a_folder() {
     std::fs::copy("test.epub", dir.join("two/copy.epub")).unwrap();
     std::fs::write(dir.join("bad.epub"), b"not a zip").unwrap();
 
-    let scan = find_epubs(dir.to_str().unwrap()).unwrap();
+    let scan = find_books(dir.to_str().unwrap()).unwrap();
     assert!(scan.unreadable.is_empty(), "{:?}", scan.unreadable);
     let mut conn = open_db(":memory:").unwrap();
     let outcomes: Vec<_> = scan
@@ -1282,5 +1282,48 @@ fn imports_every_book_in_a_folder() {
             already_imported: true,
         }
     );
+    assert_eq!(list_books(&conn).unwrap().len(), 1);
+}
+
+/// A text-layer PDF imports like an EPUB: its chapters come from the
+/// outline, its text is searchable, and it's de-duped by hash. A scanned
+/// PDF is refused without adding anything.
+#[test]
+fn imports_a_pdf() {
+    let mut conn = open_db(":memory:").unwrap();
+    let pdf = "tests/fixtures/pdf/test.pdf";
+    let first = import_book(&mut conn, pdf).unwrap();
+    assert!(!first.already_imported);
+
+    let format: String = conn
+        .query_row(
+            "SELECT format FROM books WHERE id = ?1",
+            [first.book_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(format, "pdf");
+    let titles: Vec<String> = db::get_book_chapters(&conn, first.book_id)
+        .unwrap()
+        .into_iter()
+        .filter_map(|c| c.title)
+        .collect();
+    assert_eq!(titles, ["Front matter", "Introduction", "Methods"]);
+    for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+        let hits = search(&conn, "gradient", mode, 10).unwrap();
+        assert_eq!(hits.len(), 1, "{mode:?}");
+        assert_eq!(hits[0].book_id, first.book_id, "{mode:?}");
+    }
+
+    assert_eq!(
+        import_book(&mut conn, pdf).unwrap(),
+        ImportOutcome {
+            book_id: first.book_id,
+            already_imported: true,
+        }
+    );
+    let err = import_book(&mut conn, "tests/fixtures/pdf/scanned.pdf")
+        .expect_err("a scanned PDF should be refused");
+    assert!(err.to_string().contains("no text layer"), "{err}");
     assert_eq!(list_books(&conn).unwrap().len(), 1);
 }

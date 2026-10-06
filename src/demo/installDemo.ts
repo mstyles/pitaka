@@ -6,7 +6,7 @@ import data from "./library.json";
 import { createSearch } from "./search";
 
 export const DEMO_IMPORT_ERROR =
-  "Importing your own EPUBs needs the desktop app. This demo has one book built in.";
+  "Importing your own books needs the desktop app. This demo has one book built in.";
 
 /** Mock backend options that serve the demo book. */
 export function demoOptions(): MockOptions {

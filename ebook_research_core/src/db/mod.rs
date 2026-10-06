@@ -71,7 +71,7 @@ pub use bookmarks::{
     list_bookmark_folders, list_folder_bookmarks, remove_bookmark, rename_bookmark_folder,
     BlockBookmark, BookmarkFolder, FolderBookmark,
 };
-pub use import::{delete_book, find_epubs, import_book, EpubScan, ImportOutcome};
+pub use import::{delete_book, find_books, import_book, BookScan, ImportOutcome};
 pub use library::{
     get_book_chapters, get_chapter_content, list_books, BookSummary, ChapterContent,
     ChapterSummary, ContentBlockRow,

@@ -32,6 +32,8 @@ pub struct ParsedChapter {
 pub struct ParsedBook {
     pub title: Option<String>,
     pub author: Option<String>,
+    /// The `books.format` value: `"epub"` or `"pdf"`.
+    pub format: &'static str,
     pub chapters: Vec<ParsedChapter>,
 }
 
@@ -130,6 +132,7 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
     Ok(ParsedBook {
         title: opf.title,
         author: opf.author,
+        format: "epub",
         chapters,
     })
 }
@@ -788,7 +791,7 @@ impl<'a> Iterator for LenientReader<'a> {
 /// The text of the entity or character reference `&name;`. With
 /// quick-xml's `escape-html` feature every HTML5 named entity (`&nbsp;`,
 /// `&mdash;`) is known; an unknown `&foo;` is kept as written.
-fn resolve_ref(name: &str) -> String {
+pub(crate) fn resolve_ref(name: &str) -> String {
     let written = format!("&{name};");
     match quick_xml::escape::unescape(&written) {
         Ok(text) => text.into_owned(),
@@ -892,7 +895,7 @@ fn push_text(node: &Node, out: &mut String) {
     }
 }
 
-fn normalize_whitespace(s: &str) -> String {
+pub(crate) fn normalize_whitespace(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

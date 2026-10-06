@@ -576,6 +576,7 @@ mod tests {
         let book = ParsedBook {
             title: Some("Book".to_string()),
             author: None,
+            format: "epub",
             chapters: vec![chapter("One"), chapter("Two")],
         };
         let book_id = load_book(conn, "/book.epub", "h", &book).unwrap();
@@ -628,6 +629,7 @@ mod tests {
             &ParsedBook {
                 title: Some("Other".to_string()),
                 author: None,
+                format: "epub",
                 chapters: vec![ParsedChapter {
                     file_name: "o.xhtml".to_string(),
                     title: "Other".to_string(),
@@ -787,6 +789,7 @@ mod tests {
         let book = ParsedBook {
             title: Some("A Book".to_string()),
             author: None,
+            format: "epub",
             chapters: vec![ParsedChapter {
                 file_name: "c.xhtml".to_string(),
                 title: "Chapter".to_string(),

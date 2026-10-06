@@ -4,9 +4,9 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, AnnotatedBook, BlockBookmark, BookAnnotation, BookSummary, BookmarkFolder,
-    ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary, EpubScan, FolderBookmark,
-    Highlight, ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
+    db, open_db, AnnotatedBook, BlockBookmark, BookAnnotation, BookScan, BookSummary,
+    BookmarkFolder, ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary,
+    FolderBookmark, Highlight, ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -96,11 +96,12 @@ pub async fn import_book(path: String, app: AppHandle) -> Result<ImportOutcome, 
     .map_err(|e| e.to_string())?
 }
 
-/// Frontend calls: `invoke("find_epubs", { dir: "/path/to/folder" })`. Lists
-/// the EPUBs under a folder; the frontend then imports them one at a time.
+/// Frontend calls: `invoke("find_books", { dir: "/path/to/folder" })`. Lists
+/// the EPUBs and PDFs under a folder; the frontend then imports them one at
+/// a time.
 #[tauri::command]
-pub fn find_epubs(dir: String) -> Result<EpubScan, String> {
-    db::find_epubs(&dir).map_err(|e| e.to_string())
+pub fn find_books(dir: String) -> Result<BookScan, String> {
+    db::find_books(&dir).map_err(|e| e.to_string())
 }
 
 /// Emitted as `semantic_index_progress` once before a book's first chapter
@@ -340,7 +341,7 @@ pub fn search_library(
 }
 
 /// Frontend calls: `invoke("delete_book", { bookId: 1 })`. Removes the book
-/// from the library; the EPUB file itself isn't touched.
+/// from the library; the book's file itself isn't touched.
 #[tauri::command]
 pub fn delete_book(book_id: i64, state: State<AppState>) -> Result<(), String> {
     #[cfg(feature = "semantic")]
