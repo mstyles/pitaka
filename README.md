@@ -880,6 +880,8 @@ Later:
 - [ ] A UI for the transliteration variant list, so pairs can be added
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
+- [ ] Edit a book's title and author from the library, for books whose
+      metadata is missing or wrong
 
 ## Releasing
 
