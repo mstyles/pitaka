@@ -134,7 +134,11 @@ function BookmarksView({
         ) : (
           <ul className="folder-list">
             {annotated?.map((b) => (
-              <li key={b.book_id} className="folder-row" onClick={() => onOpenAnnotations(b.book_id)}>
+              <li
+                key={b.book_id}
+                className="folder-row"
+                onClick={() => onOpenAnnotations(b.book_id)}
+              >
                 <span className="folder-row-name">{b.title ?? "Untitled"}</span>
                 <span className="book-meta">
                   {plural(b.highlight_count, "highlight")}, {plural(b.note_count, "note")}

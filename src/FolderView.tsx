@@ -117,9 +117,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
           </>
         )}
       </div>
-      <div className="folder-status">
-        {status || passageCount(passages.length)}
-      </div>
+      <div className="folder-status">{status || passageCount(passages.length)}</div>
 
       {passages.length === 0 ? (
         <p className="folder-empty">

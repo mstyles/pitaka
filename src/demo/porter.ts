@@ -147,9 +147,10 @@ export function porterStem(token: string): string {
   // Step 1a.
   if (w.endsWith("s")) {
     if (w.endsWith("es")) {
-      w = (w.length > 4 && w.endsWith("sses")) || (w.length > 3 && w.endsWith("ies"))
-        ? w.slice(0, -2)
-        : w.slice(0, -1);
+      w =
+        (w.length > 4 && w.endsWith("sses")) || (w.length > 3 && w.endsWith("ies"))
+          ? w.slice(0, -2)
+          : w.slice(0, -1);
     } else if (!w.endsWith("ss")) {
       w = w.slice(0, -1);
     }

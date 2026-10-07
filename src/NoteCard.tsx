@@ -17,7 +17,15 @@ type Props = {
 };
 
 /** A note in the reader's margin: read it, or edit it in place. */
-function NoteCard({ note, contentBlockId, highlightId, color, onChanged, onCreated, onClose }: Props) {
+function NoteCard({
+  note,
+  contentBlockId,
+  highlightId,
+  color,
+  onChanged,
+  onCreated,
+  onClose,
+}: Props) {
   const [editing, setEditing] = useState(note == null);
   const [draft, setDraft] = useState(note?.body ?? "");
   const [error, setError] = useState("");

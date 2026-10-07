@@ -1,0 +1,7 @@
+# Prettier formats the frontend's TS, TSX and CSS, and scripts/ (see the
+# format scripts in package.json). Generated or deployed files stay as they are:
+# The UI fixtures and demo data are written by core tests and compared byte for byte.
+src/test/fixtures/
+src/demo/*.json
+# The project page deploys on every push to main.
+site/

@@ -11,7 +11,8 @@ Open a PR for branch: $ARGUMENTS (default: the current branch).
    commits ahead of `main` (`git log main..<branch>`). If there are
    uncommitted changes, stop and suggest `/ship` first.
 2. Run `cargo clippy --workspace --all-targets`, `cargo test -p
-   ebook_research_core`, `npx tsc --noEmit` and `npm test` on the branch.
+   ebook_research_core`, `npm run format:check`, `npx tsc --noEmit` and
+   `npm test` on the branch.
    Stop if any fail.
 3. If `gh pr view <branch>` finds an open PR already, push any new commits
    and show its URL instead of opening a second one.

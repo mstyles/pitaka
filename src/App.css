@@ -805,10 +805,18 @@ button.button-danger:hover:not(:disabled) {
 
 /* Highlights and notes */
 
-.hl-yellow { --hl: var(--hl-yellow); }
-.hl-green { --hl: var(--hl-green); }
-.hl-blue { --hl: var(--hl-blue); }
-.hl-pink { --hl: var(--hl-pink); }
+.hl-yellow {
+  --hl: var(--hl-yellow);
+}
+.hl-green {
+  --hl: var(--hl-green);
+}
+.hl-blue {
+  --hl: var(--hl-blue);
+}
+.hl-pink {
+  --hl: var(--hl-pink);
+}
 
 mark.hl {
   color: inherit;
@@ -979,10 +987,18 @@ mark.hl {
   background: var(--surface);
 }
 
-.note-card-yellow { border-left-color: rgba(220, 170, 20, 0.9); }
-.note-card-green { border-left-color: rgba(90, 160, 60, 0.9); }
-.note-card-blue { border-left-color: rgba(60, 125, 200, 0.9); }
-.note-card-pink { border-left-color: rgba(210, 80, 130, 0.9); }
+.note-card-yellow {
+  border-left-color: rgba(220, 170, 20, 0.9);
+}
+.note-card-green {
+  border-left-color: rgba(90, 160, 60, 0.9);
+}
+.note-card-blue {
+  border-left-color: rgba(60, 125, 200, 0.9);
+}
+.note-card-pink {
+  border-left-color: rgba(210, 80, 130, 0.9);
+}
 
 .note-card-body {
   white-space: pre-wrap;
@@ -1054,10 +1070,18 @@ mark.hl {
   border-left: 3px solid var(--rule-neutral);
 }
 
-.annotation-quote.hl-bar-yellow { border-left-color: rgba(220, 170, 20, 0.9); }
-.annotation-quote.hl-bar-green { border-left-color: rgba(90, 160, 60, 0.9); }
-.annotation-quote.hl-bar-blue { border-left-color: rgba(60, 125, 200, 0.9); }
-.annotation-quote.hl-bar-pink { border-left-color: rgba(210, 80, 130, 0.9); }
+.annotation-quote.hl-bar-yellow {
+  border-left-color: rgba(220, 170, 20, 0.9);
+}
+.annotation-quote.hl-bar-green {
+  border-left-color: rgba(90, 160, 60, 0.9);
+}
+.annotation-quote.hl-bar-blue {
+  border-left-color: rgba(60, 125, 200, 0.9);
+}
+.annotation-quote.hl-bar-pink {
+  border-left-color: rgba(210, 80, 130, 0.9);
+}
 
 .annotation-note {
   margin-top: 0.4em;

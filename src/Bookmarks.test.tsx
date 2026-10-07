@@ -155,7 +155,9 @@ describe("bookmark folders", () => {
     await user.click(await screen.findByText(FOLDER.name));
     await waitFor(() => expect(passages()).toHaveLength(2));
     await user.click(screen.getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(callsTo("delete_bookmark_folder")).toEqual([{ folderId: FOLDER.id }]));
+    await waitFor(() =>
+      expect(callsTo("delete_bookmark_folder")).toEqual([{ folderId: FOLDER.id }]),
+    );
     expect(callsTo("plugin:dialog|message")[0].message).toBe(
       `Delete the folder "${FOLDER.name}" and its 2 bookmarks? The passages stay in their books.`,
     );
@@ -183,10 +185,10 @@ describe("bookmark folders", () => {
       `Remove "${LONG_BOOK}" from the library? Its 1 bookmark, 2 highlights and 2 notes will be deleted too. The book's file won't be deleted.`,
     );
     await goTo(user, "Bookmarks & notes");
-    await waitFor(() =>
-      expect(within(folderRow(FOLDER.name)).getByText("1 passage")).toBeTruthy(),
-    );
-    expect(screen.getByText("Select text while reading to highlight it or add a note.")).toBeTruthy();
+    await waitFor(() => expect(within(folderRow(FOLDER.name)).getByText("1 passage")).toBeTruthy());
+    expect(
+      screen.getByText("Select text while reading to highlight it or add a note."),
+    ).toBeTruthy();
   });
 
   it("the Bookmarks header button leaves an open folder", async () => {
@@ -241,11 +243,11 @@ describe("bookmarking in the reader", () => {
     const popover = screen.getByRole("dialog", { name: "Bookmark folders" });
     const box = await within(popover).findByLabelText<HTMLInputElement>("Second talk");
     expect(box.checked).toBe(true);
-    const names = within(popover).getAllByRole("checkbox").map((c) => c.parentElement!.textContent);
+    const names = within(popover)
+      .getAllByRole("checkbox")
+      .map((c) => c.parentElement!.textContent);
     expect(names).toEqual(["Second talk", FOLDER.name]);
-    expect(callsTo("add_bookmark")).toEqual([
-      { folderId: FOLDER.id + 1, contentBlockId: block },
-    ]);
+    expect(callsTo("add_bookmark")).toEqual([{ folderId: FOLDER.id + 1, contentBlockId: block }]);
 
     await user.click(screen.getByRole("button", { name: "← Books" }));
     await goTo(user, "Bookmarks & notes");
@@ -258,7 +260,10 @@ describe("bookmarking in the reader", () => {
     const { user } = renderApp();
     await openLongBook(user);
     await user.click(toggleFor(partOneBlock(3)));
-    await user.type(screen.getByLabelText("New folder name"), `${FOLDER.name.toUpperCase()}{Enter}`);
+    await user.type(
+      screen.getByLabelText("New folder name"),
+      `${FOLDER.name.toUpperCase()}{Enter}`,
+    );
     const popover = screen.getByRole("dialog", { name: "Bookmark folders" });
     expect(
       await within(popover).findByText(

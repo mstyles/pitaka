@@ -288,9 +288,7 @@ describe("indexing for chapter search", () => {
     await screen.findByText(LONG_BOOK);
 
     await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3, queued: 0 }));
-    expect(
-      screen.getByText(`Indexing ${LONG_BOOK} for chapter search… 1/3 chapters`),
-    ).toBeTruthy();
+    expect(screen.getByText(`Indexing ${LONG_BOOK} for chapter search… 1/3 chapters`)).toBeTruthy();
     await act(() => indexingEvents.progress({ book_id: 2, done: 3, total: 3, queued: 0 }));
     expect(screen.getByText(`Indexed ${LONG_BOOK} for chapter search`)).toBeTruthy();
   });

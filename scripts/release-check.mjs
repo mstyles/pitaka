@@ -27,9 +27,7 @@ function cargoVersion(path) {
 const found = {
   "package.json": JSON.parse(read("package.json")).version,
   "src-tauri/Cargo.toml": cargoVersion("src-tauri/Cargo.toml"),
-  "ebook_research_core/Cargo.toml": cargoVersion(
-    "ebook_research_core/Cargo.toml",
-  ),
+  "ebook_research_core/Cargo.toml": cargoVersion("ebook_research_core/Cargo.toml"),
 };
 const mismatches = Object.entries(found).filter(([, v]) => v !== version);
 if (mismatches.length > 0) {
@@ -41,9 +39,7 @@ if (mismatches.length > 0) {
 
 const escaped = version.replaceAll(".", "\\.");
 const changelog = read("CHANGELOG.md");
-const heading = new RegExp(`^## \\[${escaped}\\][^\\n]*\\n`, "m").exec(
-  changelog,
-);
+const heading = new RegExp(`^## \\[${escaped}\\][^\\n]*\\n`, "m").exec(changelog);
 let notes = "";
 if (heading) {
   const rest = changelog.slice(heading.index + heading[0].length);

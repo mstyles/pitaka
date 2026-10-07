@@ -13,6 +13,7 @@ Ship the current changes. $ARGUMENTS
    - `cargo fmt --all --check`
    - `cargo clippy --workspace --all-targets` (zero warnings)
    - `cargo test -p ebook_research_core`
+   - `npm run format:check`
    - `npx tsc --noEmit`
    - `npm test`
 3. **UI check.** If the diff touches `src/`, or a type the frontend

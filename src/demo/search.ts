@@ -3,7 +3,13 @@
 // query builder (`to_fts_query`) and SQLite's FTS5 (the unicode61 and porter
 // tokenizers, bm25() and snippet()). `search.test.ts` checks it against
 // results the core wrote to `src/test/fixtures/demo-search.json`.
-import type { BookSummary, ChapterContent, ContentBlockRow, SearchMode, SearchResult } from "../types";
+import type {
+  BookSummary,
+  ChapterContent,
+  ContentBlockRow,
+  SearchMode,
+  SearchResult,
+} from "../types";
 import { porterStem } from "./porter";
 import variantGroups from "./variants.json";
 
@@ -29,8 +35,25 @@ function fold(text: string) {
  * NFD-based `fold()` above, so both agree on exactly which terms expand.
  */
 const IAST: Record<string, string> = {
-  ā: "a", ī: "i", ū: "u", ṛ: "r", ṝ: "r", ḷ: "l", ḹ: "l", ē: "e", ō: "o",
-  ṅ: "n", ñ: "n", ṇ: "n", ṭ: "t", ḍ: "d", ś: "s", ṣ: "s", ṃ: "m", ṁ: "m", ḥ: "h",
+  ā: "a",
+  ī: "i",
+  ū: "u",
+  ṛ: "r",
+  ṝ: "r",
+  ḷ: "l",
+  ḹ: "l",
+  ē: "e",
+  ō: "o",
+  ṅ: "n",
+  ñ: "n",
+  ṇ: "n",
+  ṭ: "t",
+  ḍ: "d",
+  ś: "s",
+  ṣ: "s",
+  ṃ: "m",
+  ṁ: "m",
+  ḥ: "h",
 };
 
 function foldVariantKey(term: string) {
@@ -137,20 +160,31 @@ function buildExpr(parts: QueryPart[], mode: SearchMode): { expr: Expr; phrases:
   let run: Expr[] = [];
   const endRun = () => {
     const kept = run.filter((e) => e.kind !== "none");
-    operands.push(kept.length === 0 ? { kind: "none" } : kept.length === 1 ? kept[0] : { kind: "and", children: kept });
+    operands.push(
+      kept.length === 0
+        ? { kind: "none" }
+        : kept.length === 1
+          ? kept[0]
+          : { kind: "and", children: kept },
+    );
     run = [];
   };
   const reduce = () => {
     const right = operands.pop()!;
     const left = operands.pop()!;
     const op = operators.pop()!;
-    operands.push(op === "NOT" ? { kind: "not", left, right } : { kind: op === "AND" ? "and" : "or", children: [left, right] });
+    operands.push(
+      op === "NOT"
+        ? { kind: "not", left, right }
+        : { kind: op === "AND" ? "and" : "or", children: [left, right] },
+    );
   };
 
   for (const part of parts) {
     if ("op" in part) {
       endRun();
-      while (operators.length && PRECEDENCE[operators[operators.length - 1]] >= PRECEDENCE[part.op]) reduce();
+      while (operators.length && PRECEDENCE[operators[operators.length - 1]] >= PRECEDENCE[part.op])
+        reduce();
       operators.push(part.op);
     } else {
       // A plain word with a listed transliteration variant becomes an OR of
@@ -244,7 +278,12 @@ export function createSearch(contents: ChapterContent[]) {
       }),
     ));
 
-  return function search(books: BookSummary[], query: string, mode: SearchMode, limit = 50): SearchResult[] {
+  return function search(
+    books: BookSummary[],
+    query: string,
+    mode: SearchMode,
+    limit = 50,
+  ): SearchResult[] {
     const parts = parseQuery(query);
     if (parts.length === 0) return [];
     const { expr, phrases } = buildExpr(parts, mode);
@@ -267,7 +306,9 @@ export function createSearch(contents: ChapterContent[]) {
       const reported = new Set<number>();
       reportedPhrases(expr, hits, reported);
       const instances: Instance[] = [...reported]
-        .flatMap((phrase) => hits[phrase].map((pos) => ({ phrase, pos, size: phrases[phrase].terms.length })))
+        .flatMap((phrase) =>
+          hits[phrase].map((pos) => ({ phrase, pos, size: phrases[phrase].terms.length })),
+        )
         .sort((a, b) => a.pos - b.pos || a.phrase - b.phrase);
 
       const k1 = 1.2;
@@ -275,7 +316,8 @@ export function createSearch(contents: ChapterContent[]) {
       let score = 0;
       phrases.forEach((_, i) => {
         const freq = instances.filter((inst) => inst.phrase === i).length;
-        score += idf[i] * ((freq * (k1 + 1.0)) / (freq + k1 * (1 - b + (b * row.tokens.length) / avgdl)));
+        score +=
+          idf[i] * ((freq * (k1 + 1.0)) / (freq + k1 * (1 - b + (b * row.tokens.length) / avgdl)));
       });
 
       results.push({
@@ -291,7 +333,9 @@ export function createSearch(contents: ChapterContent[]) {
       });
     });
 
-    return results.sort((a, b) => a.rank - b.rank || a.content_block_id - b.content_block_id).slice(0, limit);
+    return results
+      .sort((a, b) => a.rank - b.rank || a.content_block_id - b.content_block_id)
+      .slice(0, limit);
   };
 }
 
@@ -346,7 +390,8 @@ function snippet(row: Row, instances: Instance[], nPhrase: number): string {
       while (jj < sentenceStarts.length - 1 && sentenceStarts[jj + 1] <= inst.pos) jj++;
       const start = sentenceStarts[jj];
       if (start < inst.pos) {
-        const sentenceScore = snippetScore(instances, nPhrase, docSize, start).score + (start === 0 ? 120 : 100);
+        const sentenceScore =
+          snippetScore(instances, nPhrase, docSize, start).score + (start === 0 ? 120 : 100);
         if (sentenceScore > bestScore) {
           bestScore = sentenceScore;
           bestStart = start;

@@ -52,9 +52,14 @@ Run all of these before opening a pull request. CI runs the same ones.
 cargo fmt --all
 cargo clippy --workspace --all-targets   # must be warning-free
 cargo test -p ebook_research_core
+npm run format:check   # npm run format fixes it
 npx tsc --noEmit
 npm test
 ```
+
+The commit that first formatted the frontend with Prettier is listed in
+`.git-blame-ignore-revs`. GitHub skips it in blame views; to skip it
+locally too, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 Core logic is tested in the core crate, either with `#[cfg(test)]` in
 the module or in `tests/integration.rs` against `test.epub`. Frontend

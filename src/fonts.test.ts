@@ -10,8 +10,12 @@ const css: string = readFileSync("src/fonts.css", "utf8");
 // subset's range makes Chrome decompose "ā" and misplace the macron.
 describe("bundled font subsets", () => {
   const faces = Array.from(css.matchAll(/@font-face\s*{([^}]*)}/g), (m) => ({
-    src: /src: url\(([^)]*)\)/.exec(m[1])![1],
-    range: /unicode-range: ([^;]*);/.exec(m[1])![1].split(","),
+    src: /src:\s*url\(([^)]*)\)/.exec(m[1])![1],
+    // Prettier wraps a long range over several lines.
+    range: /unicode-range:\s*([^;]*);/
+      .exec(m[1])![1]
+      .split(",")
+      .map((r) => r.trim()),
   }));
 
   it("has a latin and latin-ext face for each family", () => {
