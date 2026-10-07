@@ -214,6 +214,47 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** Lower case without accents, so "thich" finds "Thích". */
+function fold(s: string) {
+  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
+/**
+ * Whether every word of `filter` appears in the book's title or author, as
+ * the row shows them, in any order: "nhat hanh heart" finds a book whose
+ * author is stored as "Hanh, Thich Nhat".
+ */
+export function matchesFilter(book: BookSummary, filter: string) {
+  const text = fold(`${book.title ?? "Untitled"} ${book.author ?? "Unknown author"}`);
+  return fold(filter)
+    .split(/\s+/)
+    .every((word) => text.includes(word));
+}
+
+export type BookSort = "title" | "added";
+
+const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+/** A title as a catalogue files it: "The Sun My Heart" under S. */
+function titleKey(title: string) {
+  return title.replace(/^(the|an?)\s+/i, "");
+}
+
+/** By title, untitled books last; or as `list_books` returns them, newest first. */
+export function sortBooks(books: BookSummary[], sort: BookSort) {
+  if (sort === "added") return [...books];
+  return [...books].sort((a, b) => {
+    if (a.title == null || b.title == null) {
+      if (a.title != null) return -1;
+      if (b.title != null) return 1;
+    } else {
+      const byTitle = collator.compare(titleKey(a.title), titleKey(b.title));
+      if (byTitle !== 0) return byTitle;
+    }
+    return collator.compare(a.author ?? "", b.author ?? "") || a.id - b.id;
+  });
+}
+
 function folderImportLine(f: FolderImport) {
   if (f.scanError) return `Import failed: ${f.scanError}`;
   if (f.running) {
@@ -243,6 +284,11 @@ type Props = {
   /** Called after a book is added or removed, so a kept search can re-run. */
   onLibraryChanged: () => void;
   indexer: IndexingControls;
+  /** Kept by App, so they survive opening a book and coming back. */
+  filter: string;
+  onFilterChange: (filter: string) => void;
+  sort: BookSort;
+  onSortChange: (sort: BookSort) => void;
 } & ReturnType<typeof useFolderImport>;
 
 const PAUSED_NOTE = "New imports won't be indexed until you click Index or Index all books.";
@@ -251,6 +297,10 @@ function BooksView({
   onOpenBook,
   onLibraryChanged,
   indexer,
+  filter,
+  onFilterChange,
+  sort,
+  onSortChange,
   folderImport,
   startFolderImport,
   stopFolderImport,
@@ -323,6 +373,9 @@ function BooksView({
   const unindexed = books?.filter((b) => b.index_state !== "indexed") ?? [];
   const anyQueued = books?.some((b) => queued.has(b.id)) ?? false;
   const line = indexingLine();
+  // Index all books and the indexing line still use the whole library.
+  const shown = books && sortBooks(books.filter((b) => matchesFilter(b, filter)), sort);
+  const filtering = filter.trim() !== "";
 
   async function importBook() {
     const path = await open({
@@ -424,11 +477,62 @@ function BooksView({
         </div>
       )}
 
+      {books && books.length > 0 && (
+        <div className="row books-filter">
+          <div className="search-field">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6" />
+              <path d="M15 15l5.5 5.5" />
+            </svg>
+            <input
+              type="search"
+              aria-label="Filter books"
+              spellCheck={false}
+              value={filter}
+              onChange={(e) => onFilterChange(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") onFilterChange("");
+              }}
+              placeholder="Filter by title or author…"
+            />
+          </div>
+          <span className="books-sort-label" id="books-sort-label">
+            Sort:
+          </span>
+          <div className="scope-toggle" role="group" aria-labelledby="books-sort-label">
+            <button
+              type="button"
+              aria-pressed={sort === "title"}
+              onClick={() => onSortChange("title")}
+            >
+              Title
+            </button>
+            <button
+              type="button"
+              aria-pressed={sort === "added"}
+              onClick={() => onSortChange("added")}
+            >
+              Recently added
+            </button>
+          </div>
+        </div>
+      )}
+      {books && filtering && shown!.length > 0 && (
+        <p className="status">
+          Showing {shown!.length} of {plural(books.length, "book")}
+        </p>
+      )}
+
       {books?.length === 0 ? (
         <p className="section-empty">No books yet. Import an EPUB or PDF to start.</p>
+      ) : shown?.length === 0 ? (
+        <div className="row">
+          <p className="section-empty">No books match "{filter.trim()}".</p>
+          <button onClick={() => onFilterChange("")}>Clear filter</button>
+        </div>
       ) : (
         <ul className="book-list">
-          {books?.map((b) => (
+          {shown?.map((b) => (
             <li key={b.id} className="book-row" onClick={() => onOpenBook(b.id)}>
               <span className="book-title">{b.title ?? "Untitled"}</span>
               <span className="book-meta">

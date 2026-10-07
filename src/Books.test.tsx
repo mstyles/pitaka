@@ -92,6 +92,85 @@ describe("books", () => {
     expect(await screen.findByText(LONG_BOOK)).toBeTruthy();
   });
 
+  it("filters the books by title", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.type(screen.getByRole("searchbox", { name: "Filter books" }), "research");
+    expect(screen.getByText(TEST_BOOK)).toBeTruthy();
+    expect(screen.queryByText(LONG_BOOK)).toBeNull();
+    expect(screen.getByText("Showing 1 of 2 books")).toBeTruthy();
+  });
+
+  it("filters the books by author", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.type(screen.getByRole("searchbox", { name: "Filter books" }), "fixture");
+    expect(screen.getByText(LONG_BOOK)).toBeTruthy();
+    expect(screen.queryByText(TEST_BOOK)).toBeNull();
+  });
+
+  it("matches filter words from the title and author in any order", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.type(screen.getByRole("searchbox", { name: "Filter books" }), "tester book");
+    expect(screen.getByText(TEST_BOOK)).toBeTruthy();
+    expect(screen.queryByText(LONG_BOOK)).toBeNull();
+  });
+
+  it("says when no book matches the filter, and clears it", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    const box = screen.getByRole("searchbox", { name: "Filter books" });
+    await user.type(box, "zzz");
+    expect(screen.getByText('No books match "zzz".')).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(box).toHaveProperty("value", "");
+    expect(screen.getByText(TEST_BOOK)).toBeTruthy();
+    expect(screen.getByText(LONG_BOOK)).toBeTruthy();
+    expect(screen.queryByText(/^Showing/)).toBeNull();
+  });
+
+  it("clears the filter with Escape", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    const box = screen.getByRole("searchbox", { name: "Filter books" });
+    await user.type(box, "research{Escape}");
+    expect(box).toHaveProperty("value", "");
+    expect(screen.getByText(LONG_BOOK)).toBeTruthy();
+  });
+
+  it("keeps the filter after opening a book and coming back", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await user.type(screen.getByRole("searchbox", { name: "Filter books" }), "scrolling");
+    await user.click(screen.getByText(LONG_BOOK));
+    await user.click(await screen.findByRole("button", { name: "← Books" }));
+    expect(await screen.findByText(LONG_BOOK)).toBeTruthy();
+    const box = screen.getByRole("searchbox", { name: "Filter books" });
+    expect(box).toHaveProperty("value", "scrolling");
+    expect(screen.queryByText(TEST_BOOK)).toBeNull();
+  });
+
+  it("sorts by title, or by when the book was added", async () => {
+    // Newest first, as list_books returns them: the reverse of title order.
+    const { user } = renderApp({ books: [...fixtures.books].reverse() });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    const titles = () =>
+      Array.from(document.querySelectorAll(".book-title")).map((e) => e.textContent);
+    expect(titles()).toEqual([LONG_BOOK, TEST_BOOK]);
+    expect(screen.getByRole("button", { name: "Title" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Recently added" }));
+    expect(titles()).toEqual([TEST_BOOK, LONG_BOOK]);
+  });
+
   it("shows an error when the library can't be loaded", async () => {
     const { user } = renderApp({ fail: { list_books: "database is locked" } });
     await goTo(user, "Books");

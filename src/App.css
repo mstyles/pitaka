@@ -1065,3 +1065,21 @@ mark.hl {
   white-space: pre-wrap;
   color: var(--muted);
 }
+
+/* Books screen: filter box and sort toggle above the list. */
+.books-filter {
+  margin-top: 1em;
+}
+.books-filter .search-field {
+  max-width: 28em;
+}
+.books-filter input[type="search"] {
+  appearance: none;
+}
+.books-sort-label {
+  margin-left: 0.5em;
+  color: var(--muted);
+}
+.books-filter .scope-toggle {
+  margin-top: 0;
+}

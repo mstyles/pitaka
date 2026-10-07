@@ -54,3 +54,9 @@ Out of scope: sorting by author, filtering by index state or format, and searchi
 1. `npm test` and `npx tsc --noEmit`.
 2. `npm run dev:mock`: type in the box, clear it with Escape and with the button, switch the sort, open a book and come back.
 3. `npm run tauri dev` against the real library: "thich" narrows to the 41 Thich Nhat Hanh books (counting "Hanh, Thich Nhat"), "how to" to the eight *How to* books, "buddhist" to the PDF.
+
+## Implementation notes (differences from this plan)
+- The accent case in `BooksView.test.ts` uses "Eagle", "éclair", "Eclipse": "Echo" sorts before "éclair" (h < l), so it couldn't show the accent being ignored.
+- The fixture books' title order matches `list_books`' order, so the sort test serves them reversed through `renderApp`'s `books` option.
+- "Showing N of M books" is hidden when nothing matches, since the "No books match" line says it.
+- The filter box has `spellCheck={false}`: titles and names were getting red underlines.
