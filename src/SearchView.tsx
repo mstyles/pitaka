@@ -26,9 +26,7 @@ type LastSearch = { query: string; exact: boolean; scope: Scope; version: number
 function highlight(snippet: string) {
   return snippet
     .split(/(\[[^\]]*\])/)
-    .map((part, i) =>
-      i % 2 === 1 ? <mark key={i}>{part.slice(1, -1)}</mark> : part,
-    );
+    .map((part, i) => (i % 2 === 1 ? <mark key={i}>{part.slice(1, -1)}</mark> : part));
 }
 
 function SearchView({ active, libraryVersion, onOpenResult }: Props) {

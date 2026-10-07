@@ -374,7 +374,12 @@ function BooksView({
   const anyQueued = books?.some((b) => queued.has(b.id)) ?? false;
   const line = indexingLine();
   // Index all books and the indexing line still use the whole library.
-  const shown = books && sortBooks(books.filter((b) => matchesFilter(b, filter)), sort);
+  const shown =
+    books &&
+    sortBooks(
+      books.filter((b) => matchesFilter(b, filter)),
+      sort,
+    );
   const filtering = filter.trim() !== "";
 
   async function importBook() {
@@ -415,7 +420,9 @@ function BooksView({
     ] as const;
     const parts = marked.filter(([n]) => n > 0).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
     const list =
-      parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+      parts.length > 1
+        ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+        : parts[0];
     const lost = list ? ` Its ${list} will be deleted too.` : "";
     const confirmed = await ask(
       `Remove "${title}" from the library?${lost} The book's file won't be deleted.`,
@@ -460,8 +467,8 @@ function BooksView({
         <ul className="import-failures">
           {folderImport.failures.map(({ path, error }) => (
             <li key={path}>
-              <span className="import-failure-path">{relativePath(path, folderImport.dir)}</span>
-              : {error}
+              <span className="import-failure-path">{relativePath(path, folderImport.dir)}</span>:{" "}
+              {error}
             </li>
           ))}
         </ul>

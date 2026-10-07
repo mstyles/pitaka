@@ -445,9 +445,7 @@ function ReaderView({
             const highlights = annotations.highlights.filter((h) => h.content_block_id === b.id);
             const notes = annotations.notes.filter((n) => n.content_block_id === b.id);
             const own = notes.find((n) => n.highlight_id == null);
-            const popoverHighlight = highlights.find(
-              (h) => h.id === highlightPopover?.highlightId,
-            );
+            const popoverHighlight = highlights.find((h) => h.id === highlightPopover?.highlightId);
             const ownOpen =
               own != null
                 ? openNoteIds.has(own.id)

@@ -114,9 +114,9 @@ describe("highlights in the reader", () => {
     await openLongBook(user);
     await user.click(await waitFor(() => paragraph(3).querySelector("mark.hl-green")!));
     const popover = await screen.findByRole("dialog", { name: "Highlight" });
-    expect(within(popover).getByRole("button", { name: "Green" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    expect(
+      within(popover).getByRole("button", { name: "Green" }).getAttribute("aria-pressed"),
+    ).toBe("true");
     await user.click(within(popover).getByRole("button", { name: "Pink" }));
     expect(callsTo("set_highlight_color")).toEqual([{ highlightId: PLAIN.id, color: "pink" }]);
     await waitFor(() => expect(paragraph(3).querySelector("mark.hl-pink")).not.toBeNull());
@@ -299,7 +299,9 @@ describe("Bookmarks & notes screen", () => {
 
     const back = await screen.findByRole("button", { name: `← ${LONG_BOOK}` });
     await waitFor(() => expect(paragraph(3).classList.contains("flash")).toBe(true));
-    expect(await screen.findByText(HIGHLIGHT_NOTE.body, { selector: ".note-card-body" })).toBeTruthy();
+    expect(
+      await screen.findByText(HIGHLIGHT_NOTE.body, { selector: ".note-card-body" }),
+    ).toBeTruthy();
 
     await user.click(back);
     expect(await screen.findByRole("heading", { name: LONG_BOOK })).toBeTruthy();

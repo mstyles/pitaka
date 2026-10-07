@@ -16,7 +16,9 @@ function plural(n: number, word: string) {
 }
 
 const ICONS: Record<Exclude<Screen, "home">, ReactNode> = {
-  books: <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" />,
+  books: (
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" />
+  ),
   bookmarks: <path d="M6 3h12v18l-6-5-6 5z" />,
   search: (
     <>
@@ -82,7 +84,12 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
     }
   }
 
-  const cards: { screen: Exclude<Screen, "home">; title: string; detail: string; disabled?: boolean }[] = [
+  const cards: {
+    screen: Exclude<Screen, "home">;
+    title: string;
+    detail: string;
+    disabled?: boolean;
+  }[] = [
     { screen: "books", title: "Books", detail: booksDetail },
     { screen: "bookmarks", title: "Bookmarks & notes", detail: foldersDetail },
     { screen: "search", title: "Search", detail: searchDetail, disabled: emptyLibrary },
