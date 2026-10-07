@@ -9,6 +9,8 @@ limitations and roadmap — read it before planning a feature.
 - `cargo test -p ebook_research_core` — core unit + integration tests
 - `cargo clippy --workspace --all-targets` — must be warning-free
 - `cargo fmt --all` — runs automatically after Rust edits (hook)
+- `npm run format` — Prettier for `src/`, `scripts/` and `vite.config.ts`;
+  runs automatically after frontend edits (hook), `format:check` in CI
 - `npx tsc --noEmit` — frontend typecheck
 - `npm test` — frontend component tests (Vitest, mocked backend)
 - `npm run dev:mock` — the UI in a browser on :1430 against the mocked
@@ -18,7 +20,8 @@ limitations and roadmap — read it before planning a feature.
   `site-build/`
 - `npm run tauri dev` — launch the app (needs the webkit2gtk libs in README)
 
-Before calling work done, run tests, clippy, tsc and `npm test`. Say what
+Before calling work done, run tests, clippy, tsc, `npm test` and
+`npm run format:check`. Say what
 was verified and what wasn't (e.g. "checked in the browser against mocks,
 not clicked through in the Tauri window").
 
@@ -54,8 +57,8 @@ not clicked through in the Tauri window").
 ## Workflow
 
 Skills cover each step: `/plan <feature>`, `/ship`, `/pr`, `/merge`. CI
-(`.github/workflows/ci.yml`) runs fmt, clippy `-D warnings`, core tests,
-tsc and the Vite build on pushes to `main` and on PRs.
+(`.github/workflows/ci.yml`) runs fmt, Prettier, clippy `-D warnings`,
+core tests, tsc and the Vite build on pushes to `main` and on PRs.
 
 1. **Plan**: for anything non-trivial, write `docs/plans/<kebab-name>.md`
    first — a `## Context` section (the problem and what's out of scope),
