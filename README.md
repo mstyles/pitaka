@@ -613,7 +613,15 @@ alongside the old one. Neither may change. The version comes from
   sat in the margin column, opening one left the text where it was, and
   a long note pushed the next paragraph down; at 884px they opened under
   the paragraph. The gap under a tall card was then fixed and checked
-  at 884px only. No console errors. Not checked in dark mode.
+  at 884px only. No console errors. Not checked in dark mode. Walked
+  again for the Books filter and sort: typing narrowed the list and
+  showed "Showing 1 of 2 books", a word that matched nothing showed the
+  "No books match" line with Clear filter, and Escape (sent from the
+  page, as the Chrome extension's Escape never reaches it) emptied the
+  box. The order, the sort toggle and keeping the filter across the
+  reader are covered by `Books.test.tsx`, and title order (leading
+  articles, numbers, accents, untitled last) by `BooksView.test.ts`.
+  Not checked in the Tauri window or in dark mode.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
@@ -918,6 +926,7 @@ Done:
 - [x] Release builds for Linux and Windows: a version tag builds the
       installers and attaches them to a draft GitHub release
 - [x] Import text-layer PDFs, with chapters from the outline
+- [x] Filter the Books screen by title or author, and sort it by title
 
 Later:
 
