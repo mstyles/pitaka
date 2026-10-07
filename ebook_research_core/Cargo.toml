@@ -28,7 +28,7 @@ candle-transformers = { version = "0.11", optional = true }
 tokenizers = { version = "0.23", default-features = false, features = ["onig"], optional = true }
 # 0.4's small sync client; 1.0 is a full async Hub client, far more than
 # fetching three files needs.
-hf-hub = { version = "0.4", default-features = false, features = ["ureq"], optional = true }
+hf-hub = { version = "0.5", default-features = false, features = ["ureq"], optional = true }
 serde_json = { version = "1", optional = true }
 
 [features]
