@@ -352,6 +352,19 @@ pub fn delete_book(book_id: i64, state: State<AppState>) -> Result<(), String> {
     db::delete_book(&conn, book_id).map_err(|e| e.to_string())
 }
 
+/// Frontend calls: `invoke("update_book_details", { bookId: 1, title: "…", author: "…" })`.
+/// An empty field clears it. The book's file isn't changed.
+#[tauri::command]
+pub fn update_book_details(
+    book_id: i64,
+    title: String,
+    author: String,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::update_book_details(&conn, book_id, &title, &author).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn list_books(state: State<AppState>) -> Result<Vec<BookSummary>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;

@@ -1,8 +1,8 @@
-//! The reader's read queries: books, their chapters and a chapter's text.
+//! The library's books, their chapters and a chapter's text.
 
 use super::semantic_index::{models_json, IndexState, INDEX_STATE_SQL};
 use crate::semantic::COMPATIBLE_MODELS;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
@@ -46,6 +46,48 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Longest title or author accepted, after cleaning. A guard against
+/// pasting a paragraph by mistake, not a real limit on titles.
+const MAX_FIELD_CHARS: usize = 500;
+
+/// Corrects a book's title and author. Each is trimmed with runs of
+/// whitespace collapsed, and an empty one is stored as `NULL`. Only the
+/// library changes; the book's file is never touched.
+pub fn update_book_details(
+    conn: &Connection,
+    book_id: i64,
+    title: &str,
+    author: &str,
+) -> Result<()> {
+    let title = clean_field(title);
+    let author = clean_field(author);
+    for (name, value) in [("title", &title), ("author", &author)] {
+        if value
+            .as_ref()
+            .is_some_and(|v| v.chars().count() > MAX_FIELD_CHARS)
+        {
+            bail!("{name} is too long ({MAX_FIELD_CHARS} characters at most)");
+        }
+    }
+    // A plain UPDATE: INSERT OR REPLACE would delete the row first and
+    // cascade away the book's chapters and annotations.
+    let updated = conn.execute(
+        "UPDATE books SET title = ?1, author = ?2 WHERE id = ?3",
+        params![title, author, book_id],
+    )?;
+    if updated == 0 {
+        bail!("no book with id {book_id}");
+    }
+    Ok(())
+}
+
+/// Trims, collapses runs of whitespace (newlines pasted from a PDF
+/// included) to one space, and turns an empty field into `None`.
+fn clean_field(value: &str) -> Option<String> {
+    let cleaned = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!cleaned.is_empty()).then_some(cleaned)
 }
 
 #[derive(Serialize, Debug)]
@@ -111,4 +153,81 @@ pub fn get_chapter_content(conn: &Connection, chapter_id: i64) -> Result<Chapter
         book_id,
         blocks,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::import::load_book;
+    use crate::db::test_util::*;
+    use crate::db::*;
+
+    fn book(conn: &Connection, id: i64) -> BookSummary {
+        list_books(conn)
+            .unwrap()
+            .into_iter()
+            .find(|b| b.id == id)
+            .unwrap()
+    }
+
+    #[test]
+    fn update_book_details_changes_title_and_author() {
+        let mut conn = open_db(":memory:").unwrap();
+        let mut parsed = one_chapter_book("Old", &["zebra alpha", "zebra beta"]);
+        parsed.author = Some("X".to_string());
+        let id = load_book(&mut conn, "/a.epub", "ha", &parsed).unwrap();
+        conn.execute(
+            "INSERT INTO highlights (book_id, content_block_id, start_offset, end_offset)
+             SELECT book_id, id, 0, 5 FROM content_blocks WHERE book_id = ?1 LIMIT 1",
+            [id],
+        )
+        .unwrap();
+
+        update_book_details(&conn, id, "  The   New\nTitle ", "Hanh, Thich Nhat").unwrap();
+
+        let b = book(&conn, id);
+        assert_eq!(b.title.as_deref(), Some("The New Title"));
+        assert_eq!(b.author.as_deref(), Some("Hanh, Thich Nhat"));
+        assert_eq!(b.chapter_count, 1);
+        assert_eq!(b.highlight_count, 1);
+        let hits = search(&conn, "zebra", SearchMode::Stemmed, None, 10).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert!(hits
+            .iter()
+            .all(|h| h.book_title.as_deref() == Some("The New Title")));
+    }
+
+    #[test]
+    fn empty_fields_clear_title_and_author() {
+        let mut conn = open_db(":memory:").unwrap();
+        let mut parsed = one_chapter_book("Old", &["zebra"]);
+        parsed.author = Some("X".to_string());
+        let id = load_book(&mut conn, "/a.epub", "ha", &parsed).unwrap();
+
+        update_book_details(&conn, id, "", "   ").unwrap();
+
+        let b = book(&conn, id);
+        assert_eq!(b.title, None);
+        assert_eq!(b.author, None);
+    }
+
+    #[test]
+    fn update_book_details_rejects_unknown_and_overlong() {
+        let mut conn = open_db(":memory:").unwrap();
+        let parsed = one_chapter_book("Old", &["zebra"]);
+        let id = load_book(&mut conn, "/a.epub", "ha", &parsed).unwrap();
+
+        let err = update_book_details(&conn, id + 1, "T", "A").unwrap_err();
+        assert!(err.to_string().contains("no book with id"), "{err}");
+
+        let err = update_book_details(&conn, id, &"t".repeat(501), "A").unwrap_err();
+        assert!(err.to_string().contains("too long"), "{err}");
+        assert_eq!(book(&conn, id).title.as_deref(), Some("Old"));
+
+        let err = update_book_details(&conn, id, "T", &"a".repeat(501)).unwrap_err();
+        assert!(err.to_string().contains("author is too long"), "{err}");
+
+        update_book_details(&conn, id, &"t".repeat(500), "").unwrap();
+        assert_eq!(book(&conn, id).title.map(|t| t.len()), Some(500));
+    }
 }

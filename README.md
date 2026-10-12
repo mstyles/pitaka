@@ -33,7 +33,8 @@ to keep, and highlights and notes as you read.
 - **Bring in a whole folder.** Import one EPUB or PDF, or pick a folder
   and every EPUB and PDF under it is imported, Calibre's `Author/Title/`
   layout included, skipping the ones already in your library. PDFs need
-  a text layer: scanned ones are refused.
+  a text layer: scanned ones are refused. A wrong or missing title or
+  author can be corrected on the Books screen, without changing the file.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -269,7 +270,15 @@ alongside the old one. Neither may change. The version comes from
   One file per job, each with its unit tests alongside and all
   re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
   `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
-  queries), `bookmarks.rs` and `annotations.rs`.
+  queries, and `update_book_details`), `bookmarks.rs` and `annotations.rs`.
+  `update_book_details` corrects a book's title and author with a plain
+  `UPDATE`: each is trimmed with runs of whitespace collapsed, an empty
+  one is stored as `NULL` (shown as "Untitled" / "Unknown author"), and
+  more than 500 characters is refused. Unit tests cover the cleaning,
+  that the book's chapters and highlights are untouched and search hits
+  carry the new title straight away, an unknown id and the length
+  limit; the integration test `edited_details_survive_reimporting_the_same_file`
+  checks that importing the same file again keeps the edit.
   `find_books` (in `import.rs`) lists the EPUBs and PDFs under a folder for a
   folder import: recursive, following linked folders, skipping hidden
   files and folders, and returning a book reachable by two paths once.
@@ -443,6 +452,11 @@ alongside the old one. Neither may change. The version comes from
     (the button and the "Nothing new" summary); not yet clicked through
     in the Tauri window, so the repaint, Stop and leaving the screen
     mid-import are only covered by the tests below.
+    Each row's **Edit** turns it into a Title and Author form
+    (`update_book_details`; Escape or Cancel leaves it as it was), and
+    the Search screen re-runs so its results and book picker show the
+    new title. Covered by `Books.test.tsx` and `Search.test.tsx` against
+    the mocked backend; not yet clicked through in the Tauri window.
   - `src/SearchView.tsx` — in a build with semantic search, a
     Passages / Chapters switch; Chapters calls `search_chapters` and
     lists each chapter with a plain-text preview of the part that
@@ -828,8 +842,9 @@ In the same order of priority as the Python version, then newer ones.
    keep any text the old parser dropped (after broken markup, or in a
    text node with an HTML entity or a bare `&`) until re-imported.
 5. Bookmarks, highlights and notes point at paragraphs, so removing a
-   book (including to re-import it after a parser fix) deletes them all;
-   the Remove dialog only warns with counts. Bookmarks cover whole
+   book (including to re-import it after a parser fix) deletes them all,
+   and any title or author you edited; the Remove dialog only warns with
+   counts. Bookmarks cover whole
    paragraphs, and passages can't be reordered within a folder. A
    highlight can't span paragraphs or overlap another highlight, notes
    are plain text, and neither notes nor highlights are searchable or
@@ -986,7 +1001,7 @@ Later:
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
 - [ ] PDF page numbers in search results and the reader
-- [ ] Edit a book's title and author from the library, for books whose
+- [x] Edit a book's title and author from the library, for books whose
       metadata is missing or wrong
 
 ## Releasing

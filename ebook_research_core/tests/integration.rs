@@ -315,6 +315,26 @@ fn deletes_and_reimports_a_book() {
     );
 }
 
+/// Imports are de-duped by file hash, so importing a file again returns the
+/// existing row with its edited title and author rather than overwriting them.
+#[test]
+fn edited_details_survive_reimporting_the_same_file() {
+    let db_path = &temp_path("test_edit_details_library.db");
+    let _ = std::fs::remove_file(db_path);
+
+    let mut conn = open_db(db_path).unwrap();
+    let first = import_book(&mut conn, "test.epub").unwrap();
+    db::update_book_details(&conn, first.book_id, "Renamed", "").unwrap();
+
+    let again = import_book(&mut conn, "test.epub").unwrap();
+    assert!(again.already_imported);
+    assert_eq!(again.book_id, first.book_id);
+    let books = list_books(&conn).unwrap();
+    assert_eq!(books.len(), 1);
+    assert_eq!(books[0].title.as_deref(), Some("Renamed"));
+    assert_eq!(books[0].author, None);
+}
+
 /// A library created before migrations were tracked (the 001 schema with
 /// `user_version = 0`) should be upgraded in place, with both search indexes
 /// rebuilt from its existing text.
