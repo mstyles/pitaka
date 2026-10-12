@@ -559,6 +559,7 @@ mod tests {
             title: Some("Two".to_string()),
             author: Some("Someone".to_string()),
             format: "epub",
+            cover: None,
             chapters: vec![
                 chapter("One", &["alpha beta gamma", "delta epsilon"]),
                 chapter("Two", &["zeta eta theta"]),

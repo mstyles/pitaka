@@ -5,8 +5,11 @@ import BookmarksView from "./BookmarksView";
 import BooksView, {
   type BookSort,
   type BooksRequest,
+  type BookView,
   folderImportLine,
+  loadBookView,
   plural,
+  saveBookView,
   useFolderImport,
   useIndexing,
 } from "./BooksView";
@@ -18,7 +21,12 @@ import { type Action, useShortcuts } from "./shortcuts";
 import ShortcutsSheet from "./ShortcutsSheet";
 import { done, failed, type Status } from "./StatusLine";
 import Toaster, { type Toast } from "./Toaster";
-import type { BookSummary, SemanticIndexFailed, SemanticIndexProgress } from "./types";
+import type {
+  BookSummary,
+  CoverBackfill,
+  SemanticIndexFailed,
+  SemanticIndexProgress,
+} from "./types";
 import "./App.css";
 
 const SECTION_ACTIONS: Partial<Record<Action, Screen>> = {
@@ -48,6 +56,8 @@ function App() {
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [bookFilter, setBookFilter] = useState("");
   const [bookSort, setBookSort] = useState<BookSort>("title");
+  // Remembered on this computer, as the reader's settings are; the sort isn't.
+  const [bookView, setBookView] = useState<BookView>(loadBookView);
   // Passage search's book scope; the reader sets it too.
   const [searchBookId, setSearchBookId] = useState<number | null>(null);
   const { dismissFinished, ...indexer } = useIndexing();
@@ -86,6 +96,22 @@ function App() {
     if (wasImporting.current && !running && fi) notify(folderImportLine(fi));
     wasImporting.current = running;
   }, [fi?.running]);
+
+  // Covers for books imported before Pitaka read them, found in the
+  // background. A failure only means those books keep generated covers.
+  function backfillCovers() {
+    invoke("backfill_covers").catch(() => {});
+  }
+
+  useEffect(() => {
+    const unlisten = listen<CoverBackfill>("covers_found", ({ payload }) => {
+      if (payload.found > 0) setLibraryVersion((v) => v + 1);
+    });
+    backfillCovers();
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
 
   // Listens to the events themselves rather than to `indexer.indexing`,
   // which keeps only the latest: a failure followed at once by the next
@@ -175,6 +201,7 @@ function App() {
       {!reader && screen !== "home" && <NavBar current={screen} onNavigate={navigate} />}
       {!reader && screen === "home" && (
         <HomeView
+          libraryVersion={libraryVersion}
           onNavigate={navigate}
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Home" })}
         />
@@ -190,6 +217,8 @@ function App() {
             setSearchBookId(null);
             dismissFinished();
             setLibraryVersion((v) => v + 1);
+            // The backup may be from before covers, with none for its books.
+            backfillCovers();
           }}
           indexer={indexer}
           filter={bookFilter}
@@ -198,6 +227,12 @@ function App() {
           onSortChange={setBookSort}
           request={booksRequest}
           onRequestHandled={() => setBooksRequest(null)}
+          view={bookView}
+          onViewChange={(view) => {
+            setBookView(view);
+            saveBookView(view);
+          }}
+          libraryVersion={libraryVersion}
           {...folderImport}
         />
       )}

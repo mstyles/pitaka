@@ -83,6 +83,7 @@ pub fn run() {
         )
         .menu(menu::build)
         .on_menu_event(menu::handle)
+        .register_asynchronous_uri_scheme_protocol("cover", commands::cover_protocol)
         .setup(|app| {
             open_main_window(app)?;
             commands::register(app);
@@ -97,9 +98,13 @@ pub fn run() {
             commands::backup_library,
             commands::read_backup_manifest,
             commands::restore_library,
+            commands::backfill_covers,
             commands::list_books,
             commands::get_book_chapters,
             commands::get_chapter_content,
+            commands::get_reading_position,
+            commands::set_reading_position,
+            commands::list_reading_positions,
             commands::create_bookmark_folder,
             commands::rename_bookmark_folder,
             commands::delete_bookmark_folder,

@@ -19,6 +19,9 @@ pub struct BookSummary {
     pub note_count: i64,
     /// How far the book is indexed for chapter search.
     pub index_state: IndexState,
+    /// The cover thumbnail's key, which the `cover://` URL carries; `None`
+    /// means the book gets a generated cover.
+    pub cover: Option<String>,
 }
 
 pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
@@ -27,9 +30,12 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
                 (SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id),
                 (SELECT COUNT(*) FROM highlights h WHERE h.book_id = b.id),
                 (SELECT COUNT(*) FROM notes n WHERE n.book_id = b.id),
-                {INDEX_STATE_SQL}
+                {INDEX_STATE_SQL},
+                bc.key
          FROM books b
          LEFT JOIN chapters ch ON ch.book_id = b.id
+         -- One row per book at most, so `GROUP BY b.id` still holds.
+         LEFT JOIN book_covers bc ON bc.book_id = b.id
          GROUP BY b.id
          ORDER BY b.added_at DESC, b.id DESC"
     ))?;
@@ -43,6 +49,7 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
             highlight_count: row.get(5)?,
             note_count: row.get(6)?,
             index_state: IndexState::from_sql(&row.get::<_, String>(7)?)?,
+            cover: row.get(8)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -95,16 +102,25 @@ pub struct ChapterSummary {
     pub id: i64,
     pub idx: i64,
     pub title: Option<String>,
+    /// Characters in the chapter's paragraphs, for the reader's progress.
+    pub char_count: i64,
 }
 
 pub fn get_book_chapters(conn: &Connection, book_id: i64) -> Result<Vec<ChapterSummary>> {
-    let mut stmt =
-        conn.prepare("SELECT id, idx, title FROM chapters WHERE book_id = ?1 ORDER BY idx")?;
+    let mut stmt = conn.prepare(
+        "SELECT ch.id, ch.idx, ch.title, COALESCE(SUM(LENGTH(cb.text)), 0)
+         FROM chapters ch
+         LEFT JOIN content_blocks cb ON cb.chapter_id = ch.id
+         WHERE ch.book_id = ?1
+         GROUP BY ch.id
+         ORDER BY ch.idx",
+    )?;
     let rows = stmt.query_map(params![book_id], |row| {
         Ok(ChapterSummary {
             id: row.get(0)?,
             idx: row.get(1)?,
             title: row.get(2)?,
+            char_count: row.get(3)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -229,5 +245,22 @@ mod tests {
 
         update_book_details(&conn, id, &"t".repeat(500), "").unwrap();
         assert_eq!(book(&conn, id).title.map(|t| t.len()), Some(500));
+    }
+
+    #[test]
+    fn chapter_char_count_sums_paragraphs() {
+        let mut conn = open_db(":memory:").unwrap();
+        let parsed = book_with_chapters("A", &[&["ab", "cde"], &[]]);
+        let id = load_book(&mut conn, "/a.epub", "ha", &parsed).unwrap();
+        let counts: Vec<i64> = get_book_chapters(&conn, id)
+            .unwrap()
+            .iter()
+            .map(|c| c.char_count)
+            .collect();
+        assert_eq!(counts, vec![5, 0]);
+
+        let parsed = book_with_chapters("B", &[&["ā"]]);
+        let id = load_book(&mut conn, "/b.epub", "hb", &parsed).unwrap();
+        assert_eq!(get_book_chapters(&conn, id).unwrap()[0].char_count, 1);
     }
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import BookCover from "./BookCover";
 import EmptyState from "./EmptyState";
 import { BackupIcon, BooksIcon, FolderIcon, ImportIcon, RestoreIcon, SearchIcon } from "./icons";
 import { SkeletonRows } from "./Skeleton";
@@ -270,6 +271,28 @@ export function matchesFilter(book: BookSummary, filter: string) {
 
 export type BookSort = "title" | "added";
 
+/** The Books screen as rows, or as a grid of covers. */
+export type BookView = "list" | "grid";
+
+const BOOK_VIEW_KEY = "pitaka.book-view";
+
+/** The view last chosen on this computer; storage can be unavailable, which means the list. */
+export function loadBookView(): BookView {
+  try {
+    return localStorage.getItem(BOOK_VIEW_KEY) === "grid" ? "grid" : "list";
+  } catch {
+    return "list";
+  }
+}
+
+export function saveBookView(view: BookView) {
+  try {
+    localStorage.setItem(BOOK_VIEW_KEY, view);
+  } catch {
+    // Not remembered, then: the choice still applies until the app closes.
+  }
+}
+
 const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 /** A title as a catalogue files it: "The Sun My Heart" under S. */
@@ -344,6 +367,10 @@ type Props = {
   request: BooksRequest | null;
   /** Called once a request has run, so it doesn't run again on the next visit. */
   onRequestHandled: () => void;
+  view: BookView;
+  onViewChange: (view: BookView) => void;
+  /** Bumped by App when the library changes elsewhere, e.g. covers were found. */
+  libraryVersion: number;
 } & ReturnType<typeof useFolderImport>;
 
 const PAUSED_NOTE = "New imports won't be indexed until you click Index or Index all books.";
@@ -359,6 +386,9 @@ function BooksView({
   onSortChange,
   request,
   onRequestHandled,
+  view,
+  onViewChange,
+  libraryVersion,
   folderImport,
   startFolderImport,
   stopFolderImport,
@@ -390,7 +420,7 @@ function BooksView({
   // refreshed as a folder import adds books, so the list fills in.
   useEffect(() => {
     refreshBooks();
-  }, [folderImport?.imported]);
+  }, [folderImport?.imported, libraryVersion]);
 
   useEffect(() => {
     invoke<SemanticStatus>("semantic_status")
@@ -604,6 +634,81 @@ function BooksView({
     }
   }
 
+  /** The Title and Author form, in a list row or (stacked) in a grid card. */
+  function editForm(edit: NonNullable<typeof editing>, stacked: boolean) {
+    return (
+      <form
+        className={stacked ? "book-edit-form book-edit-form-stacked" : "book-edit-form"}
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveDetails();
+        }}
+      >
+        <input
+          className="book-edit-title"
+          aria-label="Title"
+          placeholder="Untitled"
+          value={edit.title}
+          onChange={(e) => setEditing({ ...edit, title: e.currentTarget.value })}
+          onKeyDown={cancelOnEscape}
+          autoFocus
+        />
+        <input
+          className="book-edit-author"
+          aria-label="Author"
+          placeholder="Unknown author"
+          value={edit.author}
+          onChange={(e) => setEditing({ ...edit, author: e.currentTarget.value })}
+          onKeyDown={cancelOnEscape}
+        />
+        <button type="submit" className="button-primary">
+          Save
+        </button>
+        <button type="button" onClick={() => setEditing(null)}>
+          Cancel
+        </button>
+      </form>
+    );
+  }
+
+  /** A book's Index, Edit and Remove buttons, the same in a row and a card. */
+  function bookActions(b: BookSummary) {
+    return (
+      <>
+        {canIndex && b.index_state !== "indexed" && (
+          <button
+            className="book-index button-quiet button-sm"
+            disabled={current === b.id || queued.has(b.id)}
+            onClick={(e) => {
+              e.stopPropagation(); // the row itself opens the book
+              act(() => indexer.queueIndex(b.id), "Indexing failed");
+            }}
+          >
+            {current === b.id ? "Indexing…" : queued.has(b.id) ? "Queued" : "Index"}
+          </button>
+        )}
+        <button
+          className="book-edit button-quiet button-sm"
+          onClick={(e) => {
+            e.stopPropagation(); // the row itself opens the book
+            setEditing({ id: b.id, title: b.title ?? "", author: b.author ?? "" });
+          }}
+        >
+          Edit
+        </button>
+        <button
+          className="book-remove button-quiet button-danger button-sm"
+          onClick={(e) => {
+            e.stopPropagation(); // the row itself opens the book
+            removeBook(b);
+          }}
+        >
+          Remove
+        </button>
+      </>
+    );
+  }
+
   const importBookButton = (
     <button className="button-primary button-icon" onClick={importBook} disabled={importing}>
       <ImportIcon />
@@ -716,6 +821,25 @@ function BooksView({
               Recently added
             </button>
           </div>
+          <span className="books-sort-label" id="books-view-label">
+            View:
+          </span>
+          <div className="scope-toggle" role="group" aria-labelledby="books-view-label">
+            <button
+              type="button"
+              aria-pressed={view === "list"}
+              onClick={() => onViewChange("list")}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "grid"}
+              onClick={() => onViewChange("grid")}
+            >
+              Grid
+            </button>
+          </div>
         </div>
       )}
       {books && filtering && shown!.length > 0 && (
@@ -749,80 +873,47 @@ function BooksView({
         >
           No books match "{filter.trim()}".
         </EmptyState>
+      ) : view === "grid" ? (
+        <ul className="book-grid">
+          {shown?.map((b) => {
+            const isEditing = editing?.id === b.id;
+            return (
+              <li
+                key={b.id}
+                className="book-card"
+                onClick={isEditing ? undefined : () => onOpenBook(b.id)}
+              >
+                <BookCover book={b} size="card" />
+                {isEditing ? (
+                  editForm(editing, true)
+                ) : (
+                  <>
+                    <span className="book-card-title">{b.title ?? "Untitled"}</span>
+                    <span className="book-card-meta">{b.author ?? "Unknown author"}</span>
+                    <div className="book-card-actions">{bookActions(b)}</div>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       ) : (
         <ul className="book-list">
           {shown?.map((b) =>
             editing?.id === b.id ? (
               <li key={b.id} className="book-row">
-                <form
-                  className="book-edit-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    saveDetails();
-                  }}
-                >
-                  <input
-                    className="book-edit-title"
-                    aria-label="Title"
-                    placeholder="Untitled"
-                    value={editing.title}
-                    onChange={(e) => setEditing({ ...editing, title: e.currentTarget.value })}
-                    onKeyDown={cancelOnEscape}
-                    autoFocus
-                  />
-                  <input
-                    className="book-edit-author"
-                    aria-label="Author"
-                    placeholder="Unknown author"
-                    value={editing.author}
-                    onChange={(e) => setEditing({ ...editing, author: e.currentTarget.value })}
-                    onKeyDown={cancelOnEscape}
-                  />
-                  <button type="submit" className="button-primary">
-                    Save
-                  </button>
-                  <button type="button" onClick={() => setEditing(null)}>
-                    Cancel
-                  </button>
-                </form>
+                <BookCover book={b} size="thumb" />
+                {editForm(editing, false)}
               </li>
             ) : (
               <li key={b.id} className="book-row" onClick={() => onOpenBook(b.id)}>
+                <BookCover book={b} size="thumb" />
                 <span className="book-title">{b.title ?? "Untitled"}</span>
                 <span className="book-meta">
                   {b.author ?? "Unknown author"} · {b.chapter_count} chapters
                   {canIndex && INDEX_STATE_NOTES[b.index_state]}
                 </span>
-                {canIndex && b.index_state !== "indexed" && (
-                  <button
-                    className="book-index button-quiet button-sm"
-                    disabled={current === b.id || queued.has(b.id)}
-                    onClick={(e) => {
-                      e.stopPropagation(); // the row itself opens the book
-                      act(() => indexer.queueIndex(b.id), "Indexing failed");
-                    }}
-                  >
-                    {current === b.id ? "Indexing…" : queued.has(b.id) ? "Queued" : "Index"}
-                  </button>
-                )}
-                <button
-                  className="book-edit button-quiet button-sm"
-                  onClick={(e) => {
-                    e.stopPropagation(); // the row itself opens the book
-                    setEditing({ id: b.id, title: b.title ?? "", author: b.author ?? "" });
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  className="book-remove button-quiet button-danger button-sm"
-                  onClick={(e) => {
-                    e.stopPropagation(); // the row itself opens the book
-                    removeBook(b);
-                  }}
-                >
-                  Remove
-                </button>
+                {bookActions(b)}
               </li>
             ),
           )}

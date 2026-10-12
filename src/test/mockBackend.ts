@@ -2,7 +2,7 @@
 // test `ui_fixtures_are_current` (UPDATE_UI_FIXTURES=1 regenerates them), so
 // the UI can run in jsdom or a plain browser tab without the Rust side.
 import { emit } from "@tauri-apps/api/event";
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockConvertFileSrc, mockIPC } from "@tauri-apps/api/mocks";
 import fixtureData from "./fixtures/library.json";
 import type {
   AnnotatedBook,
@@ -16,11 +16,13 @@ import type {
   ChapterMatch,
   ChapterSummary,
   BookScan,
+  CoverBackfill,
   FolderBookmark,
   Highlight,
   ImportOutcome,
   IndexState,
   Note,
+  ReadingPosition,
   SearchMode,
   SearchResult,
   SemanticIndexFailed,
@@ -50,6 +52,8 @@ export type Fixtures = {
   book_annotations?: Record<string, BookAnnotation[]>;
   /** A backup of the fixture library's manifest; absent in the demo's data. */
   backup_manifest?: BackupManifest;
+  /** Where the long book would be left at Part Two's paragraph 10; absent in the demo's data. */
+  reading_position_sample?: ReadingPosition;
 };
 
 const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"];
@@ -91,6 +95,11 @@ export type MockOptions = {
   savePath?: string | null;
   /** When set, the backup and restore commands always reject with this message. */
   backupError?: string;
+  /**
+   * When set, `backfill_covers` finds covers for this many books without one,
+   * then sends `covers_found`, as the app does once its background run ends.
+   */
+  backfillFound?: number;
 };
 
 export type MockCall = { cmd: string; args: Record<string, unknown> };
@@ -117,6 +126,7 @@ export function installMockBackend({
   indexStates = {},
   savePath = "/backups/pitaka-backup.pitaka",
   backupError,
+  backfillFound,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
   const withIndexState = (list: BookSummary[]) =>
@@ -211,6 +221,42 @@ export function installMockBackend({
     };
   }
 
+  // Where each book was left. A counter stands in for `read_at`'s clock,
+  // so "most recently read" is deterministic.
+  let positions = new Map<number, { blockId: number; finished: boolean; seq: number }>();
+  let nextSeq = 1;
+
+  /** A book's position, worked out from the fixtures with the core's formula. */
+  function positionOf(bookId: number): ReadingPosition | null {
+    const saved = positions.get(bookId);
+    if (!saved) return null;
+    const { content, block } = blockPlace(saved.blockId);
+    const chapters = data.chapters[String(bookId)] ?? [];
+    const place = chapters.findIndex((c) => c.id === content.chapter_id);
+    const total = chapters.reduce((n, c) => n + c.char_count, 0);
+    const before =
+      chapters.slice(0, place).reduce((n, c) => n + c.char_count, 0) +
+      content.blocks
+        .filter((b) => b.block_idx < block.block_idx)
+        .reduce((n, b) => n + [...b.text].length, 0);
+    const percent = saved.finished
+      ? 100
+      : total === 0
+        ? 0
+        : Math.floor((before * 200 + total) / (2 * total));
+    return {
+      book_id: bookId,
+      chapter_id: content.chapter_id,
+      content_block_id: block.id,
+      chapter_title: content.chapter_title,
+      chapter_number: place + 1,
+      chapter_count: chapters.length,
+      percent,
+      finished: saved.finished,
+      read_at: sqliteNow(),
+    };
+  }
+
   /** Trims and collapses whitespace, and "" becomes null, as the core does. */
   function cleanField(value: unknown) {
     return String(value).trim().replace(/\s+/g, " ") || null;
@@ -261,6 +307,7 @@ export function installMockBackend({
         bookmarks = bookmarks.filter((b) => b.book_id !== id);
         highlights = highlights.filter((h) => bookOf(h.content_block_id) !== id);
         notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
+        positions.delete(id);
         return null;
       }
       case "update_book_details": {
@@ -302,6 +349,24 @@ export function installMockBackend({
         if (!content) throw `no chapter with id ${args.chapterId}`;
         return content;
       }
+      case "set_reading_position": {
+        const blockId = args.contentBlockId as number;
+        blockPlace(blockId);
+        positions.set(bookOf(blockId), {
+          blockId,
+          finished: Boolean(args.finished),
+          seq: nextSeq++,
+        });
+        return null;
+      }
+      case "get_reading_position":
+        return positionOf(args.bookId as number);
+      case "list_reading_positions":
+        return [...positions.entries()]
+          .filter(([, p]) => !p.finished)
+          .sort(([, a], [, b]) => b.seq - a.seq)
+          .slice(0, args.limit as number)
+          .map(([bookId]) => positionOf(bookId)!);
       case "create_bookmark_folder": {
         const folder = {
           id: nextFolderId++,
@@ -548,7 +613,24 @@ export function installMockBackend({
         bookmarks = startingBookmarks();
         highlights = startingHighlights();
         notes = startingNotes();
+        positions = new Map();
         return fixtures.backup_manifest!.counts;
+      case "backfill_covers":
+        if (backfillFound) {
+          // After answering, as the app's run happens in the background.
+          setTimeout(() => {
+            const found = new Set(
+              books
+                .filter((b) => b.cover == null)
+                .slice(0, backfillFound)
+                .map((b) => b.id),
+            );
+            books = books.map((b) => (found.has(b.id) ? { ...b, cover: "mock" } : b));
+            const payload: CoverBackfill = { checked: found.size, found: found.size };
+            emit("covers_found", payload);
+          }, 0);
+        }
+        return null;
       case "plugin:dialog|save":
         return savePath;
       case "plugin:dialog|open": {
@@ -575,6 +657,10 @@ export function installMockBackend({
     },
     { shouldMockEvents: true },
   );
+  // Book covers are `cover://localhost/…` URLs, as on Linux. Nothing serves
+  // them in a browser or jsdom, so `npm run dev:mock` and the demo show the
+  // generated covers that a failed image falls back to.
+  mockConvertFileSrc("linux");
 
   return { calls };
 }

@@ -38,6 +38,7 @@ fn long_book() -> ParsedBook {
         title: Some("A Long Book for Scrolling".to_string()),
         author: Some("Fixture Author".to_string()),
         format: "epub",
+        cover: None,
         chapters,
     }
 }
@@ -53,6 +54,10 @@ fn ui_fixtures_are_current() {
     let import_new = import_book(&mut conn, "test.epub").unwrap();
     let import_again = import_book(&mut conn, "test.epub").unwrap();
     let long_id = load_book(&mut conn, "/books/long.epub", "long", &long_book()).unwrap();
+    // The first book listed has a cover; test.epub has none, so it keeps
+    // the 'none' row its import wrote and gets a generated cover.
+    let cover = crate::cover::test_jpeg(600, 900);
+    super::covers::save_cover(&conn, long_id, "epub", Some(&cover)).unwrap();
 
     // One folder holding a passage from each book, so the UI starts with
     // something to list. `created_at` is pinned so the file is stable.
@@ -105,8 +110,25 @@ fn ui_fixtures_are_current() {
     for (key, value) in annotations {
         fixtures[key] = value;
     }
+    fixtures["reading_position_sample"] =
+        to_value(reading_position_sample(&conn, long_id)).unwrap();
     fixtures["backup_manifest"] = to_value(backup_manifest_fixture(&conn)).unwrap();
     check_fixture("src/test/fixtures/library.json", &fixtures);
+}
+
+/// Where the long book would be left at Part Two's paragraph 10, for the
+/// tests to check the reader's percent against. The row is deleted again,
+/// so the fixture library starts with nothing read.
+fn reading_position_sample(conn: &Connection, book_id: i64) -> ReadingPosition {
+    let chapter = &get_book_chapters(conn, book_id).unwrap()[1];
+    let block = &get_chapter_content(conn, chapter.id).unwrap().blocks[9];
+    set_reading_position(conn, block.id, false).unwrap();
+    let sample = get_reading_position(conn, book_id).unwrap().unwrap();
+    conn.execute("DELETE FROM reading_positions", []).unwrap();
+    ReadingPosition {
+        read_at: "2026-09-03 12:00:00.000".to_string(),
+        ..sample
+    }
 }
 
 /// On the long book's first chapter: a yellow highlight with a note, a

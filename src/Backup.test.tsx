@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { fixtures } from "./test/mockBackend";
-import { goTo, renderApp } from "./test/renderApp";
+import { goTo, renderApp, scrollTo } from "./test/renderApp";
 
 const TEST_BOOK = "Test Book of Research";
+const LONG_BOOK = "A Long Book for Scrolling";
 const FOLDER = fixtures.bookmark_folders[0];
 const BACKUP = "/backups/old.pitaka";
 const FIXTURE_COUNTS = "2 books, 1 bookmark folder, 2 bookmarks, 2 highlights and 2 notes";
@@ -76,6 +77,24 @@ describe("restoring", () => {
     expect(await screen.findByText(`Restored ${FIXTURE_COUNTS}`)).toBeTruthy();
     expect(callsTo("restore_library")).toEqual([{ path: BACKUP }]);
     expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+  });
+
+  it("brings back the backup's reading positions, which are none", async () => {
+    const { user, callsTo } = renderApp({ openPath: BACKUP, fakeTimers: true });
+    await goTo(user, "Books");
+    await user.click(await screen.findByText(LONG_BOOK, { selector: ".book-title" }));
+    const first = await screen.findByText(/^Part One, paragraph 6:/);
+    scrollTo(Number(first.dataset.blockId));
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+    await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
+
+    await user.click(await screen.findByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(`Restored ${FIXTURE_COUNTS}`)).toBeTruthy();
+    await goTo(user, "Home");
+    await screen.findByRole("region", { name: "Your library" });
+    // Once when the app opened, and again now.
+    await waitFor(() => expect(callsTo("list_reading_positions")).toHaveLength(2));
+    expect(screen.queryByRole("heading", { name: "Continue reading" })).toBeNull();
   });
 
   it("refuses a backup from a newer Pitaka without asking", async () => {

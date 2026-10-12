@@ -19,7 +19,7 @@
     },
     "created_at": "2026-01-01T00:00:00Z",
     "format": 1,
-    "schema_version": 6
+    "schema_version": 8
   },
   "book_annotations": {
     "2": [
@@ -71,6 +71,7 @@
       "author": "Fixture Author",
       "bookmark_count": 1,
       "chapter_count": 3,
+      "cover": "9abdfc708558",
       "highlight_count": 2,
       "id": 2,
       "index_state": "indexed",
@@ -81,6 +82,7 @@
       "author": "A. Tester",
       "bookmark_count": 1,
       "chapter_count": 2,
+      "cover": null,
       "highlight_count": 0,
       "id": 1,
       "index_state": "none",
@@ -833,11 +835,13 @@
   "chapters": {
     "1": [
       {
+        "char_count": 162,
         "id": 1,
         "idx": 0,
         "title": "Chapter One: Beginnings"
       },
       {
+        "char_count": 169,
         "id": 2,
         "idx": 1,
         "title": "Chapter Two: Deeper Waters"
@@ -845,16 +849,19 @@
     ],
     "2": [
       {
+        "char_count": 4831,
         "id": 3,
         "idx": 0,
         "title": "Part One"
       },
       {
+        "char_count": 4771,
         "id": 4,
         "idx": 1,
         "title": "Part Two"
       },
       {
+        "char_count": 4911,
         "id": 5,
         "idx": 2,
         "title": "Part Three"
@@ -902,6 +909,17 @@
   "import_new": {
     "already_imported": false,
     "book_id": 1
+  },
+  "reading_position_sample": {
+    "book_id": 2,
+    "chapter_count": 3,
+    "chapter_id": 4,
+    "chapter_number": 2,
+    "chapter_title": "Part Two",
+    "content_block_id": 57,
+    "finished": false,
+    "percent": 41,
+    "read_at": "2026-09-03 12:00:00.000"
   },
   "search": {
     "exact:neural networks": [

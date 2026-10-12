@@ -23,7 +23,8 @@ to keep, and highlights and notes as you read.
   model runs on your own computer; it's downloaded once and nothing is
   sent anywhere.
 - **Read with the hit in context.** Opening a result jumps the reader to
-  that paragraph, with the book's chapters alongside.
+  that paragraph, with the book's chapters alongside. The reader
+  reopens each book where you left it, with how far through it you are.
 - **Highlight and write notes.** Select words in a paragraph to
   highlight them in one of four colours, and note a highlight or a whole
   paragraph. Notes open in the margin beside the text, and each book's
@@ -35,6 +36,9 @@ to keep, and highlights and notes as you read.
   layout included, skipping the ones already in your library. PDFs need
   a text layer: scanned ones are refused. A wrong or missing title or
   author can be corrected on the Books screen, without changing the file.
+- **Covers**: each book's cover is taken from the EPUB (or a PDF's
+  front-page image), with a typographic cover for books without one, in
+  a list or a grid.
 - **Back up your library** to one file and restore it on another
   computer: books, folders, highlights and notes come back as they were,
   without the book files.
@@ -187,6 +191,42 @@ Rust. The window is created hidden from `setup` in `src-tauri/src/lib.rs`;
 on first launch it's shrunk to fit a screen too small for 1280×800 and
 then shown. After that, `tauri-plugin-window-state` restores its size,
 position and maximised state.
+
+Where each book was left (`ebook_research_core/src/db/reading.rs`) is a
+paragraph, not a scroll offset, so it survives any change of window
+width or text size: one `reading_positions` row per book, written by
+an `INSERT … SELECT … ON CONFLICT (book_id) DO UPDATE` upsert, with
+`finished` set when the paragraph was at the end of the book. How far
+through a book that is counts characters: the text before the
+paragraph at the top of the screen, over the book's total, since
+chapters and paragraphs vary too much in length to stand in for
+reading time. The reader saves a second after scrolling stops, when
+the chapter changes and when you leave it or close the window, and
+only once you've scrolled or changed chapter yourself, so a quick look
+at a search hit doesn't count as reading.
+
+Book covers (`ebook_research_core/src/cover.rs`, `db/covers.rs`) are
+found at import: the manifest item with the EPUB 3 `cover-image`
+property, else the image `<meta name="cover">` names (by id, or by href
+as some books write it), else the only image on the first page when
+that page has at most one paragraph of text; for a PDF, page 1 when it
+holds a single portrait JPEG at least 300px wide. The image is decoded
+with the `image` crate (JPEG and PNG only, at most 20 MB, 8000px a side
+and 256 MiB of decoding memory), laid on the paper colour if it has
+transparency, shrunk to fit 300×450 and stored as a quality-80 JPEG in
+the `book_covers` table (migration 007), one row per book, keyed in
+URLs by the first 12 hex digits of its SHA-256. A missing or broken
+cover never fails an import: the book is recorded as having none and
+gets a generated cover, a tinted card with its title. Books imported
+before covers are looked for once per launch by `backfill_covers`,
+which locks the library only around each query, not while reading a
+file, and emits `covers_found`; a book whose file is gone or changed is
+recorded as `unavailable`. The webview loads thumbnails from a `cover://`
+protocol (`cover://localhost/{id}-{key}`, `http://cover.localhost/…`
+on Windows) served by `commands::cover_protocol` with a year-long
+immutable cache, and the CSP allows `img-src 'self' cover:
+http://cover.localhost`. Covers live in `library.db`, so backups carry
+them and removing a book removes its cover.
 
 The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
 (`com.pitaka.app`) names the data directory, so changing it would lose
@@ -348,6 +388,27 @@ alongside the old one. Neither may change. The version comes from
   both search indexes intact; the integration test highlights and notes
   a real `test.epub` paragraph, then removes and re-imports the book
   and finds nothing marked.
+- `ebook_research_core/src/db/reading.rs` — reading positions
+  (migration 007): `set_reading_position`, `get_reading_position` and
+  `list_reading_positions` (unfinished books, most recently read
+  first). `get_book_chapters` now gives each chapter's `char_count`, so
+  the reader works the percent out as you scroll with the same formula.
+  Unit tests cover the chapter number, chapter count and percent (89 for
+  16 characters of 18, rounded half up like `Math.round`), that setting
+  again replaces the one row, that a finished position reads 100% and
+  leaves the list until an earlier paragraph is saved, the order, an
+  unknown paragraph id, that removing a book removes its position, and
+  that `char_count` counts characters, not UTF-8 bytes; the integration
+  test saves a position in `test.epub`'s "Chapter Two: Deeper Waters",
+  keeps it through re-importing the same file and loses it with the
+  book. The backup round-trip test brings a position back. While
+  planning, Python's SQLite 3.46.1 checked the upsert (one row per book,
+  0 rows for an unknown paragraph), the cascade from `delete_book`, the
+  progress query's numbers, and, on a read-only copy of the real
+  54-book library, that every subquery uses an index: listing three
+  positions took 5.3 ms, and `get_book_chapters` with `char_count` took
+  1.8 ms on a 93-chapter book. Not yet run against the real library
+  from Rust.
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
   case and diacritics ("samsara" matches "saṃsāra"). Each word of the
@@ -391,7 +452,7 @@ alongside the old one. Neither may change. The version comes from
   manifest or without `library.db`, a manifest with schema version 99
   or format 2, and a backup with one byte flipped (a checksum mismatch)
   are each refused with the library untouched and no files left
-  behind; and a backup of a library at migration 5 is upgraded to 6 on
+  behind; and a backup of a library at migration 5 is upgraded to the current schema on
   restore. While planning, Python's SQLite 3.46.1 checked the same
   steps against a copy of the real 54-book library: `VACUUM INTO`
   kept `user_version` and passed `integrity_check` and both FTS
@@ -399,6 +460,36 @@ alongside the old one. Neither may change. The version comes from
   copying a backup over a live file through the backup API was seen at
   once by a connection already open on it. Not yet run against the
   real library from Rust, and not timed there.
+- `ebook_research_core/src/cover.rs` and `db/covers.rs` — book covers
+  (see [How it's built](#how-its-built)). Unit tests: a 600×900 JPEG
+  becomes a 300×450 one, 1588×2528 keeps its aspect ratio within 1px
+  and 100×150 isn't enlarged; a transparent PNG comes out as a JPEG on
+  the paper colour; random bytes, an empty file, an 8001px-wide JPEG
+  and a file over 20 MB are refused; keys are 12 lowercase hex digits
+  and differ between images. In `epub.rs`, the `cover-image` property
+  wins over `<meta name="cover">`, the meta works by id and by href,
+  a meta naming a page is ignored in favour of the first page's
+  image, an SVG `<image xlink:href>` on the first page is found but not
+  on a title page with two paragraphs, a cover file missing from the
+  zip leaves the book imported without one, and `read_epub_cover`
+  matches `parse_epub`. In `pdf.rs`, a single 400×600 DCTDecode image
+  on page 1 is the cover, and two images, a FlateDecode or JPXDecode
+  one, a landscape or a 200px-wide one, and `test.pdf` give none. In
+  `db/covers.rs`, an import writes a `book_covers` row for every book
+  (`epub` with a key `list_books` returns; `none` for no cover or
+  corrupt bytes), `book_cover` returns the JPEG, removing a book
+  removes its cover, the backfill fills only missing rows (a real
+  EPUB's cover found, a missing file and a changed file recorded as
+  `unavailable`, then nothing left to check), and migration 007 on a
+  library at 6 adds an empty table. The integration tests check that
+  `test.epub` (which has no images) gets a generated cover and leaves
+  the backfill nothing, and that a backup carries a cover to a new
+  install byte for byte. While planning, a Python survey of the real
+  library's 52 EPUBs found a cover for all 52 by these rules, and
+  Pillow thumbnails of them came to 1.0 MB in all. The `cover://`
+  protocol, the backfill on a real library and the CSP were not run:
+  none of it has been checked in the Tauri window (`npm run tauri dev`
+  or a release build).
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
@@ -501,9 +592,14 @@ alongside the old one. Neither may change. The version comes from
     `list_bookmark_folders` ("2 books", "1 folder · 2 passages · 2
     highlights, 2 notes"). An
     empty library points at importing and disables Search. Under the
-    cards, "Your library" lists the 3 most recently imported books,
+    cards, "Continue reading" lists up to 3 unfinished books, most
+    recently read first, each with its chapter, percent and a progress
+    bar, and reopens it where it was left. "Your library" then lists the
+    3 most recently imported books not already under Continue reading,
     each opening the reader with `← Home`, and links to the Books
-    screen ("All 5 books →") when there are more.
+    screen ("All 5 books →") when there are more. Component tests cover
+    Continue reading appearing after reading into a chapter, a finished
+    book and a removed one leaving it, and a restore clearing it.
     `src/NavBar.tsx` is the `Home · Books · Bookmarks & notes · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
@@ -574,9 +670,28 @@ alongside the old one. Neither may change. The version comes from
     and notes under chapter headings; an entry opens the reader at its
     paragraph with its note's card open and `← <book title>` to return.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
-    sidebar headed by the book's title and author. Clicking a book opens it at the first chapter; clicking a
+    sidebar headed by the book's title and author. Clicking a book
+    opens it at the paragraph that was at the top when it was last left
+    (the first chapter for a book never opened); search hits, bookmarks
+    and notes still open at their paragraph: clicking a
     search hit opens its chapter, centres the matching paragraph and
-    briefly flashes it. A bookmark icon in each paragraph's margin
+    briefly flashes it. A thin bar along the top of the text and
+    "Chapter 2 of 3 · 52%" under the author show how far through the
+    book the top of the screen is, reading "Finished" once the end of
+    the last chapter is showing (`src/readingPosition.ts`). Component
+    tests cover saving a second after scrolling stops, once per
+    paragraph, at once on leaving, and on closing the window (giving up
+    after 500 ms if the save hangs); reopening at the saved paragraph;
+    nothing saved by opening a book or a hit without scrolling; a hit
+    winning over the saved position; the label, bar and Finished; a
+    failed save staying silent; and that the reader's percent matches
+    the core's for the same paragraph. Checked in Chrome against the
+    mocked backend: the bar stays at the top while scrolling, Part Two
+    reopens from Home's Continue reading at its paragraph, the end of
+    Part Three reads Finished and leaves Continue reading, and a search
+    hit still centres and flashes. Not checked in the browser demo, after
+    resizing the window, or in the Tauri window (closing it with a save
+    pending, File → Quit, migration 007 on the real library). A bookmark icon in each paragraph's margin
     (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
@@ -596,8 +711,10 @@ alongside the old one. Neither may change. The version comes from
     is a directory: the old build exited with a panic, the new one
     stayed up with the dialog. The dialog itself wasn't looked at.
   - `src-tauri/tauri.conf.json` sets a Content Security Policy in place
-    of `null`: scripts, styles, fonts and images from the app only, IPC
-    via `ipc:`, no plugins, forms or framing. A looser `devCsp` allows
+    of `null`: scripts, styles, fonts and images from the app only
+    (plus book covers from its own `cover:` protocol), IPC via `ipc:`,
+    no plugins, forms or framing. The `cover:` source, added with book
+    covers, hasn't been checked in WebKitGTK under either policy. A looser `devCsp` allows
     Vite's inline styles and HMR websocket under `npm run tauri dev`.
     Checked that `tauri build --no-bundle` succeeds, that the build has
     no inline scripts or `data:` assets for the policy to block, and
@@ -779,7 +896,18 @@ alongside the old one. Neither may change. The version comes from
   box. The order, the sort toggle and keeping the filter across the
   reader are covered by `Books.test.tsx`, and title order (leading
   articles, numbers, accents, untitled last) by `BooksView.test.ts`.
-  Not checked in the Tauri window or in dark mode.
+  Not checked in the Tauri window or in dark mode. Walked again for
+  book covers, at 1000px wide in light mode: Home's recent rows and the
+  Books list show a generated cover for each book (the fixture's real
+  cover fails to load in a browser and falls back, as intended), Grid
+  shows tinted cards with title and author, hovering a card shows Edit
+  and Remove, Edit opens the stacked form inside the card, and the grid
+  was still chosen after a reload. No console errors. `Books.test.tsx`
+  and `Home.test.tsx` cover the `cover://` URL, the fallback, the grid,
+  editing and removing from a card, filtering, remembering the view
+  (including an unknown value and storage that throws) and the
+  background backfill refreshing the list. Not checked in dark mode or
+  at 560px, and not in the Tauri window.
 - Keyboard shortcuts, the shortcuts sheet and the app menu.
   `shortcuts.test.ts` checks the key mapping (Ctrl on Linux and
   Windows, the digits by physical key for AZERTY, `?` ignored in a text
@@ -875,11 +1003,11 @@ pitaka/
 ├── ebook_research_core/        <- core crate, no UI/Tauri dependency
 │   ├── Cargo.toml
 │   ├── migrations/             <- numbered schema migrations (001 = base schema)
-│   ├── src/{lib,epub,pdf}.rs
+│   ├── src/{lib,epub,pdf,cover}.rs
 │   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
 │   │                              library / bookmarks / annotations /
-│   │                              backup / semantic_index,
+│   │                              backup / covers / semantic_index,
 │   │                              re-exported as db::*
 │   ├── tests/integration.rs
 │   └── tests/semantic_eval/    <- labelled queries for ranking (local/ is git-ignored)
@@ -898,7 +1026,8 @@ pitaka/
 │   ├── App.tsx                  <- current screen, reader target and back label
 │   ├── HomeView.tsx             <- launch screen: Books / Bookmarks & notes / Search
 │   ├── NavBar.tsx               <- header for switching between screens
-│   ├── BooksView.tsx            <- import (file or folder), book list, remove
+│   ├── BooksView.tsx            <- import (file or folder), book list or grid, remove
+│   ├── BookCover.tsx            <- a book's cover thumbnail, or a generated one
 │   ├── SearchView.tsx           <- search box and results (kept mounted)
 │   ├── BookmarksView.tsx        <- folder list, new folder
 │   ├── FolderView.tsx           <- one folder's passages
@@ -943,6 +1072,11 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
   written to either table before, so they can't fail on existing data.
 - 006 adds `book_embeddings`, one row per book an indexing run
   finished, backfilled from the books that already had chunk rows.
+- 007 adds `reading_positions`, one row per opened book, cascading with
+  the book and its paragraph; nothing to backfill.
+- 008 adds `book_covers`, one row per book once its cover has been
+  looked for, with a JPEG thumbnail when one was found. It starts
+  empty; the app fills it for existing books in the background.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -994,7 +1128,8 @@ In the same order of priority as the Python version, then newer ones.
    text node with an HTML entity or a bare `&`) until re-imported.
 5. Bookmarks, highlights and notes point at paragraphs, so removing a
    book (including to re-import it after a parser fix) deletes them all,
-   and any title or author you edited; the Remove dialog only warns with
+   any title or author you edited, and where you were reading; the
+   Remove dialog only warns with
    counts. Bookmarks cover whole
    paragraphs, and passages can't be reordered within a folder. A
    highlight can't span paragraphs or overlap another highlight, notes
@@ -1072,7 +1207,14 @@ In the same order of priority as the Python version, then newer ones.
      win. A title with no letters ("1984") is skipped as junk, falling
      back to the file name.
    - A page pdf-extract can't read fails the whole import.
-10. Backups:
+10. Covers:
+    - A PDF gets a cover only when page 1 is a single JPEG image;
+      otherwise, and for GIF, WebP or SVG covers, the book gets a
+      generated one.
+    - A book whose file was missing or changed when covers were first
+      looked for keeps a generated cover until it's removed and
+      re-imported.
+11. Backups:
     - Restoring replaces the whole library rather than merging the
       backup into it; the library it replaced is kept as
       `library-before-restore.pitaka` until the next restore.
@@ -1081,7 +1223,7 @@ In the same order of priority as the Python version, then newer ones.
     - A restore briefly needs free space for the extracted library
       next to `library.db`, as well as for
       `library-before-restore.pitaka`.
-11. Keyboard and menu:
+12. Keyboard and menu:
     - The menu shows no shortcuts beside its items; `?` (or Help →
       Keyboard shortcuts) lists them.
     - Leaving the reader from the menu or a section key discards a
@@ -1091,6 +1233,11 @@ In the same order of priority as the Python version, then newer ones.
       browser, and Chrome keeps Ctrl+1–4 for its tabs.
     - Ctrl/⌘ `=`, `-` and `0` are reserved for the reader's text size
       and do nothing yet.
+13. Where you were reading is a paragraph, so the reader reopens at the
+    top of a long paragraph rather than mid-way through it. A book only
+    counts as being read once you scroll or change chapter in it, and
+    only the latest position is kept: there's no reading history, and
+    no way to mark a book finished or reset its progress by hand.
 
 ## Roadmap
 
@@ -1149,6 +1296,9 @@ Done:
 - [x] Search within a single book, from the Search screen or the reader
 - [x] Back up the library to one file and restore it
 - [x] Keyboard shortcuts, an app menu and a larger default window
+- [x] Reopen each book where you left it, with reading progress and
+  Continue reading on Home
+- [x] Book covers on the Books screen and Home, with a grid view
 
 Later:
 
@@ -1176,6 +1326,7 @@ Later:
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
 - [ ] PDF page numbers in search results and the reader
+- [ ] Render a PDF's first page as its cover (needs a PDF renderer)
 - [x] Edit a book's title and author from the library, for books whose
       metadata is missing or wrong
 

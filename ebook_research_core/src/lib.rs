@@ -1,3 +1,4 @@
+mod cover;
 pub mod db;
 pub mod epub;
 pub mod index_queue;
@@ -17,12 +18,14 @@ pub use db::{
     SearchMode, SearchResult, SemanticStatus, VariantIndex, HIGHLIGHT_COLORS, LENGTH_PENALTY,
     MIN_SCORE,
 };
+pub use db::{backfill_covers, book_cover, CoverBackfill};
 pub use db::{
     backup_library, library_counts, read_backup_manifest, restore_library, BackupManifest,
     LibraryCounts,
 };
+pub use db::{get_reading_position, list_reading_positions, set_reading_position, ReadingPosition};
 #[cfg(feature = "semantic")]
 pub use db::{index_book, search_chapters};
-pub use epub::{parse_epub, ParsedBook};
+pub use epub::{parse_epub, read_epub_cover, ParsedBook};
 pub use index_queue::IndexQueue;
-pub use pdf::parse_pdf;
+pub use pdf::{parse_pdf, read_pdf_cover};

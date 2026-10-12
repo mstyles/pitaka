@@ -1,6 +1,7 @@
 //! Importing books from EPUB and PDF files and removing them from the
 //! library.
 
+use super::covers::save_cover;
 use crate::epub::{parse_epub, ParsedBook};
 use crate::pdf::parse_pdf;
 use anyhow::{bail, Result};
@@ -10,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use walkdir::{DirEntry, WalkDir};
 
-fn file_hash(path: &str) -> Result<String> {
+pub(super) fn file_hash(path: &str) -> Result<String> {
     let bytes = std::fs::read(path)?;
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
@@ -148,9 +149,10 @@ fn is_hidden(entry: &DirEntry) -> bool {
     entry.file_name().to_string_lossy().starts_with('.')
 }
 
-/// Inserts a parsed book, its chapters, and its paragraphs in one
-/// transaction, so a failure part-way leaves nothing behind. Returns the new
-/// book_id.
+/// Inserts a parsed book, its chapters, its paragraphs and its cover in
+/// one transaction, so a failure part-way leaves nothing behind. Returns
+/// the new book_id. Every book loaded gets a `book_covers` row, so the
+/// cover backfill never looks at it.
 pub(super) fn load_book(
     conn: &mut Connection,
     path: &str,
@@ -158,7 +160,29 @@ pub(super) fn load_book(
     parsed: &ParsedBook,
 ) -> Result<i64> {
     let tx = conn.transaction()?;
+    let book_id = insert_book(&tx, path, hash, parsed)?;
+    save_cover(&tx, book_id, parsed.format, parsed.cover.as_deref())?;
+    tx.commit()?;
+    Ok(book_id)
+}
 
+/// As `load_book`, without the cover row: a book as a library from
+/// before migration 007 holds it, for testing upgrades.
+#[cfg(test)]
+pub(super) fn load_book_before_covers(
+    conn: &mut Connection,
+    path: &str,
+    hash: &str,
+    parsed: &ParsedBook,
+) -> Result<i64> {
+    let tx = conn.transaction()?;
+    let book_id = insert_book(&tx, path, hash, parsed)?;
+    tx.commit()?;
+    Ok(book_id)
+}
+
+/// Inserts the book's row, chapters and paragraphs.
+fn insert_book(tx: &Connection, path: &str, hash: &str, parsed: &ParsedBook) -> Result<i64> {
     tx.execute(
         "INSERT INTO books (file_path, file_hash, title, author, format, last_indexed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
@@ -189,8 +213,6 @@ pub(super) fn load_book(
             )?;
         }
     }
-
-    tx.commit()?;
     Ok(book_id)
 }
 

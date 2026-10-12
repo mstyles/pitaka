@@ -12,6 +12,8 @@ afterEach(async () => {
   // mocked IPC still in place when it settles.
   await new Promise((resolve) => setTimeout(resolve, 0));
   clearMocks();
+  // The Books view choice is remembered there; each test starts from the list.
+  localStorage.clear();
   vi.useRealTimers();
   vi.clearAllMocks();
 });
