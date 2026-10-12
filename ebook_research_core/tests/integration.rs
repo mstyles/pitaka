@@ -610,6 +610,97 @@ fn restore_moves_a_library_to_a_new_install() {
     assert_eq!(again.book_id, book_id);
 }
 
+fn cover_source(conn: &Connection, book_id: i64) -> String {
+    conn.query_row(
+        "SELECT source FROM book_covers WHERE book_id = ?1",
+        [book_id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// test.epub has no image at all, so it gets a generated cover, and its
+/// import leaves the backfill nothing to do.
+#[test]
+fn test_epub_gets_a_generated_cover() {
+    let mut conn = open_db(":memory:").unwrap();
+    let book_id = import_book(&mut conn, "test.epub").unwrap().book_id;
+    assert_eq!(list_books(&conn).unwrap()[0].cover, None);
+    assert_eq!(cover_source(&conn, book_id), "none");
+    let conn = std::sync::Mutex::new(conn);
+    assert_eq!(
+        db::backfill_covers(&conn).unwrap(),
+        db::CoverBackfill {
+            checked: 0,
+            found: 0
+        }
+    );
+}
+
+/// An EPUB at `path` whose OPF names `cover.jpg` (a 600×900 JPEG) as its
+/// cover with `<meta name="cover">`.
+fn write_epub_with_cover(path: &str) {
+    use std::io::Write;
+    let image = image::RgbImage::from_pixel(600, 900, image::Rgb([0x8a, 0x4b, 0x2a]));
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
+        .encode_image(&image)
+        .unwrap();
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+    let options = zip::write::SimpleFileOptions::default();
+    let files: [(&str, &[u8]); 4] = [
+        (
+            "META-INF/container.xml",
+            br#"<container><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>"#,
+        ),
+        (
+            "content.opf",
+            br#"<package><metadata><dc:title>Covered</dc:title>
+                <meta name="cover" content="cover-img"/></metadata><manifest>
+                <item id="cover-img" href="cover.jpg" media-type="image/jpeg"/>
+                <item id="ch" href="ch.xhtml" media-type="application/xhtml+xml"/>
+            </manifest><spine><itemref idref="ch"/></spine></package>"#,
+        ),
+        (
+            "ch.xhtml",
+            b"<html><body><p>Covered text.</p></body></html>",
+        ),
+        ("cover.jpg", &jpeg),
+    ];
+    for (name, data) in files {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(data).unwrap();
+    }
+    zip.finish().unwrap();
+}
+
+/// Covers live in the library, so a backup carries them to a new install.
+#[test]
+fn backup_keeps_covers() {
+    let epub = &temp_path("test_covered.epub");
+    let old_path = &temp_path("test_covers_old_library.db");
+    let new_path = &temp_path("test_covers_new_library.db");
+    let backup = &temp_path("test_covers.pitaka");
+    for path in [old_path, new_path, backup] {
+        let _ = std::fs::remove_file(path);
+    }
+    write_epub_with_cover(epub);
+
+    let mut old = open_db(old_path).unwrap();
+    let book_id = import_book(&mut old, epub).unwrap().book_id;
+    let thumb = db::book_cover(&old, book_id).unwrap().expect("a cover");
+    let key = list_books(&old).unwrap()[0].cover.clone().expect("a key");
+    assert_eq!(cover_source(&old, book_id), "epub");
+    db::backup_library(&old, backup, "9.9.9").unwrap();
+    drop(old);
+
+    let mut new = open_db(new_path).unwrap();
+    db::restore_library(&mut new, backup, "9.9.9").unwrap();
+    assert_eq!(db::book_cover(&new, book_id).unwrap(), Some(thumb));
+    assert_eq!(list_books(&new).unwrap()[0].cover, Some(key));
+    std::fs::remove_file(epub).unwrap();
+}
+
 /// A query term with a curated transliteration variant also finds the other
 /// spelling. Uses its own variant list rather than the shipped one, so these
 /// assertions don't move when `data/term_variants.txt` is edited.

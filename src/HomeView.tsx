@@ -1,5 +1,6 @@
 import { type ComponentType, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import BookCover from "./BookCover";
 import EmptyState from "./EmptyState";
 import { BookmarkIcon, BooksIcon, SearchIcon } from "./icons";
 import type { Screen } from "./NavBar";
@@ -9,6 +10,8 @@ import { useDelayed } from "./useDelayed";
 import type { BookmarkFolder, BookSummary, ReadingPosition } from "./types";
 
 type Props = {
+  /** Bumped by App when the library changes, e.g. covers were found. */
+  libraryVersion: number;
   onNavigate: (screen: Screen) => void;
   onOpenBook: (bookId: number) => void;
 };
@@ -41,7 +44,7 @@ function CardIcon({ screen }: { screen: Exclude<Screen, "home"> }) {
  * The launch screen: one card per section, each with a line of live counts,
  * then the books being read and the most recently imported ones.
  */
-function HomeView({ onNavigate, onOpenBook }: Props) {
+function HomeView({ libraryVersion, onNavigate, onOpenBook }: Props) {
   // Null until loaded, so the cards don't flash an empty-library state.
   const [books, setBooks] = useState<BookSummary[] | null>(null);
   const [folders, setFolders] = useState<BookmarkFolder[] | null>(null);
@@ -49,9 +52,6 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
-    invoke<BookSummary[]>("list_books")
-      .then(setBooks)
-      .catch((err) => setErrors((e) => [...e, `Loading library failed: ${err}`]));
     invoke<BookmarkFolder[]>("list_bookmark_folders")
       .then(setFolders)
       .catch((err) => setErrors((e) => [...e, `Loading bookmark folders failed: ${err}`]));
@@ -59,6 +59,12 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
       .then(setPositions)
       .catch((err) => setErrors((e) => [...e, `Loading reading positions failed: ${err}`]));
   }, []);
+
+  useEffect(() => {
+    invoke<BookSummary[]>("list_books")
+      .then(setBooks)
+      .catch((err) => setErrors((e) => [...e, `Loading library failed: ${err}`]));
+  }, [libraryVersion]);
 
   const emptyLibrary = books?.length === 0;
   const showSkeleton = useDelayed(books == null && errors.length === 0);
@@ -190,9 +196,12 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
             {recent.map((b) => (
               <li key={b.id}>
                 <button className="home-recent-row" onClick={() => onOpenBook(b.id)}>
-                  <span className="book-title">{b.title ?? "Untitled"}</span>
-                  <span className="book-meta">
-                    {b.author ?? "Unknown author"} · {plural(b.chapter_count, "chapter")}
+                  <BookCover book={b} size="thumb" />
+                  <span className="home-recent-text">
+                    <span className="book-title">{b.title ?? "Untitled"}</span>
+                    <span className="book-meta">
+                      {b.author ?? "Unknown author"} · {plural(b.chapter_count, "chapter")}
+                    </span>
                   </span>
                 </button>
               </li>

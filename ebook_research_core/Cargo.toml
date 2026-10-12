@@ -29,6 +29,9 @@ tokenizers = { version = "0.23", default-features = false, features = ["onig"], 
 # 0.4's small sync client; 1.0 is a full async Hub client, far more than
 # fetching three files needs.
 hf-hub = { version = "0.4", default-features = false, features = ["ureq"], optional = true }
+# Book covers: decodes an EPUB's or PDF's cover and writes a small JPEG
+# thumbnail. Pure Rust, JPEG and PNG only.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # Backup manifests, and the embedding model's config with `semantic`.
 serde_json = "1"
 

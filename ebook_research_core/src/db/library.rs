@@ -19,6 +19,9 @@ pub struct BookSummary {
     pub note_count: i64,
     /// How far the book is indexed for chapter search.
     pub index_state: IndexState,
+    /// The cover thumbnail's key, which the `cover://` URL carries; `None`
+    /// means the book gets a generated cover.
+    pub cover: Option<String>,
 }
 
 pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
@@ -27,9 +30,12 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
                 (SELECT COUNT(*) FROM bookmarks bm WHERE bm.book_id = b.id),
                 (SELECT COUNT(*) FROM highlights h WHERE h.book_id = b.id),
                 (SELECT COUNT(*) FROM notes n WHERE n.book_id = b.id),
-                {INDEX_STATE_SQL}
+                {INDEX_STATE_SQL},
+                bc.key
          FROM books b
          LEFT JOIN chapters ch ON ch.book_id = b.id
+         -- One row per book at most, so `GROUP BY b.id` still holds.
+         LEFT JOIN book_covers bc ON bc.book_id = b.id
          GROUP BY b.id
          ORDER BY b.added_at DESC, b.id DESC"
     ))?;
@@ -43,6 +49,7 @@ pub fn list_books(conn: &Connection) -> Result<Vec<BookSummary>> {
             highlight_count: row.get(5)?,
             note_count: row.get(6)?,
             index_state: IndexState::from_sql(&row.get::<_, String>(7)?)?,
+            cover: row.get(8)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)

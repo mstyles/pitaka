@@ -1,5 +1,5 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { fixtures, indexingEvents } from "./test/mockBackend";
 import { goTo, renderApp } from "./test/renderApp";
 
@@ -560,5 +560,180 @@ describe("indexing for chapter search", () => {
     await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3, queued: 2 }));
     expect(screen.queryByRole("button", { name: /^Index/ })).toBeNull();
     expect(screen.queryByText(/chapter search/)).toBeNull();
+  });
+});
+
+describe("book covers", () => {
+  const longBook = fixtures.books.find((b) => b.title === LONG_BOOK)!;
+
+  function cards() {
+    return Array.from(document.querySelectorAll<HTMLLIElement>(".book-grid .book-card"));
+  }
+
+  async function showGrid(options: Parameters<typeof renderApp>[0] = {}) {
+    const app = renderApp(options);
+    await goTo(app.user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await app.user.click(screen.getByRole("button", { name: "Grid" }));
+    return app;
+  }
+
+  it("shows a book's cover, or a generated one", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+
+    expect(longBook.cover).toMatch(/^[0-9a-f]{12}$/);
+    const img = bookRow(LONG_BOOK).querySelector("img.cover")!;
+    expect(img.getAttribute("src")).toBe(`cover://localhost/${longBook.id}-${longBook.cover}`);
+    expect(img.getAttribute("alt")).toBe("");
+
+    const generated = bookRow(TEST_BOOK).querySelector(".cover-generated")!;
+    expect(generated.textContent).toBe("T");
+    expect(generated.getAttribute("aria-hidden")).toBe("true");
+
+    // A cover that doesn't load, as in a browser, falls back to a generated one.
+    fireEvent.error(img);
+    expect(bookRow(LONG_BOOK).querySelector("img")).toBeNull();
+    expect(bookRow(LONG_BOOK).querySelector(".cover-generated")!.textContent).toBe("A");
+  });
+
+  it("shows the books as a grid of cards, and back as a list", async () => {
+    const { user } = await showGrid();
+    expect(screen.getByRole("button", { name: "Grid" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "List" }).getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector(".book-list")).toBeNull();
+    expect(cards().map((c) => c.querySelector(".book-card-title")!.textContent)).toEqual([
+      LONG_BOOK,
+      TEST_BOOK,
+    ]);
+    expect(cards().map((c) => c.querySelector(".book-card-meta")!.textContent)).toEqual([
+      "Fixture Author",
+      "A. Tester",
+    ]);
+    const generated = cards()[1].querySelector(".cover-card.cover-generated")!;
+    expect(generated.querySelector(".cover-title")!.textContent).toBe(TEST_BOOK);
+    expect(generated.querySelector(".cover-author")!.textContent).toBe("A. Tester");
+
+    await user.click(screen.getByRole("button", { name: "List" }));
+    expect(document.querySelector(".book-grid")).toBeNull();
+    expect(document.querySelectorAll(".book-list .book-row")).toHaveLength(2);
+  });
+
+  it("opens a book from its card", async () => {
+    const { user, callsTo } = await showGrid();
+    await user.click(cards()[0].querySelector(".cover")!);
+    await waitFor(() => expect(callsTo("get_book_chapters")).toEqual([{ bookId: longBook.id }]));
+    expect(document.querySelector(".reader")).not.toBeNull();
+  });
+
+  it("reaches a card's Remove with Tab, which still asks first", async () => {
+    const { user, callsTo } = await showGrid();
+    const remove = within(cards()[1]).getByRole("button", { name: "Remove" });
+    for (let i = 0; i < 30 && document.activeElement !== remove; i++) await user.tab();
+    expect(document.activeElement).toBe(remove);
+
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByText(TEST_BOOK)).toBeNull());
+    expect(callsTo("plugin:dialog|message")).toHaveLength(1);
+    expect(callsTo("delete_book")).toEqual([{ bookId: 1 }]);
+    expect(cards()).toHaveLength(1);
+  });
+
+  it("edits a book's title and author inside its card", async () => {
+    const { user, callsTo } = await showGrid();
+    await user.click(within(cards()[1]).getByRole("button", { name: "Edit" }));
+    const title = within(cards()[1]).getByRole("textbox", { name: "Title" });
+    expect(title).toHaveProperty("value", TEST_BOOK);
+    expect(cards()[1].querySelector(".book-edit-form-stacked")).not.toBeNull();
+    // Clicking into the form doesn't open the book.
+    await user.click(within(cards()[1]).getByRole("textbox", { name: "Author" }));
+    expect(document.querySelector(".reader")).toBeNull();
+
+    await user.clear(title);
+    await user.type(title, "Zen Research");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText('Updated "Zen Research"');
+    expect(callsTo("update_book_details")).toEqual([
+      { bookId: 1, title: "Zen Research", author: "A. Tester" },
+    ]);
+    expect(cards().map((c) => c.querySelector(".book-card-title")!.textContent)).toEqual([
+      LONG_BOOK,
+      "Zen Research",
+    ]);
+  });
+
+  it("filters the grid", async () => {
+    const { user } = await showGrid();
+    await user.type(screen.getByRole("searchbox", { name: "Filter books" }), "research");
+    expect(cards().map((c) => c.querySelector(".book-card-title")!.textContent)).toEqual([
+      TEST_BOOK,
+    ]);
+    expect(screen.getByText("Showing 1 of 2 books")).toBeTruthy();
+  });
+
+  it("remembers the grid on this computer", async () => {
+    const { user } = await showGrid();
+    expect(localStorage.getItem("pitaka.book-view")).toBe("grid");
+    cleanup();
+
+    const again = renderApp();
+    await goTo(again.user, "Books");
+    // In the grid, a generated cover shows the title too.
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(screen.getByRole("button", { name: "Grid" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "List" }));
+    expect(localStorage.getItem("pitaka.book-view")).toBe("list");
+  });
+
+  it("shows the list for an unknown saved view", async () => {
+    localStorage.setItem("pitaka.book-view", "bogus");
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    expect(document.querySelector(".book-grid")).toBeNull();
+    expect(screen.getByRole("button", { name: "List" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("shows the list, without an error, when storage is unavailable", async () => {
+    const denied = () => {
+      throw new DOMException("denied", "SecurityError");
+    };
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(denied);
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(denied);
+    try {
+      const { user } = renderApp();
+      await goTo(user, "Books");
+      await screen.findByText(TEST_BOOK);
+      expect(document.querySelector(".book-grid")).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Grid" }));
+      expect(cards()).toHaveLength(2);
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+
+  it("finds covers in the background and shows them", async () => {
+    let release!: () => void;
+    const backfill = new Promise<void>((resolve) => (release = resolve));
+    const { user, callsTo } = renderApp({
+      backfillFound: 1,
+      gates: { backfill_covers: backfill },
+    });
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    expect(callsTo("backfill_covers")).toEqual([{}]);
+    expect(bookRow(TEST_BOOK).querySelector("img")).toBeNull();
+    const listed = callsTo("list_books").length;
+
+    act(() => release());
+    await waitFor(() =>
+      expect(bookRow(TEST_BOOK).querySelector("img")?.getAttribute("src")).toBe(
+        "cover://localhost/1-mock",
+      ),
+    );
+    expect(callsTo("list_books").length).toBeGreaterThan(listed);
+    expect(callsTo("backfill_covers")).toHaveLength(1);
   });
 });

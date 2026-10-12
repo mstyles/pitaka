@@ -38,6 +38,7 @@ fn long_book() -> ParsedBook {
         title: Some("A Long Book for Scrolling".to_string()),
         author: Some("Fixture Author".to_string()),
         format: "epub",
+        cover: None,
         chapters,
     }
 }
@@ -53,6 +54,10 @@ fn ui_fixtures_are_current() {
     let import_new = import_book(&mut conn, "test.epub").unwrap();
     let import_again = import_book(&mut conn, "test.epub").unwrap();
     let long_id = load_book(&mut conn, "/books/long.epub", "long", &long_book()).unwrap();
+    // The first book listed has a cover; test.epub has none, so it keeps
+    // the 'none' row its import wrote and gets a generated cover.
+    let cover = crate::cover::test_jpeg(600, 900);
+    super::covers::save_cover(&conn, long_id, "epub", Some(&cover)).unwrap();
 
     // One folder holding a passage from each book, so the UI starts with
     // something to list. `created_at` is pinned so the file is stable.

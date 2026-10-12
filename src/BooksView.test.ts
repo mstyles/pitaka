@@ -12,6 +12,7 @@ function book(id: number, title: string | null, author: string | null = "An Auth
     highlight_count: 0,
     note_count: 0,
     index_state: "indexed",
+    cover: null,
   };
 }
 

@@ -233,7 +233,7 @@ mod tests {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         migrations().to_version(&mut conn, 2).unwrap();
-        let book = load_book(
+        let book = crate::db::import::load_book_before_covers(
             &mut conn,
             "/a.epub",
             "ha",

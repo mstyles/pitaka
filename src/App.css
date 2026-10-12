@@ -19,6 +19,14 @@
   --accent-strong: #823d15;
   /* A translucent wash, so it works over both --surface and --bg. */
   --hover: rgba(42, 36, 29, 0.06);
+  /* Generated book covers: clay, olive, slate, plum, ochre, teal. */
+  --cover-1: #8a4b2a;
+  --cover-2: #5f6b4a;
+  --cover-3: #4a5d73;
+  --cover-4: #6e4a63;
+  --cover-5: #7f6224;
+  --cover-6: #3f5f5a;
+  --cover-text: #fffcf6;
 
   --radius: 6px;
   --content: 880px;
@@ -95,6 +103,14 @@
     --rule-neutral: #5a4f42;
     --accent-strong: #eaae7c;
     --hover: rgba(237, 228, 211, 0.08);
+    /* 72% of the light tints, so covers don't glare on the dark page. */
+    --cover-1: #63361e;
+    --cover-2: #444d35;
+    --cover-3: #354353;
+    --cover-4: #4f3547;
+    --cover-5: #5b471a;
+    --cover-6: #2d4441;
+    --cover-text: #ede4d3;
 
     color-scheme: dark;
   }
@@ -624,8 +640,7 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 .home-recent-row {
   display: flex;
   width: 100%;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
   border: none;
@@ -648,6 +663,16 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   bottom: 0;
   height: 3px;
   background: var(--border);
+}
+
+/* Title and meta keep their shared baseline beside the cover. */
+.home-recent-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
 }
 
 .home-recent-more {
@@ -707,6 +732,139 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   flex: 1;
 }
 
+/* Book covers: a thumbnail, or a generated cover printed in a tint. */
+.cover {
+  display: block;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 3px;
+  /* Shown while the image loads, so the row doesn't flash. */
+  background: var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.cover-thumb {
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.cover-card {
+  width: 100%;
+}
+
+.cover-generated {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  overflow: hidden;
+  background: var(--cover-tint);
+  color: var(--cover-text);
+  text-align: center;
+  /* An inset rule, as on a printed cover. */
+  outline: 1px solid rgba(255, 252, 246, 0.35);
+  outline-offset: calc(-1 * var(--space-2));
+}
+
+.cover-thumb.cover-generated {
+  padding: 0;
+  outline: none;
+}
+
+.cover-initial {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.cover-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  line-height: var(--leading-tight);
+}
+
+.cover-author {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+}
+
+/* An edge against the dark page. A ring rather than an outline, which the
+   generated cover's inset rule already uses. */
+@media (prefers-color-scheme: dark) {
+  .cover {
+    box-shadow:
+      0 0 0 1px var(--border),
+      0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.book-grid {
+  list-style: none;
+  margin: var(--space-4) 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-6) var(--space-4);
+}
+
+.book-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  cursor: pointer;
+}
+
+.book-card .cover {
+  margin-bottom: var(--space-1);
+}
+
+.book-card-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--font-read);
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+}
+
+.book-card-meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.book-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.book-card:hover .book-index:not(:disabled),
+.book-card:focus-within .book-index:not(:disabled),
+.book-card:hover .book-edit,
+.book-card:focus-within .book-edit,
+.book-card:hover .book-remove,
+.book-card:focus-within .book-remove {
+  opacity: 1;
+}
+
+.book-card:hover .book-card-title {
+  text-decoration: underline;
+}
+
 .book-edit-form {
   flex: 1;
   display: flex;
@@ -721,6 +879,23 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 .book-edit-author {
   flex: 1;
   min-width: 0;
+}
+
+/* In a grid card: the fields at full width, then Save and Cancel. */
+.book-edit-form-stacked {
+  flex-wrap: wrap;
+}
+
+.book-edit-form-stacked .book-edit-title,
+.book-edit-form-stacked .book-edit-author {
+  flex-basis: 100%;
+}
+
+/* Side by side in a card as narrow as 140px. */
+.book-edit-form-stacked button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-2);
 }
 
 @media (max-width: 600px) {
@@ -744,8 +919,8 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 }
 
 /* The row's buttons sit close together, rather than its full gap apart. */
-.book-index + .book-edit,
-.book-edit + .book-remove {
+.book-row .book-index + .book-edit,
+.book-row .book-edit + .book-remove {
   margin-left: calc(-1 * var(--space-2));
 }
 

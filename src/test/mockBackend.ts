@@ -2,7 +2,7 @@
 // test `ui_fixtures_are_current` (UPDATE_UI_FIXTURES=1 regenerates them), so
 // the UI can run in jsdom or a plain browser tab without the Rust side.
 import { emit } from "@tauri-apps/api/event";
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockConvertFileSrc, mockIPC } from "@tauri-apps/api/mocks";
 import fixtureData from "./fixtures/library.json";
 import type {
   AnnotatedBook,
@@ -16,6 +16,7 @@ import type {
   ChapterMatch,
   ChapterSummary,
   BookScan,
+  CoverBackfill,
   FolderBookmark,
   Highlight,
   ImportOutcome,
@@ -94,6 +95,11 @@ export type MockOptions = {
   savePath?: string | null;
   /** When set, the backup and restore commands always reject with this message. */
   backupError?: string;
+  /**
+   * When set, `backfill_covers` finds covers for this many books without one,
+   * then sends `covers_found`, as the app does once its background run ends.
+   */
+  backfillFound?: number;
 };
 
 export type MockCall = { cmd: string; args: Record<string, unknown> };
@@ -120,6 +126,7 @@ export function installMockBackend({
   indexStates = {},
   savePath = "/backups/pitaka-backup.pitaka",
   backupError,
+  backfillFound,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
   const withIndexState = (list: BookSummary[]) =>
@@ -608,6 +615,22 @@ export function installMockBackend({
         notes = startingNotes();
         positions = new Map();
         return fixtures.backup_manifest!.counts;
+      case "backfill_covers":
+        if (backfillFound) {
+          // After answering, as the app's run happens in the background.
+          setTimeout(() => {
+            const found = new Set(
+              books
+                .filter((b) => b.cover == null)
+                .slice(0, backfillFound)
+                .map((b) => b.id),
+            );
+            books = books.map((b) => (found.has(b.id) ? { ...b, cover: "mock" } : b));
+            const payload: CoverBackfill = { checked: found.size, found: found.size };
+            emit("covers_found", payload);
+          }, 0);
+        }
+        return null;
       case "plugin:dialog|save":
         return savePath;
       case "plugin:dialog|open": {
@@ -634,6 +657,10 @@ export function installMockBackend({
     },
     { shouldMockEvents: true },
   );
+  // Book covers are `cover://localhost/…` URLs, as on Linux. Nothing serves
+  // them in a browser or jsdom, so `npm run dev:mock` and the demo show the
+  // generated covers that a failed image falls back to.
+  mockConvertFileSrc("linux");
 
   return { calls };
 }

@@ -125,6 +125,17 @@ describe("home", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Books" })).toBeTruthy();
   });
 
+  it("shows each recent book's cover, and still opens the book from its row", async () => {
+    const { user, callsTo } = renderApp();
+    const list = await screen.findByRole("region", { name: "Your library" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.querySelector(".cover-thumb")!.tagName)).toEqual(["IMG", "DIV"]);
+    expect(rows[1].querySelector(".cover-generated")!.textContent).toBe("T");
+
+    await user.click(rows[1]);
+    await waitFor(() => expect(callsTo("get_book_chapters")).toEqual([{ bookId: 1 }]));
+  });
+
   it("opens a book from home and comes back", async () => {
     const { user, callsTo } = renderApp();
     const list = await screen.findByRole("region", { name: "Your library" });
