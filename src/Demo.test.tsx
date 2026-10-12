@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import DemoBanner from "./DemoBanner";
-import { DEMO_IMPORT_ERROR, demoOptions } from "./demo/installDemo";
+import { DEMO_BACKUP_ERROR, DEMO_IMPORT_ERROR, demoOptions } from "./demo/installDemo";
 import { goTo, renderApp, resultItems, search } from "./test/renderApp";
 
 const BOOK = "Verses of the Senior Nuns";
@@ -35,6 +35,13 @@ describe("browser demo", () => {
     await goTo(user, "Books");
     await user.click(screen.getByRole("button", { name: "Import book…" }));
     expect(await screen.findByText(`Import failed: ${DEMO_IMPORT_ERROR}`)).toBeTruthy();
+  });
+
+  it("explains that backups need the desktop app", async () => {
+    const { user } = renderApp(demoOptions());
+    await goTo(user, "Books");
+    await user.click(screen.getByRole("button", { name: "Back up…" }));
+    expect(await screen.findByText(`Backup failed: ${DEMO_BACKUP_ERROR}`)).toBeTruthy();
   });
 
   it("has no chapter search, and says so", async () => {

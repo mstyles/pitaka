@@ -8,6 +8,19 @@
       "title": "A Long Book for Scrolling"
     }
   ],
+  "backup_manifest": {
+    "app_version": "0.0.0-fixture",
+    "counts": {
+      "bookmark_folders": 1,
+      "bookmarks": 2,
+      "books": 2,
+      "highlights": 2,
+      "notes": 2
+    },
+    "created_at": "2026-01-01T00:00:00Z",
+    "format": 1,
+    "schema_version": 6
+  },
   "book_annotations": {
     "2": [
       {

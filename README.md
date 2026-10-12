@@ -35,6 +35,9 @@ to keep, and highlights and notes as you read.
   layout included, skipping the ones already in your library. PDFs need
   a text layer: scanned ones are refused. A wrong or missing title or
   author can be corrected on the Books screen, without changing the file.
+- **Back up your library** to one file and restore it on another
+  computer: books, folders, highlights and notes come back as they were,
+  without the book files.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -153,6 +156,22 @@ TypeScript frontend). The Rust side is split into two crates on purpose:
 This is a Cargo workspace (root `Cargo.toml`) with both crates as
 members, sharing one `Cargo.lock`/`target/`.
 
+Backups (`ebook_research_core/src/db/backup.rs`) are a `.pitaka` zip
+holding a stored `manifest.json` (format, app and schema version, date
+and counts) and the library as a deflated `library.db`. On the way out,
+`VACUUM INTO` writes a consistent, compacted snapshot, which is zipped
+to a `.partial` file and renamed over the chosen file, so a failed
+backup never leaves half a file. On the way in, the manifest is checked
+first (a backup from a newer Pitaka is refused before anything is
+extracted), the library is extracted next to `library.db` and loaded
+into an in-memory copy, which is migrated like an older `library.db`
+and integrity-checked, FTS indexes included. Only then is the current
+library saved as `library-before-restore.pitaka` (the undo) and the
+copy written over it with SQLite's backup API, through its locking, so
+the indexing worker's own connection sees the restored library too. A
+restore is refused while `IndexQueue::is_busy`, so a chapter in flight
+can't write its vectors into the restored library.
+
 The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
 (`com.pitaka.app`) names the data directory, so changing it would lose
 every user's library. `bundle.windows.wix.upgradeCode` is pinned
@@ -270,7 +289,8 @@ alongside the old one. Neither may change. The version comes from
   One file per job, each with its unit tests alongside and all
   re-exported from `mod.rs` as `db::<item>`: `mod.rs` (migrations and
   `open_db`), `import.rs`, `search.rs`, `library.rs` (the reader's
-  queries, and `update_book_details`), `bookmarks.rs` and `annotations.rs`.
+  queries, and `update_book_details`), `bookmarks.rs`, `annotations.rs`
+  and `backup.rs`.
   `update_book_details` corrects a book's title and author with a plain
   `UPDATE`: each is trimmed with runs of whitespace collapsed, an empty
   one is stored as `NULL` (shown as "Untitled" / "Unknown author"), and
@@ -338,6 +358,31 @@ alongside the old one. Neither may change. The version comes from
   hits rank below the library's top 50 still gets them), that ranks
   and snippets are the same as library-wide, and that an unknown id
   finds nothing.
+- `ebook_research_core/src/db/backup.rs` — `backup_library`,
+  `read_backup_manifest` and `restore_library` (see [How it's
+  built](#how-its-built)). Unit tests, on file-backed libraries in the
+  temp folder: a library with a book, a folder and bookmark, a
+  highlight with a note, a paragraph note and an edited title is backed
+  up, changed (book removed, folder renamed, another book loaded) and
+  restored, and its counts, books, annotations, folder passages and
+  search come back as before, with both FTS integrity checks passing;
+  the file is a zip of `manifest.json` then a deflated, smaller
+  `library.db`, and the manifest round-trips; a second connection open
+  during the restore reads the restored library; backing up twice to
+  one path replaces it and leaves no scratch files, and backing up onto
+  the library itself is refused; a restore saves the previous library
+  as `library-before-restore.pitaka`; a text file, a zip without a
+  manifest or without `library.db`, a manifest with schema version 99
+  or format 2, and a backup with one byte flipped (a checksum mismatch)
+  are each refused with the library untouched and no files left
+  behind; and a backup of a library at migration 5 is upgraded to 6 on
+  restore. While planning, Python's SQLite 3.46.1 checked the same
+  steps against a copy of the real 54-book library: `VACUUM INTO`
+  kept `user_version` and passed `integrity_check` and both FTS
+  checks, the snapshot was 31 MB (16 MB deflated at level 1), and
+  copying a backup over a live file through the backup API was seen at
+  once by a connection already open on it. Not yet run against the
+  real library from Rust, and not timed there.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
@@ -351,7 +396,11 @@ alongside the old one. Neither may change. The version comes from
   the book empties the folder but keeps it. A variant test searches
   "neuronal", a word the book never uses, and gets back exactly the
   blocks "neural" returns, in both modes, while an unlisted term's hits
-  and ranks are unchanged. `cargo test -p ebook_research_core` passes.
+  and ranks are unchanged. `restore_moves_a_library_to_a_new_install`
+  backs up a library with a highlighted and noted `test.epub`
+  paragraph, restores it into a fresh database, and finds the same
+  annotations and search hits, with a re-import of the file recognised
+  as the same book. `cargo test -p ebook_research_core` passes.
 - Semantic chapter search (`--features semantic`; plan in
   `docs/plans/semantic-chapter-search.md`). `ebook_research_core/src/semantic.rs`
   loads BAAI/bge-small-en-v1.5 with candle, embeds by CLS pooling into
@@ -425,8 +474,9 @@ alongside the old one. Neither may change. The version comes from
     drive the Books screen's buttons. The queue's rules have unit
     tests: no duplicates, first in first out, Stop empties it and
     cancels the current run, removing a book drops or cancels it, Stop
-    pauses imports until something is queued by hand, and the worker
-    waits for a push from another thread. The Tauri wrapper around it
+    pauses imports until something is queued by hand, the worker
+    waits for a push from another thread, and `is_busy` stays true
+    after Stop until the current run finishes. The Tauri wrapper around it
     has no automated tests. `search_chapters` runs off the main thread,
     since the first call may download the model.
 - The frontend typechecks (`npx tsc --noEmit`):
@@ -457,6 +507,18 @@ alongside the old one. Neither may change. The version comes from
     the Search screen re-runs so its results and book picker show the
     new title. Covered by `Books.test.tsx` and `Search.test.tsx` against
     the mocked backend; not yet clicked through in the Tauri window.
+    **Back up…** saves
+    the library through the save dialog ("Backed up 2 books, 1 bookmark
+    folder, … to …"), and **Restore…** reads the chosen backup's
+    manifest, asks with its date, version and counts, then restores and
+    reloads the list; App drops any open folder, book or search scope,
+    whose ids no longer mean anything. Restore is disabled while a book
+    is queued for indexing. Covered by `Backup.test.tsx` (cancelling,
+    the status lines, the dialog's wording, declining, a newer backup
+    refused without asking, the folder list after a restore, the
+    disabled button) and `Demo.test.tsx` (the demo's "Backups need the
+    desktop app"). Not clicked through in `npm run dev:mock` or the
+    Tauri window.
   - `src/SearchView.tsx` — in a build with semantic search, a
     Passages / Chapters switch; Chapters calls `search_chapters` and
     lists each chapter with a plain-text preview of the part that
@@ -737,7 +799,7 @@ pitaka/
 │   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
 │   │                              library / bookmarks / annotations /
-│   │                              semantic_index,
+│   │                              backup / semantic_index,
 │   │                              re-exported as db::*
 │   ├── tests/integration.rs
 │   └── tests/semantic_eval/    <- labelled queries for ranking (local/ is git-ignored)
@@ -847,8 +909,8 @@ In the same order of priority as the Python version, then newer ones.
    counts. Bookmarks cover whole
    paragraphs, and passages can't be reordered within a folder. A
    highlight can't span paragraphs or overlap another highlight, notes
-   are plain text, and neither notes nor highlights are searchable or
-   exportable.
+   are plain text, and neither notes nor highlights are searchable, or
+   exportable except inside a whole-library backup.
 6. Transliteration variants are a curated list only: unlisted pairs
    aren't inferred, so `nibbāna`/`nirvana` matches because it's in
    `data/term_variants.txt`, not because anything spotted the
@@ -921,6 +983,15 @@ In the same order of priority as the Python version, then newer ones.
      win. A title with no letters ("1984") is skipped as junk, falling
      back to the file name.
    - A page pdf-extract can't read fails the whole import.
+10. Backups:
+    - Restoring replaces the whole library rather than merging the
+      backup into it; the library it replaced is kept as
+      `library-before-restore.pitaka` until the next restore.
+    - A backup holds every book's full text, unencrypted, so treat it
+      as private.
+    - A restore briefly needs free space for the extracted library
+      next to `library.db`, as well as for
+      `library-before-restore.pitaka`.
 
 ## Roadmap
 
@@ -974,13 +1045,14 @@ Done:
 - [x] Import text-layer PDFs, with chapters from the outline
 - [x] Filter the Books screen by title or author, and sort it by title
 - [x] Search within a single book, from the Search screen or the reader
+- [x] Back up the library to one file and restore it
 
 Later:
 
 - [ ] Reorder passages within a bookmark folder
 - [ ] Keep bookmarks when a book is removed and re-imported
       (limitation 5)
-- [ ] Export bookmarks, notes and highlights
+- [ ] Export a book's highlights and notes as readable Markdown
 - [ ] Footnote/endnote handling (limitation 1)
 - [ ] Keep formatting, images and tables in the reader instead of
       rendering every block as a plain `<p>` (limitation 3)

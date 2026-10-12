@@ -50,6 +50,14 @@ function App() {
         <BooksView
           onOpenBook={(bookId) => setReader({ bookId, backLabel: "← Books" })}
           onLibraryChanged={() => setLibraryVersion((v) => v + 1)}
+          onLibraryReplaced={() => {
+            // Ids from before a restore mean nothing afterwards.
+            setOpenFolderId(null);
+            setOpenAnnotationsBookId(null);
+            setSearchBookId(null);
+            dismissFinished();
+            setLibraryVersion((v) => v + 1);
+          }}
           indexer={indexer}
           filter={bookFilter}
           onFilterChange={setBookFilter}

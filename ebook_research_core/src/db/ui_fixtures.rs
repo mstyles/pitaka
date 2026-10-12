@@ -105,6 +105,7 @@ fn ui_fixtures_are_current() {
     for (key, value) in annotations {
         fixtures[key] = value;
     }
+    fixtures["backup_manifest"] = to_value(backup_manifest_fixture(&conn)).unwrap();
     check_fixture("src/test/fixtures/library.json", &fixtures);
 }
 
@@ -154,6 +155,21 @@ fn annotation_fixtures(conn: &Connection, book_id: i64) -> [(&'static str, serde
         ),
         ("book_annotations", book_annotations.into()),
     ]
+}
+
+/// The manifest of a backup of the fixture library, read back from the
+/// file. `created_at` is pinned so the file is stable.
+fn backup_manifest_fixture(conn: &Connection) -> BackupManifest {
+    let path =
+        std::env::temp_dir().join(format!("pitaka-ui-fixture-{}.pitaka", std::process::id()));
+    let path = path.to_string_lossy();
+    backup_library(conn, &path, "0.0.0-fixture").unwrap();
+    let manifest = read_backup_manifest(&path).unwrap();
+    std::fs::remove_file(&*path).unwrap();
+    BackupManifest {
+        created_at: "2026-01-01T00:00:00Z".to_string(),
+        ..manifest
+    }
 }
 
 /// Chapter search results for a few queries, keyed by query. Embedding

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask, open } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type {
+  BackupManifest,
   BookSummary,
   BookScan,
   ImportOutcome,
+  LibraryCounts,
   SemanticIndexFailed,
   SemanticIndexProgress,
   SemanticIndexStopped,
@@ -214,6 +216,36 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** "a, b and c". */
+function listOf(parts: string[]) {
+  return parts.length > 1
+    ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+    : (parts[0] ?? "");
+}
+
+/** What a library holds, leaving out what it has none of, books aside. */
+export function countsLine(c: LibraryCounts) {
+  const counted = [
+    [c.bookmark_folders, "bookmark folder"],
+    [c.bookmarks, "bookmark"],
+    [c.highlights, "highlight"],
+    [c.notes, "note"],
+  ] as const;
+  return listOf([
+    plural(c.books, "book"),
+    ...counted.filter(([n]) => n > 0).map(([n, w]) => plural(n, w)),
+  ]);
+}
+
+const BACKUP_FILTERS = [{ name: "Pitaka backup", extensions: ["pitaka"] }];
+
+/** Today as YYYY-MM-DD, for the backup's suggested file name. */
+function today() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Lower case without accents, so "thich" finds "Thích". */
 function fold(s: string) {
   return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -283,6 +315,8 @@ type Props = {
   onOpenBook: (bookId: number) => void;
   /** Called after a book is added or removed, so a kept search can re-run. */
   onLibraryChanged: () => void;
+  /** Called after a restore replaces the whole library. */
+  onLibraryReplaced: () => void;
   indexer: IndexingControls;
   /** Kept by App, so they survive opening a book and coming back. */
   filter: string;
@@ -296,6 +330,7 @@ const PAUSED_NOTE = "New imports won't be indexed until you click Index or Index
 function BooksView({
   onOpenBook,
   onLibraryChanged,
+  onLibraryReplaced,
   indexer,
   filter,
   onFilterChange,
@@ -415,6 +450,59 @@ function BooksView({
     startFolderImport(dir);
   }
 
+  async function backUp() {
+    const path = await save({
+      defaultPath: `pitaka-backup-${today()}.pitaka`,
+      filters: BACKUP_FILTERS,
+    });
+    if (!path) return;
+
+    clearFolderImport();
+    setImportStatus("Backing up…");
+    try {
+      const { counts } = await invoke<BackupManifest>("backup_library", { path });
+      setImportStatus(`Backed up ${countsLine(counts)} to ${path}`);
+    } catch (err) {
+      setImportStatus(`Backup failed: ${err}`);
+    }
+  }
+
+  async function restore() {
+    const path = await open({ multiple: false, filters: BACKUP_FILTERS });
+    if (!path || Array.isArray(path)) return;
+
+    clearFolderImport();
+    let manifest: BackupManifest;
+    try {
+      manifest = await invoke<BackupManifest>("read_backup_manifest", { path });
+    } catch (err) {
+      setImportStatus(`Restore failed: ${err}`);
+      return;
+    }
+    const fileName = path.split(/[\\/]/).pop();
+    const date = new Date(manifest.created_at).toLocaleDateString(undefined, {
+      dateStyle: "medium",
+    });
+    const confirmed = await ask(
+      `${fileName} was backed up on ${date} by Pitaka ${manifest.app_version} and holds ` +
+        `${countsLine(manifest.counts)}. Restoring replaces every book, bookmark folder, ` +
+        `highlight and note in Pitaka with these. Your current library is saved first as ` +
+        `library-before-restore.pitaka in Pitaka's data folder.`,
+      { title: "Restore backup?", kind: "warning", okLabel: "Restore", cancelLabel: "Cancel" },
+    );
+    if (!confirmed) return;
+
+    setImportStatus("Restoring…");
+    try {
+      const counts = await invoke<LibraryCounts>("restore_library", { path });
+      setImportStatus(`Restored ${countsLine(counts)}`);
+      onLibraryReplaced();
+      await refreshBooks();
+    } catch (err) {
+      setImportStatus(`Restore failed: ${err}`);
+    }
+  }
+
   async function removeBook(book: BookSummary) {
     const title = book.title ?? "Untitled";
     const marked = [
@@ -473,6 +561,16 @@ function BooksView({
         </button>
         <button onClick={importFolder} disabled={importing}>
           Import folder…
+        </button>
+        <button onClick={backUp} disabled={importing}>
+          Back up…
+        </button>
+        <button
+          onClick={restore}
+          disabled={importing || anyQueued}
+          title={anyQueued ? "Stop indexing to restore a backup" : undefined}
+        >
+          Restore…
         </button>
         {canIndex && unindexed.length > 0 && !anyQueued && (
           <button

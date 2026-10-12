@@ -14,24 +14,39 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Schema migrations, applied in order. The DB's `PRAGMA user_version` records
 /// how many have run. Never edit one that has shipped — add a new file.
+const MIGRATIONS: &[M<'static>] = &[
+    M::up(include_str!("../../migrations/001_initial.sql")),
+    M::up(include_str!("../../migrations/002_search_indexes.sql")),
+    M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
+    M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
+    M::up(include_str!("../../migrations/005_annotations.sql")),
+    M::up(include_str!("../../migrations/006_book_embeddings.sql")),
+];
+
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![
-        M::up(include_str!("../../migrations/001_initial.sql")),
-        M::up(include_str!("../../migrations/002_search_indexes.sql")),
-        M::up(include_str!("../../migrations/003_bookmark_folders.sql")),
-        M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
-        M::up(include_str!("../../migrations/005_annotations.sql")),
-        M::up(include_str!("../../migrations/006_book_embeddings.sql")),
-    ])
+    Migrations::from_slice(MIGRATIONS)
+}
+
+/// The `user_version` of a fully migrated library: a backup with a higher
+/// one is from a newer Pitaka.
+pub(crate) fn schema_version() -> i64 {
+    MIGRATIONS.len() as i64
 }
 
 pub fn open_db(db_path: &str) -> Result<Connection> {
     let mut conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     conn.busy_timeout(BUSY_TIMEOUT)?;
-    baseline_unversioned_db(&conn)?;
-    migrations().to_latest(&mut conn)?;
+    prepare(&mut conn)?;
     Ok(conn)
+}
+
+/// Readies a connection's library for use, upgrading an older one. Also
+/// run on a backup being restored, before it replaces the library.
+fn prepare(conn: &mut Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    baseline_unversioned_db(conn)?;
+    migrations().to_latest(conn)?;
+    Ok(())
 }
 
 /// Libraries created before migrations were tracked already have the 001
@@ -50,6 +65,7 @@ fn baseline_unversioned_db(conn: &Connection) -> Result<()> {
 }
 
 mod annotations;
+mod backup;
 mod bookmarks;
 mod import;
 mod library;
@@ -65,6 +81,10 @@ pub use annotations::{
     get_chapter_annotations, list_annotated_books, list_book_annotations, set_highlight_color,
     update_note, AnnotatedBook, BookAnnotation, ChapterAnnotations, Highlight, Note,
     HIGHLIGHT_COLORS,
+};
+pub use backup::{
+    backup_library, library_counts, read_backup_manifest, restore_library, BackupManifest,
+    LibraryCounts,
 };
 pub use bookmarks::{
     add_bookmark, create_bookmark_folder, delete_bookmark_folder, get_chapter_bookmarks,

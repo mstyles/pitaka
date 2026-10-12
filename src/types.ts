@@ -167,3 +167,23 @@ export type BookAnnotation = {
   note_id: number | null;
   note_body: string | null;
 };
+
+/** What a library holds, as a backup's manifest and a restore report it. */
+export type LibraryCounts = {
+  books: number;
+  bookmark_folders: number;
+  bookmarks: number;
+  highlights: number;
+  notes: number;
+};
+
+/** The `manifest.json` inside a `.pitaka` backup. */
+export type BackupManifest = {
+  format: number;
+  /** The Pitaka that wrote the backup. */
+  app_version: string;
+  schema_version: number;
+  /** UTC, as `YYYY-MM-DDTHH:MM:SSZ`. */
+  created_at: string;
+  counts: LibraryCounts;
+};

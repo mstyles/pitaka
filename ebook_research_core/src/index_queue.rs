@@ -111,6 +111,14 @@ impl IndexQueue {
         }
     }
 
+    /// Whether a book is being indexed or waiting to be. A stopped run
+    /// stays busy until the worker finishes it, since a chapter in flight
+    /// still writes its vectors.
+    pub fn is_busy(&self) -> bool {
+        let state = self.lock();
+        state.current.is_some() || !state.waiting.is_empty()
+    }
+
     /// Books waiting behind the current one.
     pub fn waiting_count(&self) -> usize {
         self.lock().waiting.len()
@@ -189,6 +197,19 @@ mod tests {
         assert!(queue.push_import(4));
         assert_eq!(queue.next().0, 3);
         assert_eq!(queue.next().0, 4);
+    }
+
+    #[test]
+    fn is_busy_until_the_current_run_finishes() {
+        let queue = IndexQueue::new();
+        assert!(!queue.is_busy());
+        queue.push(&[1]);
+        assert!(queue.is_busy());
+        let (id, _) = queue.next();
+        queue.stop();
+        assert!(queue.is_busy());
+        queue.finish(id);
+        assert!(!queue.is_busy());
     }
 
     #[test]

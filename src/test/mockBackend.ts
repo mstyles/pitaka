@@ -6,6 +6,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import fixtureData from "./fixtures/library.json";
 import type {
   AnnotatedBook,
+  BackupManifest,
   BlockBookmark,
   BookAnnotation,
   BookmarkFolder,
@@ -47,6 +48,8 @@ export type Fixtures = {
   chapter_annotations?: Record<string, ChapterAnnotations>;
   annotated_books?: AnnotatedBook[];
   book_annotations?: Record<string, BookAnnotation[]>;
+  /** A backup of the fixture library's manifest; absent in the demo's data. */
+  backup_manifest?: BackupManifest;
 };
 
 const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"];
@@ -82,6 +85,10 @@ export type MockOptions = {
   semantic?: Partial<SemanticStatus>;
   /** Overrides books' `index_state`, by book id. */
   indexStates?: Record<number, IndexState>;
+  /** What the "Back up…" save dialog returns; null means cancelled. */
+  savePath?: string | null;
+  /** When set, the backup and restore commands always reject with this message. */
+  backupError?: string;
 };
 
 export type MockCall = { cmd: string; args: Record<string, unknown> };
@@ -105,14 +112,21 @@ export function installMockBackend({
   books: initialBooks = data.books,
   semantic = {},
   indexStates = {},
+  savePath = "/backups/pitaka-backup.pitaka",
+  backupError,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
-  let books = initialBooks.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
+  const startingBooks = () =>
+    initialBooks.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
+  let books = startingBooks();
 
   // Bookmark state, seeded from the fixtures and kept consistent the way the
   // SQL is: counts are derived, and deletes cascade.
-  let folders = data.bookmark_folders.map(({ bookmark_count: _, ...f }) => ({ ...f }));
-  let bookmarks: FolderBookmark[] = Object.values(data.folder_bookmarks).flat();
+  const startingFolders = () =>
+    data.bookmark_folders.map(({ bookmark_count: _, ...f }) => ({ ...f }));
+  const startingBookmarks = (): FolderBookmark[] => Object.values(data.folder_bookmarks).flat();
+  let folders = startingFolders();
+  let bookmarks = startingBookmarks();
   let nextFolderId = Math.max(0, ...folders.map((f) => f.id)) + 1;
   let nextBookmarkId = Math.max(0, ...bookmarks.map((b) => b.id)) + 1;
 
@@ -136,8 +150,10 @@ export function installMockBackend({
   // Highlight and note state, seeded the same way. Errors use the core's
   // wording, since the UI shows them as they come.
   const seeded = Object.values(data.chapter_annotations ?? {});
-  let highlights: Highlight[] = seeded.flatMap((a) => a.highlights);
-  let notes: Note[] = seeded.flatMap((a) => a.notes);
+  const startingHighlights = (): Highlight[] => seeded.flatMap((a) => a.highlights);
+  const startingNotes = (): Note[] => seeded.flatMap((a) => a.notes);
+  let highlights = startingHighlights();
+  let notes = startingNotes();
   let nextHighlightId = Math.max(0, ...highlights.map((h) => h.id)) + 1;
   let nextNoteId = Math.max(0, ...notes.map((n) => n.id)) + 1;
 
@@ -508,6 +524,32 @@ export function installMockBackend({
               .map((n) => entry(n.content_block_id, null, n)),
           ].sort(byReadingOrder((e) => readingOrder(e.content_block_id, e.highlight_id)));
         }
+        case "backup_library":
+          if (backupError) throw backupError;
+          return {
+            ...fixtures.backup_manifest!,
+            counts: {
+              books: books.length,
+              bookmark_folders: folders.length,
+              bookmarks: bookmarks.length,
+              highlights: highlights.length,
+              notes: notes.length,
+            },
+          } satisfies BackupManifest;
+        case "read_backup_manifest":
+          if (backupError) throw backupError;
+          return fixtures.backup_manifest;
+        case "restore_library":
+          if (backupError) throw backupError;
+          // As if restoring a backup of the starting library.
+          books = startingBooks();
+          folders = startingFolders();
+          bookmarks = startingBookmarks();
+          highlights = startingHighlights();
+          notes = startingNotes();
+          return fixtures.backup_manifest!.counts;
+        case "plugin:dialog|save":
+          return savePath;
         case "plugin:dialog|open": {
           const options = args.options as { directory?: boolean } | undefined;
           return options?.directory ? openDir : openPath;
