@@ -687,7 +687,9 @@ function BooksView({
                     onChange={(e) => setEditing({ ...editing, author: e.currentTarget.value })}
                     onKeyDown={cancelOnEscape}
                   />
-                  <button type="submit">Save</button>
+                  <button type="submit" className="button-primary">
+                    Save
+                  </button>
                   <button type="button" onClick={() => setEditing(null)}>
                     Cancel
                   </button>
@@ -702,7 +704,7 @@ function BooksView({
                 </span>
                 {canIndex && b.index_state !== "indexed" && (
                   <button
-                    className="book-index"
+                    className="book-index button-quiet button-sm"
                     disabled={current === b.id || queued.has(b.id)}
                     onClick={(e) => {
                       e.stopPropagation(); // the row itself opens the book
@@ -713,7 +715,7 @@ function BooksView({
                   </button>
                 )}
                 <button
-                  className="book-edit"
+                  className="book-edit button-quiet button-sm"
                   onClick={(e) => {
                     e.stopPropagation(); // the row itself opens the book
                     setEditing({ id: b.id, title: b.title ?? "", author: b.author ?? "" });
@@ -722,7 +724,7 @@ function BooksView({
                   Edit
                 </button>
                 <button
-                  className="book-remove"
+                  className="book-remove button-quiet button-danger button-sm"
                   onClick={(e) => {
                     e.stopPropagation(); // the row itself opens the book
                     removeBook(b);

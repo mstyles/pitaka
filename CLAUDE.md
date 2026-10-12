@@ -41,7 +41,11 @@ not clicked through in the Tauri window").
 - `rusqlite` is a dependency of both crates — bump them together, and keep
   `rusqlite_migration` on the matching release.
 - Frontend: plain `useState`, no router or state library. Don't add npm or
-  crate dependencies without asking.
+  crate dependencies without asking. Sizes in `App.css` use the
+  `--text-*`, `--leading-*` and `--space-*` tokens (`src/styles.test.ts`
+  checks); a new button is unclassed (secondary) unless it's the
+  screen's main action (`button-primary`), a row action
+  (`button-quiet button-sm`) or destructive (`button-danger`).
 - Tests go in the core crate (`#[cfg(test)]` in the module, or
   `tests/integration.rs` against `test.epub`). Note `test.epub`'s spine
   starts with `nav.xhtml`, so find chapters by title, not index.

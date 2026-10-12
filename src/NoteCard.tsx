@@ -107,14 +107,14 @@ function NoteCard({
             autoFocus
           />
           <div className="note-card-actions">
-            <button type="submit" className="button-primary">
+            <button type="submit" className="button-primary button-sm">
               Save
             </button>
-            <button type="button" onClick={cancel}>
+            <button type="button" className="button-sm" onClick={cancel}>
               Cancel
             </button>
             {note && (
-              <button type="button" className="button-danger" onClick={remove}>
+              <button type="button" className="button-danger button-sm" onClick={remove}>
                 Delete
               </button>
             )}
@@ -124,8 +124,12 @@ function NoteCard({
         <>
           <div className="note-card-body">{note?.body}</div>
           <div className="note-card-actions">
-            <button onClick={() => setEditing(true)}>Edit</button>
-            <button onClick={onClose}>Hide</button>
+            <button className="button-quiet button-sm" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button className="button-quiet button-sm" onClick={onClose}>
+              Hide
+            </button>
           </div>
         </>
       )}

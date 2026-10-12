@@ -403,14 +403,14 @@ function ReaderView({
   return (
     <main className="reader">
       <nav className="reader-sidebar" aria-label="Chapters">
-        <button className="reader-back" onClick={onBack} title={backLabel}>
+        <button className="reader-back button-quiet" onClick={onBack} title={backLabel}>
           {backLabel}
         </button>
         {book && (
           <div className="reader-book">
             <div className="reader-book-title">{book.title ?? "Untitled"}</div>
             <div className="reader-book-author">{book.author ?? "Unknown author"}</div>
-            <button className="reader-search-book" onClick={() => onSearchBook(bookId)}>
+            <button className="reader-search-book button-sm" onClick={() => onSearchBook(bookId)}>
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                 <circle cx="10.5" cy="10.5" r="6" />
                 <path d="M15 15l5.5 5.5" />
