@@ -362,7 +362,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
         let hits = |q: &str, mode| {
             search(&conn, q, mode, None, 10)
@@ -477,6 +477,44 @@ fn bookmarks_a_passage_into_a_folder() {
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].name, "Know your limit - Oct 10 2026");
     assert_eq!(folders[0].bookmark_count, 0);
+}
+
+/// Where a real book was left survives re-importing the same file and goes
+/// with the book when it is removed.
+#[test]
+fn reading_position_follows_the_book() {
+    let db_path = &temp_path("test_reading_position_library.db");
+    let _ = std::fs::remove_file(db_path);
+
+    let mut conn = open_db(db_path).unwrap();
+    let book_id = import_book(&mut conn, "test.epub").unwrap().book_id;
+    let chapters = db::get_book_chapters(&conn, book_id).unwrap();
+    let place = chapters
+        .iter()
+        .position(|c| c.title.as_deref() == Some("Chapter Two: Deeper Waters"))
+        .expect("Chapter Two should be imported");
+    let chapter = &chapters[place];
+    let block = db::get_chapter_content(&conn, chapter.id)
+        .unwrap()
+        .blocks
+        .remove(0);
+
+    db::set_reading_position(&conn, block.id, false).unwrap();
+
+    let position = db::get_reading_position(&conn, book_id).unwrap().unwrap();
+    assert_eq!(position.chapter_title, chapter.title);
+    assert_eq!(position.chapter_number, place as i64 + 1);
+    assert_eq!(position.content_block_id, block.id);
+
+    let again = import_book(&mut conn, "test.epub").unwrap();
+    assert!(again.already_imported);
+    assert_eq!(
+        db::get_reading_position(&conn, book_id).unwrap(),
+        Some(position)
+    );
+
+    db::delete_book(&conn, book_id).unwrap();
+    assert!(db::list_reading_positions(&conn, 10).unwrap().is_empty());
 }
 
 /// Highlights a real paragraph's first word and notes it, then checks a

@@ -1,10 +1,19 @@
-import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import {
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { segments, selectionOffsets } from "./annotate";
 import BookmarkPopover from "./BookmarkPopover";
 import HighlightPopover from "./HighlightPopover";
 import { BookmarkIcon, PenIcon, SearchIcon } from "./icons";
 import NoteCard from "./NoteCard";
+import { atEnd, percentRead, SAVE_DELAY_MS, topVisibleBlockId } from "./readingPosition";
 import SelectionToolbar from "./SelectionToolbar";
 import StatusLine, { failed } from "./StatusLine";
 import type {
@@ -18,6 +27,7 @@ import type {
   Highlight,
   HighlightColor,
   Note,
+  ReadingPosition,
 } from "./types";
 import { useDelayed } from "./useDelayed";
 
@@ -34,6 +44,9 @@ type Toolbar = {
 type DraftNote = { contentBlockId: number; highlightId: number | null };
 
 const NO_ANNOTATIONS: ChapterAnnotations = { highlights: [], notes: [] };
+
+/** How long closing the window waits for a pending save. */
+const CLOSE_SAVE_TIMEOUT_MS = 500;
 
 /** The element a node is, or is in. */
 function elementOf(node: Node | null) {
@@ -85,20 +98,46 @@ function ReaderView({
     top: number;
     left: number;
   } | null>(null);
+  /** The saved paragraph to scroll to once its chapter loads. */
+  const [resumeBlockId, setResumeBlockId] = useState<number | null>(null);
+  /** The paragraph at the top of the screen, for the progress bar. */
+  const [topBlockId, setTopBlockId] = useState<number | null>(null);
+  /** Whether the end of the book is on screen. */
+  const [endShowing, setEndShowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
+  // Saving the position. Only reading counts: nothing is saved until the
+  // reader scrolls by hand or changes chapter in this visit, since the
+  // reader's own scrollIntoView fires scroll events too.
+  const readingRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savePendingRef = useRef(false);
+  const lastSavedRef = useRef<{ blockId: number; finished: boolean } | null>(null);
+  const frameRef = useRef<number | null>(null);
   const loadingContent = content == null && !error;
   const showTextSkeleton = useDelayed(loadingContent);
   const showChapterSkeleton = useDelayed(!chaptersLoaded && !error);
 
   useEffect(() => {
     let cancelled = false;
-    invoke<ChapterSummary[]>("get_book_chapters", { bookId })
-      .then((chs) => {
+    // Opened at a hit, bookmark or note, that wins; otherwise the book
+    // reopens where it was left. A failed lookup just starts at the top.
+    const position =
+      initialChapterId == null
+        ? invoke<ReadingPosition | null>("get_reading_position", { bookId }).catch(() => null)
+        : Promise.resolve(null);
+    Promise.all([invoke<ChapterSummary[]>("get_book_chapters", { bookId }), position])
+      .then(([chs, saved]) => {
         if (cancelled) return;
         setChapters(chs);
         setChaptersLoaded(true);
-        setActiveChapterId((prev) => prev ?? chs[0]?.id ?? null);
+        if (saved && chs.some((c) => c.id === saved.chapter_id)) {
+          lastSavedRef.current = { blockId: saved.content_block_id, finished: saved.finished };
+          setResumeBlockId(saved.content_block_id);
+          setActiveChapterId((prev) => prev ?? saved.chapter_id);
+        } else {
+          setActiveChapterId((prev) => prev ?? chs[0]?.id ?? null);
+        }
       })
       .catch((err) => setError(`Loading chapters failed: ${err}`));
     return () => {
@@ -189,12 +228,123 @@ function ReaderView({
   useEffect(() => {
     if (!content) return;
     const target = flashBlockId != null ? document.getElementById(`block-${flashBlockId}`) : null;
+    const resume = resumeBlockId != null ? document.getElementById(`block-${resumeBlockId}`) : null;
+    let scrolledTo: number | null = null;
     if (target) {
       target.scrollIntoView({ block: "center" });
+      scrolledTo = flashBlockId;
+    } else if (resume) {
+      resume.scrollIntoView({ block: "start" });
+      scrolledTo = resumeBlockId;
+      setResumeBlockId(null);
     } else if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
+    // Before layout (and in jsdom) nothing can be measured, so the
+    // paragraph scrolled to, or the chapter's first, stands in.
+    const el = contentRef.current;
+    setTopBlockId((el && topVisibleBlockId(el)) ?? scrolledTo ?? content.blocks[0]?.id ?? null);
+    setEndShowing(el != null && isEnd(el));
+    // A chapter the reader changed to is saved like a scroll.
+    if (readingRef.current) scheduleSave();
   }, [content]);
+
+  /** The last chapter with any text: reaching its end finishes the book. */
+  const withText = chapters.filter((c) => c.char_count > 0);
+  const lastChapterId = withText[withText.length - 1]?.id ?? null;
+
+  function isEnd(el: HTMLElement) {
+    return content != null && content.chapter_id === lastChapterId && atEnd(el);
+  }
+
+  /**
+   * Saves the paragraph at the top of the screen if it, or whether the end
+   * is showing, changed since the last save. A failed save is dropped
+   * without a message, and the next one tries again.
+   */
+  function save(): Promise<void> {
+    savePendingRef.current = false;
+    const el = contentRef.current;
+    const blockId = el ? topVisibleBlockId(el) : null;
+    if (el == null || blockId == null) return Promise.resolve();
+    const finished = isEnd(el);
+    const last = lastSavedRef.current;
+    if (last?.blockId === blockId && last.finished === finished) return Promise.resolve();
+    const saved = { blockId, finished };
+    lastSavedRef.current = saved;
+    return invoke<void>("set_reading_position", { contentBlockId: blockId, finished }).catch(() => {
+      if (lastSavedRef.current === saved) lastSavedRef.current = last;
+    });
+  }
+  // The timer, leaving and closing the window call the latest render's.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
+  function scheduleSave() {
+    if (saveTimerRef.current != null) clearTimeout(saveTimerRef.current);
+    savePendingRef.current = true;
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      saveRef.current();
+    }, SAVE_DELAY_MS);
+  }
+
+  function startedReading() {
+    readingRef.current = true;
+  }
+
+  /** Restarts the save timer, and updates the progress once a frame. */
+  function onScroll() {
+    if (readingRef.current) scheduleSave();
+    if (frameRef.current != null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const el = contentRef.current;
+      if (!el) return;
+      const id = topVisibleBlockId(el);
+      if (id != null) setTopBlockId(id);
+      setEndShowing(isEnd(el));
+    });
+  }
+
+  // Leaving the reader (which is how back works) saves a pending position
+  // at once. A layout effect, so its cleanup runs while the text is still
+  // laid out and can be measured.
+  useLayoutEffect(
+    () => () => {
+      if (saveTimerRef.current != null) clearTimeout(saveTimerRef.current);
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      if (savePendingRef.current) saveRef.current();
+    },
+    [],
+  );
+
+  // Closing the window waits for a pending save, but never for long: a
+  // stuck database mustn't keep the window open.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten: (() => void) | null = null;
+    let unmounted = false;
+    getCurrentWindow()
+      .onCloseRequested(async () => {
+        if (!savePendingRef.current) return;
+        if (saveTimerRef.current != null) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        await Promise.race([
+          saveRef.current(),
+          new Promise((resolve) => setTimeout(resolve, CLOSE_SAVE_TIMEOUT_MS)),
+        ]);
+      })
+      .then((fn) => {
+        if (unmounted) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
+    return () => {
+      unmounted = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (flashBlockId == null) return;
@@ -203,6 +353,7 @@ function ReaderView({
   }, [flashBlockId]);
 
   function selectChapter(chapterId: number) {
+    startedReading();
     setFlashBlockId(null);
     setOpenNoteIds(new Set());
     setDraftNote(null);
@@ -401,6 +552,24 @@ function ReaderView({
     }
   }
 
+  // How far through the book the top of the screen is.
+  const chapterPlace = content ? chapters.findIndex((c) => c.id === content.chapter_id) : -1;
+  const progress =
+    content && chapterPlace >= 0
+      ? {
+          chapter: chapterPlace + 1,
+          finished: endShowing,
+          percent: endShowing
+            ? 100
+            : percentRead(
+                chapters,
+                content.chapter_id,
+                content.blocks,
+                topBlockId ?? content.blocks[0]?.id ?? -1,
+              ),
+        }
+      : null;
+
   return (
     <main className="reader">
       <nav className="reader-sidebar" aria-label="Chapters">
@@ -411,6 +580,12 @@ function ReaderView({
           <div className="reader-book">
             <div className="reader-book-title">{book.title ?? "Untitled"}</div>
             <div className="reader-book-author">{book.author ?? "Unknown author"}</div>
+            {progress && (
+              <div className="reader-progress-label">
+                Chapter {progress.chapter} of {chapters.length} ·{" "}
+                {progress.finished ? "Finished" : `${progress.percent}%`}
+              </div>
+            )}
             <button
               className="reader-search-book button-sm button-icon"
               onClick={() => onSearchBook(bookId)}
@@ -442,7 +617,27 @@ function ReaderView({
           ))}
         </ul>
       </nav>
-      <div className="reader-content" ref={contentRef}>
+      <div
+        className="reader-content"
+        ref={contentRef}
+        onScroll={onScroll}
+        onWheel={startedReading}
+        onTouchMove={startedReading}
+        onPointerDown={startedReading}
+        onKeyDown={startedReading}
+      >
+        {progress && (
+          <div
+            className="reader-progress"
+            role="progressbar"
+            aria-label="Reading progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.percent}
+          >
+            <div className="reader-progress-fill" style={{ width: `${progress.percent}%` }} />
+          </div>
+        )}
         <div
           className="reader-text"
           ref={textRef}

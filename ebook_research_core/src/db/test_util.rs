@@ -21,6 +21,28 @@ pub(super) fn one_chapter_book(title: &str, paragraphs: &[&str]) -> ParsedBook {
     }
 }
 
+/// A book with one chapter per slice of paragraphs, titled "Chapter 1",
+/// "Chapter 2" and so on.
+pub(super) fn book_with_chapters(title: &str, chapters: &[&[&str]]) -> ParsedBook {
+    ParsedBook {
+        title: Some(title.to_string()),
+        author: None,
+        format: "epub",
+        chapters: chapters
+            .iter()
+            .enumerate()
+            .map(|(i, paragraphs)| crate::epub::ParsedChapter {
+                file_name: format!("ch{}.xhtml", i + 1),
+                title: format!("Chapter {}", i + 1),
+                paragraphs: paragraphs
+                    .iter()
+                    .map(|p| (0, p.len(), p.to_string()))
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
 /// The ids of a one-chapter book's paragraphs, in order.
 pub(super) fn block_ids(conn: &Connection, book_id: i64) -> Vec<i64> {
     let chapter = &get_book_chapters(conn, book_id).unwrap()[0];

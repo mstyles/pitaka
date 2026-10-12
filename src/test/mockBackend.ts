@@ -21,6 +21,7 @@ import type {
   ImportOutcome,
   IndexState,
   Note,
+  ReadingPosition,
   SearchMode,
   SearchResult,
   SemanticIndexFailed,
@@ -50,6 +51,8 @@ export type Fixtures = {
   book_annotations?: Record<string, BookAnnotation[]>;
   /** A backup of the fixture library's manifest; absent in the demo's data. */
   backup_manifest?: BackupManifest;
+  /** Where the long book would be left at Part Two's paragraph 10; absent in the demo's data. */
+  reading_position_sample?: ReadingPosition;
 };
 
 const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"];
@@ -211,6 +214,42 @@ export function installMockBackend({
     };
   }
 
+  // Where each book was left. A counter stands in for `read_at`'s clock,
+  // so "most recently read" is deterministic.
+  let positions = new Map<number, { blockId: number; finished: boolean; seq: number }>();
+  let nextSeq = 1;
+
+  /** A book's position, worked out from the fixtures with the core's formula. */
+  function positionOf(bookId: number): ReadingPosition | null {
+    const saved = positions.get(bookId);
+    if (!saved) return null;
+    const { content, block } = blockPlace(saved.blockId);
+    const chapters = data.chapters[String(bookId)] ?? [];
+    const place = chapters.findIndex((c) => c.id === content.chapter_id);
+    const total = chapters.reduce((n, c) => n + c.char_count, 0);
+    const before =
+      chapters.slice(0, place).reduce((n, c) => n + c.char_count, 0) +
+      content.blocks
+        .filter((b) => b.block_idx < block.block_idx)
+        .reduce((n, b) => n + [...b.text].length, 0);
+    const percent = saved.finished
+      ? 100
+      : total === 0
+        ? 0
+        : Math.floor((before * 200 + total) / (2 * total));
+    return {
+      book_id: bookId,
+      chapter_id: content.chapter_id,
+      content_block_id: block.id,
+      chapter_title: content.chapter_title,
+      chapter_number: place + 1,
+      chapter_count: chapters.length,
+      percent,
+      finished: saved.finished,
+      read_at: sqliteNow(),
+    };
+  }
+
   /** Trims and collapses whitespace, and "" becomes null, as the core does. */
   function cleanField(value: unknown) {
     return String(value).trim().replace(/\s+/g, " ") || null;
@@ -261,6 +300,7 @@ export function installMockBackend({
         bookmarks = bookmarks.filter((b) => b.book_id !== id);
         highlights = highlights.filter((h) => bookOf(h.content_block_id) !== id);
         notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
+        positions.delete(id);
         return null;
       }
       case "update_book_details": {
@@ -302,6 +342,24 @@ export function installMockBackend({
         if (!content) throw `no chapter with id ${args.chapterId}`;
         return content;
       }
+      case "set_reading_position": {
+        const blockId = args.contentBlockId as number;
+        blockPlace(blockId);
+        positions.set(bookOf(blockId), {
+          blockId,
+          finished: Boolean(args.finished),
+          seq: nextSeq++,
+        });
+        return null;
+      }
+      case "get_reading_position":
+        return positionOf(args.bookId as number);
+      case "list_reading_positions":
+        return [...positions.entries()]
+          .filter(([, p]) => !p.finished)
+          .sort(([, a], [, b]) => b.seq - a.seq)
+          .slice(0, args.limit as number)
+          .map(([bookId]) => positionOf(bookId)!);
       case "create_bookmark_folder": {
         const folder = {
           id: nextFolderId++,
@@ -548,6 +606,7 @@ export function installMockBackend({
         bookmarks = startingBookmarks();
         highlights = startingHighlights();
         notes = startingNotes();
+        positions = new Map();
         return fixtures.backup_manifest!.counts;
       case "plugin:dialog|save":
         return savePath;

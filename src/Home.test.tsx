@@ -1,7 +1,25 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { SAVE_DELAY_MS } from "./readingPosition";
 import { fixtures } from "./test/mockBackend";
-import { goTo, renderApp, type Section } from "./test/renderApp";
+import { goTo, renderApp, scrollTo, scrollToEnd, type Section } from "./test/renderApp";
+
+const LONG_BOOK = "A Long Book for Scrolling";
+const SAMPLE = fixtures.reading_position_sample!;
+
+/** Opens the long book from Home, reads into Part Two and comes back. */
+async function readIntoPartTwo(user: ReturnType<typeof renderApp>["user"]) {
+  const list = await screen.findByRole("region", { name: "Your library" });
+  await user.click(within(list).getByRole("button", { name: new RegExp(`^${LONG_BOOK}`) }));
+  await user.click(await screen.findByRole("button", { name: "Part Two" }));
+  await screen.findByText(/^Part Two, paragraph 1:/);
+  scrollTo(SAMPLE.content_block_id);
+  act(() => {
+    vi.advanceTimersByTime(SAVE_DELAY_MS);
+  });
+  await user.click(screen.getByRole("button", { name: "← Home" }));
+  await screen.findByRole("heading", { level: 1, name: "Pitaka" });
+}
 
 function card(title: string) {
   return screen.getByRole("button", { name: new RegExp(`^${title}`) });
@@ -32,6 +50,64 @@ describe("home", () => {
     ]);
     expect(rows[0].querySelector(".book-meta")!.textContent).toBe("Fixture Author · 3 chapters");
     expect(within(list).queryByRole("button", { name: /^All \d+ books/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Continue reading" })).toBeNull();
+  });
+
+  it("continues reading where you left off", async () => {
+    const { user } = renderApp({ fakeTimers: true });
+    await readIntoPartTwo(user);
+
+    const continuing = await screen.findByRole("region", { name: "Continue reading" });
+    const row = within(continuing).getByRole("button", { name: new RegExp(`^${LONG_BOOK}`) });
+    expect(row.querySelector(".book-meta")!.textContent).toBe(`Part Two · ${SAMPLE.percent}%`);
+    const bar = within(row).getByRole("progressbar", { name: `${LONG_BOOK} progress` });
+    expect(bar.getAttribute("aria-valuenow")).toBe(String(SAMPLE.percent));
+    const library = screen.getByRole("region", { name: "Your library" });
+    expect(within(library).queryByText(LONG_BOOK)).toBeNull();
+    expect(within(library).getByText("Test Book of Research")).toBeTruthy();
+
+    await user.click(row);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Part Two" }).className).toBe("active"),
+    );
+    expect(screen.getByRole("button", { name: "← Home" })).toBeTruthy();
+  });
+
+  it("a finished book isn't in Continue reading", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    const list = await screen.findByRole("region", { name: "Your library" });
+    await user.click(within(list).getByRole("button", { name: new RegExp(`^${LONG_BOOK}`) }));
+    await user.click(await screen.findByRole("button", { name: "Part Three" }));
+    await screen.findByText(/^Part Three, paragraph 1:/);
+    scrollToEnd();
+    act(() => {
+      vi.advanceTimersByTime(SAVE_DELAY_MS);
+    });
+    await waitFor(() =>
+      expect(callsTo("set_reading_position").slice(-1)[0]).toMatchObject({ finished: true }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "← Home" }));
+    const library = await screen.findByRole("region", { name: "Your library" });
+    await waitFor(() => expect(callsTo("list_reading_positions")).toHaveLength(2));
+    expect(screen.queryByRole("heading", { name: "Continue reading" })).toBeNull();
+    expect(within(library).getByText(LONG_BOOK)).toBeTruthy();
+  });
+
+  it("removing a book drops it from Continue reading", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await readIntoPartTwo(user);
+    await screen.findByRole("region", { name: "Continue reading" });
+
+    await goTo(user, "Books");
+    const row = (await screen.findByText(LONG_BOOK, { selector: ".book-title" })).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(screen.queryByText(LONG_BOOK)).toBeNull());
+
+    await goTo(user, "Home");
+    await screen.findByRole("region", { name: "Your library" });
+    await waitFor(() => expect(callsTo("list_reading_positions")).toHaveLength(3));
+    expect(screen.queryByRole("heading", { name: "Continue reading" })).toBeNull();
   });
 
   it("links to the rest of the library when it has more than 3 books", async () => {
