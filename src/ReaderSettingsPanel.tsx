@@ -97,7 +97,11 @@ function ReaderSettingsPanel({ settings, onChange, onClose, buttonRef }: Props) 
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        // Handled, so the reader's own Escape doesn't also leave the book.
+        e.preventDefault();
+        onClose();
+      }
     }
     function onMouseDown(e: MouseEvent) {
       const target = e.target as Node;

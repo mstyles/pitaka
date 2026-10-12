@@ -44,6 +44,9 @@ to keep, and highlights and notes as you read.
 - **Back up your library** to one file and restore it on another
   computer: books, folders, highlights and notes come back as they were,
   without the book files.
+- **Keyboard shortcuts** for search, importing, each section and
+  reading chapter by chapter; `?` lists them. The desktop app also has
+  a File / View / Help menu.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -181,6 +184,16 @@ the indexing worker's own connection sees the restored library too. A
 restore is refused while `IndexQueue::is_busy`, so a chapter in flight
 can't write its vectors into the restored library.
 
+Keyboard shortcuts are handled in one place, `src/shortcuts.ts`, in
+the frontend on every platform. The app menu (`src-tauri/src/menu.rs`)
+has no accelerators: each item emits a `menu` event named after the
+same action a key sends, so a menu item runs the same code as its key
+and its button, and only Quit and the two web links are handled in
+Rust. The window is created hidden from `setup` in `src-tauri/src/lib.rs`;
+on first launch it's shrunk to fit a screen too small for 1280×800 and
+then shown. After that, `tauri-plugin-window-state` restores its size,
+position and maximised state.
+
 Where each book was left (`ebook_research_core/src/db/reading.rs`) is a
 paragraph, not a scroll offset, so it survives any change of window
 width or text size: one `reading_positions` row per book, written by
@@ -203,7 +216,7 @@ holds a single portrait JPEG at least 300px wide. The image is decoded
 with the `image` crate (JPEG and PNG only, at most 20 MB, 8000px a side
 and 256 MiB of decoding memory), laid on the paper colour if it has
 transparency, shrunk to fit 300×450 and stored as a quality-80 JPEG in
-the `book_covers` table (migration 007), one row per book, keyed in
+the `book_covers` table (migration 008), one row per book, keyed in
 URLs by the first 12 hex digits of its SHA-256. A missing or broken
 cover never fails an import: the book is recorded as having none and
 gets a generated cover, a tinted card with its title. Books imported
@@ -469,8 +482,8 @@ alongside the old one. Neither may change. The version comes from
   corrupt bytes), `book_cover` returns the JPEG, removing a book
   removes its cover, the backfill fills only missing rows (a real
   EPUB's cover found, a missing file and a changed file recorded as
-  `unavailable`, then nothing left to check), and migration 007 on a
-  library at 6 adds an empty table. The integration tests check that
+  `unavailable`, then nothing left to check), and migration 008 on a
+  library at 7 adds an empty table. The integration tests check that
   `test.epub` (which has no images) gets a generated cover and leaves
   the backfill nothing, and that a backup carries a cover to a new
   install byte for byte. While planning, a Python survey of the real
@@ -947,6 +960,30 @@ alongside the old one. Neither may change. The version comes from
   (including an unknown value and storage that throws) and the
   background backfill refreshing the list. Not checked in dark mode or
   at 560px, and not in the Tauri window.
+- Keyboard shortcuts, the shortcuts sheet and the app menu.
+  `shortcuts.test.ts` checks the key mapping (Ctrl on Linux and
+  Windows, the digits by physical key for AZERTY, `?` ignored in a text
+  field, Find and Open left to the browser in the demo) and that the
+  ids in `src-tauri/src/menu.rs` match `MENU_ACTIONS`.
+  `Shortcuts.test.tsx` covers Ctrl+F (focusing the box again when
+  Search is showing, and searching the open book from the reader),
+  Ctrl+1–4, Ctrl+O and Ctrl+Shift+O, the "Wait for the folder import
+  to finish" and "Stop indexing to restore a backup" refusals, `menu`
+  events, ← / → and Escape in the reader, Escape closing the
+  selection toolbar and the highlight and bookmark popovers before the
+  book, a note being written surviving both keys, and the sheet
+  (Escape, Close, the backdrop, Tab kept inside, shortcuts ignored
+  while it's open). `Demo.test.tsx` checks the demo leaves Ctrl+F and
+  Ctrl+O to the browser. Checked in Chrome against the mocked backend
+  (`npm run dev:mock`, keys sent from the page): the sheet and the
+  Home hint, Ctrl+F/1/2/4/O, chapter keys stopping at the last
+  chapter, and Escape closing the bookmark and highlight popovers
+  before the book, with no console errors. Not checked in
+  `npm run dev:demo` or in dark mode. Not run in the Tauri window at
+  all: the menu, About box, window size, minimum size, first-launch
+  fitting and restored position are unverified on every platform, as
+  is whether WebView2 keeps Ctrl+F for its find bar. macOS is
+  untested.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
@@ -1030,7 +1067,8 @@ pitaka/
 │   ├── Cargo.toml               <- ebook_research_core = { path = "../ebook_research_core" }
 │   └── src/
 │       ├── main.rs
-│       ├── lib.rs                <- registers commands + plugins
+│       ├── lib.rs                <- registers commands + plugins, opens the window
+│       ├── menu.rs               <- File / View / Help menu, emits `menu` events
 │       └── commands.rs           <- import_book / search_library / list_books /
 │                                    get_book_chapters / get_chapter_content /
 │                                    bookmark folder + bookmark commands /
@@ -1060,6 +1098,8 @@ pitaka/
 │   ├── Skeleton.tsx             <- placeholder rows and cards while loading
 │   ├── useDelayed.ts            <- waits 200ms before a loading state shows
 │   ├── icons.tsx                <- the app's Lucide icons, the one import point
+│   ├── shortcuts.ts             <- keyboard shortcuts and the menu's action names
+│   ├── ShortcutsSheet.tsx       <- the `?` list of shortcuts
 │   ├── annotate.ts              <- highlight runs, selection offsets
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
@@ -1238,12 +1278,22 @@ In the same order of priority as the Python version, then newer ones.
     - A restore briefly needs free space for the extracted library
       next to `library.db`, as well as for
       `library-before-restore.pitaka`.
-12. Where you were reading is a paragraph, so the reader reopens at the
+12. Keyboard and menu:
+    - The menu shows no shortcuts beside its items; `?` (or Help →
+      Keyboard shortcuts) lists them.
+    - Leaving the reader from the menu or a section key discards a
+      note being written, as the back button does. Escape and the arrow
+      keys do nothing while a note is open.
+    - In the browser demo, Ctrl/⌘+F and Ctrl/⌘+O are left to the
+      browser, and Chrome keeps Ctrl+1–4 for its tabs.
+    - Ctrl/⌘ `=`, `-` and `0` are reserved for the reader's text size
+      and do nothing yet.
+13. Where you were reading is a paragraph, so the reader reopens at the
     top of a long paragraph rather than mid-way through it. A book only
     counts as being read once you scroll or change chapter in it, and
     only the latest position is kept: there's no reading history, and
     no way to mark a book finished or reset its progress by hand.
-13. Display settings live in the app's web storage, not the library:
+14. Display settings live in the app's web storage, not the library:
     they're per computer, aren't in a backup, and the dev server
     (`npm run tauri dev`) and the installed app keep separate ones. The
     chapter heading and the small-caps opening are guesses from the text
@@ -1308,6 +1358,7 @@ Done:
 - [x] Filter the Books screen by title or author, and sort it by title
 - [x] Search within a single book, from the Search screen or the reader
 - [x] Back up the library to one file and restore it
+- [x] Keyboard shortcuts, an app menu and a larger default window
 - [x] Reopen each book where you left it, with reading progress and
   Continue reading on Home
 - [x] Book covers on the Books screen and Home, with a grid view

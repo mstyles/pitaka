@@ -19,6 +19,8 @@
   --accent-strong: #823d15;
   /* A translucent wash, so it works over both --surface and --bg. */
   --hover: rgba(42, 36, 29, 0.06);
+  /* Behind a modal sheet. */
+  --backdrop: rgba(0, 0, 0, 0.35);
   /* Generated book covers: clay, olive, slate, plum, ochre, teal. */
   --cover-1: #8a4b2a;
   --cover-2: #5f6b4a;
@@ -113,6 +115,7 @@
     --rule-neutral: #5a4f42;
     --accent-strong: #eaae7c;
     --hover: rgba(237, 228, 211, 0.08);
+    --backdrop: rgba(0, 0, 0, 0.55);
     /* 72% of the light tints, so covers don't glare on the dark page. */
     --cover-1: #63361e;
     --cover-2: #444d35;
@@ -144,6 +147,15 @@
   --rule-neutral: #5a4f42;
   --accent-strong: #eaae7c;
   --hover: rgba(237, 228, 211, 0.08);
+  --backdrop: rgba(0, 0, 0, 0.55);
+  /* 72% of the light tints, so covers don't glare on the dark page. */
+  --cover-1: #63361e;
+  --cover-2: #444d35;
+  --cover-3: #354353;
+  --cover-4: #4f3547;
+  --cover-5: #5b471a;
+  --cover-6: #2d4441;
+  --cover-text: #ede4d3;
 
   color-scheme: dark;
 }
@@ -166,6 +178,14 @@
   --rule-neutral: #c4ab80;
   --accent-strong: #73320f;
   --hover: rgba(58, 43, 28, 0.07);
+  --backdrop: rgba(0, 0, 0, 0.35);
+  --cover-1: #8a4b2a;
+  --cover-2: #5f6b4a;
+  --cover-3: #4a5d73;
+  --cover-4: #6e4a63;
+  --cover-5: #7f6224;
+  --cover-6: #3f5f5a;
+  --cover-text: #fffcf6;
 
   color-scheme: light;
 }
@@ -745,6 +765,88 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 
 .home-recent-more:hover {
   text-decoration: underline;
+}
+
+.home-hint {
+  margin: var(--space-8) 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+/* Keyboard shortcuts (ShortcutsSheet.tsx) */
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--backdrop);
+}
+
+.sheet {
+  width: 100%;
+  max-width: 28rem;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+}
+
+.sheet h2 {
+  margin: 0 0 var(--space-5);
+}
+
+.sheet-section + .sheet-section {
+  margin-top: var(--space-5);
+}
+
+.sheet dl {
+  margin: 0;
+}
+
+.sheet-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  gap: var(--space-4);
+  align-items: baseline;
+  padding: var(--space-2) 0;
+}
+
+.sheet-row + .sheet-row {
+  border-top: 1px solid var(--border);
+}
+
+.sheet dt {
+  color: var(--muted);
+}
+
+.sheet dd {
+  margin: 0;
+}
+
+.sheet-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-6);
 }
 
 @media (max-width: 600px) {
@@ -1810,8 +1912,13 @@ mark.hl {
 }
 
 main.container,
-.reader {
+.reader,
+.sheet-backdrop {
   animation: fade-in var(--motion-fast) var(--ease-out);
+}
+
+.sheet {
+  animation: pop-in var(--motion-base) var(--ease-out);
 }
 
 .bookmark-popover,

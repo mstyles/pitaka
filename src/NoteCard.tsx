@@ -101,7 +101,10 @@ function NoteCard({
             value={draft}
             onChange={(e) => setDraft(e.currentTarget.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") cancel();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancel();
+              }
             }}
             aria-label="Note"
             rows={4}
