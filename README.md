@@ -214,7 +214,7 @@ holds a single portrait JPEG at least 300px wide. The image is decoded
 with the `image` crate (JPEG and PNG only, at most 20 MB, 8000px a side
 and 256 MiB of decoding memory), laid on the paper colour if it has
 transparency, shrunk to fit 300×450 and stored as a quality-80 JPEG in
-the `book_covers` table (migration 007), one row per book, keyed in
+the `book_covers` table (migration 008), one row per book, keyed in
 URLs by the first 12 hex digits of its SHA-256. A missing or broken
 cover never fails an import: the book is recorded as having none and
 gets a generated cover, a tinted card with its title. Books imported
@@ -480,8 +480,8 @@ alongside the old one. Neither may change. The version comes from
   corrupt bytes), `book_cover` returns the JPEG, removing a book
   removes its cover, the backfill fills only missing rows (a real
   EPUB's cover found, a missing file and a changed file recorded as
-  `unavailable`, then nothing left to check), and migration 007 on a
-  library at 6 adds an empty table. The integration tests check that
+  `unavailable`, then nothing left to check), and migration 008 on a
+  library at 7 adds an empty table. The integration tests check that
   `test.epub` (which has no images) gets a generated cover and leaves
   the backfill nothing, and that a backup carries a cover to a new
   install byte for byte. While planning, a Python survey of the real
