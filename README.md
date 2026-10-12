@@ -23,7 +23,8 @@ to keep, and highlights and notes as you read.
   model runs on your own computer; it's downloaded once and nothing is
   sent anywhere.
 - **Read with the hit in context.** Opening a result jumps the reader to
-  that paragraph, with the book's chapters alongside.
+  that paragraph, with the book's chapters alongside. The reader
+  reopens each book where you left it, with how far through it you are.
 - **Highlight and write notes.** Select words in a paragraph to
   highlight them in one of four colours, and note a highlight or a whole
   paragraph. Notes open in the margin beside the text, and each book's
@@ -174,6 +175,19 @@ copy written over it with SQLite's backup API, through its locking, so
 the indexing worker's own connection sees the restored library too. A
 restore is refused while `IndexQueue::is_busy`, so a chapter in flight
 can't write its vectors into the restored library.
+
+Where each book was left (`ebook_research_core/src/db/reading.rs`) is a
+paragraph, not a scroll offset, so it survives any change of window
+width or text size: one `reading_positions` row per book, written by
+an `INSERT … SELECT … ON CONFLICT (book_id) DO UPDATE` upsert, with
+`finished` set when the paragraph was at the end of the book. How far
+through a book that is counts characters: the text before the
+paragraph at the top of the screen, over the book's total, since
+chapters and paragraphs vary too much in length to stand in for
+reading time. The reader saves a second after scrolling stops, when
+the chapter changes and when you leave it or close the window, and
+only once you've scrolled or changed chapter yourself, so a quick look
+at a search hit doesn't count as reading.
 
 The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
 (`com.pitaka.app`) names the data directory, so changing it would lose
@@ -335,6 +349,27 @@ alongside the old one. Neither may change. The version comes from
   both search indexes intact; the integration test highlights and notes
   a real `test.epub` paragraph, then removes and re-imports the book
   and finds nothing marked.
+- `ebook_research_core/src/db/reading.rs` — reading positions
+  (migration 007): `set_reading_position`, `get_reading_position` and
+  `list_reading_positions` (unfinished books, most recently read
+  first). `get_book_chapters` now gives each chapter's `char_count`, so
+  the reader works the percent out as you scroll with the same formula.
+  Unit tests cover the chapter number, chapter count and percent (89 for
+  16 characters of 18, rounded half up like `Math.round`), that setting
+  again replaces the one row, that a finished position reads 100% and
+  leaves the list until an earlier paragraph is saved, the order, an
+  unknown paragraph id, that removing a book removes its position, and
+  that `char_count` counts characters, not UTF-8 bytes; the integration
+  test saves a position in `test.epub`'s "Chapter Two: Deeper Waters",
+  keeps it through re-importing the same file and loses it with the
+  book. The backup round-trip test brings a position back. While
+  planning, Python's SQLite 3.46.1 checked the upsert (one row per book,
+  0 rows for an unknown paragraph), the cascade from `delete_book`, the
+  progress query's numbers, and, on a read-only copy of the real
+  54-book library, that every subquery uses an index: listing three
+  positions took 5.3 ms, and `get_book_chapters` with `char_count` took
+  1.8 ms on a 93-chapter book. Not yet run against the real library
+  from Rust.
   Search has two modes: `stemmed` (porter stemmer, so "learn" also
   matches "learning") and `exact` (whole words as typed). Both ignore
   case and diacritics ("samsara" matches "saṃsāra"). Each word of the
@@ -378,7 +413,7 @@ alongside the old one. Neither may change. The version comes from
   manifest or without `library.db`, a manifest with schema version 99
   or format 2, and a backup with one byte flipped (a checksum mismatch)
   are each refused with the library untouched and no files left
-  behind; and a backup of a library at migration 5 is upgraded to 6 on
+  behind; and a backup of a library at migration 5 is upgraded to the current schema on
   restore. While planning, Python's SQLite 3.46.1 checked the same
   steps against a copy of the real 54-book library: `VACUUM INTO`
   kept `user_version` and passed `integrity_check` and both FTS
@@ -488,9 +523,14 @@ alongside the old one. Neither may change. The version comes from
     `list_bookmark_folders` ("2 books", "1 folder · 2 passages · 2
     highlights, 2 notes"). An
     empty library points at importing and disables Search. Under the
-    cards, "Your library" lists the 3 most recently imported books,
+    cards, "Continue reading" lists up to 3 unfinished books, most
+    recently read first, each with its chapter, percent and a progress
+    bar, and reopens it where it was left. "Your library" then lists the
+    3 most recently imported books not already under Continue reading,
     each opening the reader with `← Home`, and links to the Books
-    screen ("All 5 books →") when there are more.
+    screen ("All 5 books →") when there are more. Component tests cover
+    Continue reading appearing after reading into a chapter, a finished
+    book and a removed one leaving it, and a restore clearing it.
     `src/NavBar.tsx` is the `Home · Books · Bookmarks & notes · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
@@ -561,9 +601,28 @@ alongside the old one. Neither may change. The version comes from
     and notes under chapter headings; an entry opens the reader at its
     paragraph with its note's card open and `← <book title>` to return.
   - `src/ReaderView.tsx` — continuous-scroll reader with a chapter
-    sidebar headed by the book's title and author. Clicking a book opens it at the first chapter; clicking a
+    sidebar headed by the book's title and author. Clicking a book
+    opens it at the paragraph that was at the top when it was last left
+    (the first chapter for a book never opened); search hits, bookmarks
+    and notes still open at their paragraph: clicking a
     search hit opens its chapter, centres the matching paragraph and
-    briefly flashes it. A bookmark icon in each paragraph's margin
+    briefly flashes it. A thin bar along the top of the text and
+    "Chapter 2 of 3 · 52%" under the author show how far through the
+    book the top of the screen is, reading "Finished" once the end of
+    the last chapter is showing (`src/readingPosition.ts`). Component
+    tests cover saving a second after scrolling stops, once per
+    paragraph, at once on leaving, and on closing the window (giving up
+    after 500 ms if the save hangs); reopening at the saved paragraph;
+    nothing saved by opening a book or a hit without scrolling; a hit
+    winning over the saved position; the label, bar and Finished; a
+    failed save staying silent; and that the reader's percent matches
+    the core's for the same paragraph. Checked in Chrome against the
+    mocked backend: the bar stays at the top while scrolling, Part Two
+    reopens from Home's Continue reading at its paragraph, the end of
+    Part Three reads Finished and leaves Continue reading, and a search
+    hit still centres and flashes. Not checked in the browser demo, after
+    resizing the window, or in the Tauri window (closing it with a save
+    pending, File → Quit, migration 007 on the real library). A bookmark icon in each paragraph's margin
     (filled when it's in any folder) opens `src/BookmarkPopover.tsx`
     to tick it into folders or into a new one. The back button returns
     to where the book was opened: `← Books`, `← Search results` or
@@ -903,6 +962,8 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
   written to either table before, so they can't fail on existing data.
 - 006 adds `book_embeddings`, one row per book an indexing run
   finished, backfilled from the books that already had chunk rows.
+- 007 adds `reading_positions`, one row per opened book, cascading with
+  the book and its paragraph; nothing to backfill.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -954,7 +1015,8 @@ In the same order of priority as the Python version, then newer ones.
    text node with an HTML entity or a bare `&`) until re-imported.
 5. Bookmarks, highlights and notes point at paragraphs, so removing a
    book (including to re-import it after a parser fix) deletes them all,
-   and any title or author you edited; the Remove dialog only warns with
+   any title or author you edited, and where you were reading; the
+   Remove dialog only warns with
    counts. Bookmarks cover whole
    paragraphs, and passages can't be reordered within a folder. A
    highlight can't span paragraphs or overlap another highlight, notes
@@ -1041,6 +1103,11 @@ In the same order of priority as the Python version, then newer ones.
     - A restore briefly needs free space for the extracted library
       next to `library.db`, as well as for
       `library-before-restore.pitaka`.
+11. Where you were reading is a paragraph, so the reader reopens at the
+    top of a long paragraph rather than mid-way through it. A book only
+    counts as being read once you scroll or change chapter in it, and
+    only the latest position is kept: there's no reading history, and
+    no way to mark a book finished or reset its progress by hand.
 
 ## Roadmap
 
@@ -1098,6 +1165,8 @@ Done:
 - [x] Filter the Books screen by title or author, and sort it by title
 - [x] Search within a single book, from the Search screen or the reader
 - [x] Back up the library to one file and restore it
+- [x] Reopen each book where you left it, with reading progress and
+  Continue reading on Home
 
 Later:
 

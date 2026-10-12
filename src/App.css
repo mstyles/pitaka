@@ -633,6 +633,21 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   background: none;
   text-align: left;
   font-weight: 400;
+  position: relative; /* for .home-progress */
+}
+
+.home-recent + .home-recent {
+  margin-top: var(--space-6);
+}
+
+/* How far through the book, along the bottom of its Continue reading row. */
+.home-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--border);
 }
 
 .home-recent-more {
@@ -995,6 +1010,32 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   overflow-y: auto;
   /* Room on the left for the bookmark icons in narrow windows. */
   padding: var(--space-12) var(--space-8) var(--space-12) var(--space-12);
+}
+
+/* Runs edge to edge over .reader-content's padding, and stays at the top.
+   Sticky offsets count from inside the padding, hence the negative top. */
+.reader-progress {
+  position: sticky;
+  top: calc(-1 * var(--space-12));
+  z-index: 5;
+  height: 3px;
+  margin: calc(-1 * var(--space-12)) calc(-1 * var(--space-8)) var(--space-12)
+    calc(-1 * var(--space-12));
+  background: var(--border);
+}
+
+.reader-progress-fill,
+.home-progress-fill {
+  display: block; /* the Home one is a span, inside a button */
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.reader-progress-label {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
 }
 
 .reader-text {

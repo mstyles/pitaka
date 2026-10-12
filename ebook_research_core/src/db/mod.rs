@@ -21,6 +21,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("../../migrations/004_chunk_embeddings.sql")),
     M::up(include_str!("../../migrations/005_annotations.sql")),
     M::up(include_str!("../../migrations/006_book_embeddings.sql")),
+    M::up(include_str!("../../migrations/007_reading_positions.sql")),
 ];
 
 fn migrations() -> Migrations<'static> {
@@ -69,6 +70,7 @@ mod backup;
 mod bookmarks;
 mod import;
 mod library;
+mod reading;
 mod search;
 mod semantic_index;
 #[cfg(test)]
@@ -95,6 +97,9 @@ pub use import::{delete_book, find_books, import_book, BookScan, ImportOutcome};
 pub use library::{
     get_book_chapters, get_chapter_content, list_books, update_book_details, BookSummary,
     ChapterContent, ChapterSummary, ContentBlockRow,
+};
+pub use reading::{
+    get_reading_position, list_reading_positions, set_reading_position, ReadingPosition,
 };
 pub use search::{search, search_with_variants, SearchMode, SearchResult, VariantIndex};
 #[cfg(feature = "semantic")]

@@ -6,8 +6,8 @@
 use ebook_research_core::{
     db, open_db, AnnotatedBook, BackupManifest, BlockBookmark, BookAnnotation, BookScan,
     BookSummary, BookmarkFolder, ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary,
-    FolderBookmark, Highlight, ImportOutcome, LibraryCounts, Note, SearchMode, SearchResult,
-    SemanticStatus,
+    FolderBookmark, Highlight, ImportOutcome, LibraryCounts, Note, ReadingPosition, SearchMode,
+    SearchResult, SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -390,6 +390,37 @@ pub fn get_chapter_content(
 ) -> Result<ChapterContent, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::get_chapter_content(&conn, chapter_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("get_reading_position", { bookId: 1 })`. Null for a book never opened.
+#[tauri::command]
+pub fn get_reading_position(
+    book_id: i64,
+    state: State<AppState>,
+) -> Result<Option<ReadingPosition>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::get_reading_position(&conn, book_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("set_reading_position", { contentBlockId: 42, finished: false })`. The reader calls it a second after you stop scrolling, on leaving, and on closing the window.
+#[tauri::command]
+pub fn set_reading_position(
+    content_block_id: i64,
+    finished: bool,
+    state: State<AppState>,
+) -> Result<(), String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::set_reading_position(&conn, content_block_id, finished).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("list_reading_positions", { limit: 3 })`. Unfinished books, most recently read first.
+#[tauri::command]
+pub fn list_reading_positions(
+    limit: i64,
+    state: State<AppState>,
+) -> Result<Vec<ReadingPosition>, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::list_reading_positions(&conn, limit).map_err(|e| e.to_string())
 }
 
 /// Frontend calls: `invoke("create_bookmark_folder", { name: "Know your limit" })`

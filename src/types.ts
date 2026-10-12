@@ -79,6 +79,24 @@ export type ChapterSummary = {
   id: number;
   idx: number;
   title: string | null;
+  /** Characters in the chapter's paragraphs, for the reader's progress. */
+  char_count: number;
+};
+
+/** Where a book was left: the paragraph at the top of the reader. */
+export type ReadingPosition = {
+  book_id: number;
+  chapter_id: number;
+  content_block_id: number;
+  chapter_title: string | null;
+  /** 1-based, in the order of the book's chapters. */
+  chapter_number: number;
+  chapter_count: number;
+  /** Share of the book's characters before the paragraph; 100 once finished. */
+  percent: number;
+  /** Whether the paragraph was at the end of the book. */
+  finished: boolean;
+  read_at: string;
 };
 
 export type ContentBlockRow = {

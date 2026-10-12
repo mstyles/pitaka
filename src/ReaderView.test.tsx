@@ -1,7 +1,29 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SAVE_DELAY_MS } from "./readingPosition";
 import { fixtures } from "./test/mockBackend";
-import { goTo, renderApp, resultItems, search } from "./test/renderApp";
+import { goTo, renderApp, resultItems, scrollTo, scrollToEnd, search } from "./test/renderApp";
+
+// As the Tauri window: `isTauri()` when a test says so, and the close
+// handler the reader registers, for the test to call.
+const win = vi.hoisted(() => ({
+  tauri: false,
+  onClose: null as (() => Promise<void>) | null,
+}));
+vi.mock("@tauri-apps/api/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tauri-apps/api/core")>()),
+  isTauri: () => win.tauri,
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onCloseRequested: async (handler: (event: unknown) => Promise<void>) => {
+      win.onClose = () => handler({});
+      return () => {
+        win.onClose = null;
+      };
+    },
+  }),
+}));
 
 const HIT = fixtures.search["stemmed:quincunx"][0];
 
@@ -108,5 +130,227 @@ describe("reader", () => {
     await goTo(user, "Books");
     await user.click(await screen.findByText("A Long Book for Scrolling"));
     expect(await screen.findByText("Loading chapter failed: chapter is gone")).toBeTruthy();
+  });
+});
+
+const LONG = fixtures.books.find((b) => b.title === "A Long Book for Scrolling")!;
+const LONG_CHAPTERS = fixtures.chapters[String(LONG.id)];
+const SAMPLE = fixtures.reading_position_sample!;
+
+/** The paragraphs of one of the long book's chapters, by its title. */
+function blocksOf(title: string) {
+  const chapter = LONG_CHAPTERS.find((c) => c.title === title)!;
+  return fixtures.chapter_content[String(chapter.id)].blocks;
+}
+
+function progressLabel() {
+  return document.querySelector(".reader-progress-label")?.textContent;
+}
+
+function progressValue() {
+  return screen
+    .getByRole("progressbar", { name: "Reading progress" })
+    .getAttribute("aria-valuenow");
+}
+
+function waitSaveDelay() {
+  act(() => {
+    vi.advanceTimersByTime(SAVE_DELAY_MS);
+  });
+}
+
+type User = ReturnType<typeof renderApp>["user"];
+
+async function openLongBook(user: User) {
+  await goTo(user, "Books");
+  await user.click(await screen.findByText(LONG.title!, { selector: ".book-title" }));
+  await waitFor(() => expect(paragraphs()).toHaveLength(40));
+}
+
+async function openChapter(user: User, title: string) {
+  await user.click(await screen.findByRole("button", { name: title }));
+  await waitFor(() => expect(paragraphs()[0].textContent).toMatch(new RegExp(`^${title},`)));
+}
+
+describe("reading position", () => {
+  afterEach(() => {
+    win.tauri = false;
+    win.onClose = null;
+  });
+
+  it("remembers where you were and reopens there", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await openChapter(user, "Part Two");
+    const block = blocksOf("Part Two")[9];
+    scrollTo(block.id);
+    waitSaveDelay();
+    await waitFor(() =>
+      expect(callsTo("set_reading_position").slice(-1)[0]).toEqual({
+        contentBlockId: block.id,
+        finished: false,
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    scroll.mockClear();
+    await user.click(await screen.findByText(LONG.title!, { selector: ".book-title" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Part Two" }).className).toBe("active"),
+    );
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll.mock.contexts.slice(-1)[0]).toBe(document.getElementById(`block-${block.id}`));
+    expect(scroll.mock.calls.slice(-1)[0]).toEqual([{ block: "start" }]);
+    expect(document.querySelector(".flash")).toBeNull();
+  });
+
+  it("opening without reading saves nothing", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+
+    await goTo(user, "Search");
+    await search(user, "quincunx");
+    await waitFor(() => expect(resultItems()).toHaveLength(1));
+    await user.click(resultItems()[0]);
+    await waitFor(() =>
+      expect(document.getElementById(`block-${HIT.content_block_id}`)).not.toBeNull(),
+    );
+    // What the hit's scrollIntoView does in a real window.
+    scrollTo(HIT.content_block_id, { byHand: false });
+    waitSaveDelay();
+    await user.click(screen.getByRole("button", { name: "← Search results" }));
+    await screen.findByRole("heading", { level: 1, name: "Search" });
+    expect(callsTo("set_reading_position")).toEqual([]);
+  });
+
+  it("saves once per paragraph", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    const block = blocksOf("Part One")[5];
+    scrollTo(block.id);
+    waitSaveDelay();
+    scrollTo(block.id);
+    waitSaveDelay();
+    await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
+    expect(callsTo("set_reading_position")[0]).toEqual({
+      contentBlockId: block.id,
+      finished: false,
+    });
+  });
+
+  it("saves straight away when leaving", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    const block = blocksOf("Part One")[7];
+    scrollTo(block.id);
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+    await screen.findByRole("heading", { level: 1, name: "Books" });
+    waitSaveDelay();
+    expect(callsTo("set_reading_position")).toEqual([
+      { contentBlockId: block.id, finished: false },
+    ]);
+  });
+
+  it("saves when the window closes", async () => {
+    win.tauri = true;
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await waitFor(() => expect(win.onClose).not.toBeNull());
+    const block = blocksOf("Part One")[3];
+    scrollTo(block.id);
+
+    await win.onClose!();
+    expect(callsTo("set_reading_position")).toEqual([
+      { contentBlockId: block.id, finished: false },
+    ]);
+    // Nothing is pending once saved, so a second close doesn't save again.
+    await win.onClose!();
+    expect(callsTo("set_reading_position")).toHaveLength(1);
+  });
+
+  it("closes the window even if the save never finishes", async () => {
+    win.tauri = true;
+    const { user, callsTo } = renderApp({
+      fakeTimers: true,
+      gates: { set_reading_position: new Promise(() => {}) },
+    });
+    await openLongBook(user);
+    await waitFor(() => expect(win.onClose).not.toBeNull());
+    scrollTo(blocksOf("Part One")[3].id);
+
+    let closed = false;
+    const closing = win.onClose!().then(() => {
+      closed = true;
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(closed).toBe(false);
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    await closing;
+    expect(closed).toBe(true);
+    expect(callsTo("set_reading_position")).toHaveLength(1);
+  });
+
+  it("the end of the book reads Finished", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await openChapter(user, "Part Three");
+    scrollToEnd();
+    await waitFor(() => expect(progressLabel()).toBe("Chapter 3 of 3 · Finished"));
+    expect(progressValue()).toBe("100");
+    waitSaveDelay();
+    await waitFor(() =>
+      expect(callsTo("set_reading_position").slice(-1)[0]).toMatchObject({ finished: true }),
+    );
+  });
+
+  it("a search hit wins over the saved position", async () => {
+    const { user, callsTo } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await openChapter(user, "Part Three");
+    scrollTo(blocksOf("Part Three")[4].id);
+    await user.click(screen.getByRole("button", { name: "← Books" }));
+    await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
+    const lookups = callsTo("get_reading_position").length;
+
+    await goTo(user, "Search");
+    await search(user, "quincunx");
+    await waitFor(() => expect(resultItems()).toHaveLength(1));
+    await user.click(resultItems()[0]);
+    await waitFor(() =>
+      expect(document.getElementById(`block-${HIT.content_block_id}`)).not.toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "Part Two" }).className).toBe("active");
+    expect(callsTo("get_reading_position")).toHaveLength(lookups);
+  });
+
+  it("shows progress", async () => {
+    const { user } = renderApp({ fakeTimers: true });
+    await openLongBook(user);
+    await waitFor(() => expect(progressLabel()).toBe("Chapter 1 of 3 · 0%"));
+    expect(progressValue()).toBe("0");
+
+    await openChapter(user, "Part Two");
+    scrollTo(SAMPLE.content_block_id);
+    await waitFor(() => expect(progressLabel()).toBe(`Chapter 2 of 3 · ${SAMPLE.percent}%`));
+    expect(progressValue()).toBe(String(SAMPLE.percent));
+  });
+
+  it("a failed save doesn't interrupt reading", async () => {
+    const { user, callsTo } = renderApp({
+      fakeTimers: true,
+      fail: { set_reading_position: "database is locked" },
+    });
+    await openLongBook(user);
+    scrollTo(blocksOf("Part One")[5].id);
+    waitSaveDelay();
+    await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
+    expect(document.querySelector(".reader-error")).toBeNull();
+    expect(paragraphs()).toHaveLength(40);
   });
 });

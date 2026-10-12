@@ -21,6 +21,7 @@ pub use db::{
     backup_library, library_counts, read_backup_manifest, restore_library, BackupManifest,
     LibraryCounts,
 };
+pub use db::{get_reading_position, list_reading_positions, set_reading_position, ReadingPosition};
 #[cfg(feature = "semantic")]
 pub use db::{index_book, search_chapters};
 pub use epub::{parse_epub, ParsedBook};
