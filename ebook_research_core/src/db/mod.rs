@@ -73,8 +73,8 @@ pub use bookmarks::{
 };
 pub use import::{delete_book, find_books, import_book, BookScan, ImportOutcome};
 pub use library::{
-    get_book_chapters, get_chapter_content, list_books, BookSummary, ChapterContent,
-    ChapterSummary, ContentBlockRow,
+    get_book_chapters, get_chapter_content, list_books, update_book_details, BookSummary,
+    ChapterContent, ChapterSummary, ContentBlockRow,
 };
 pub use search::{search, search_with_variants, SearchMode, SearchResult, VariantIndex};
 #[cfg(feature = "semantic")]

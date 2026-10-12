@@ -415,7 +415,35 @@ button.button-danger:hover:not(:disabled) {
   flex: 1;
 }
 
+.book-edit-form {
+  flex: 1;
+  display: flex;
+  gap: 0.5em;
+}
+
+.book-edit-title {
+  flex: 2;
+  min-width: 0;
+}
+
+.book-edit-author {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .book-edit-form {
+    flex-wrap: wrap;
+  }
+
+  .book-edit-title,
+  .book-edit-author {
+    flex-basis: 100%;
+  }
+}
+
 .book-index,
+.book-edit,
 .book-remove,
 .folder-passage-remove {
   min-height: 32px;
@@ -425,14 +453,16 @@ button.button-danger:hover:not(:disabled) {
 
 /* Shown on hover, and on keyboard focus so it can still be reached. */
 .book-index,
+.book-edit,
 .book-remove,
 .folder-passage-remove {
   opacity: 0;
   transition: opacity 0.15s;
 }
 
-/* Index sits close beside Remove, rather than the row's full gap away. */
-.book-index + .book-remove {
+/* The row's buttons sit close together, rather than its full gap apart. */
+.book-index + .book-edit,
+.book-edit + .book-remove {
   margin-left: -0.5em;
 }
 
@@ -443,6 +473,8 @@ button.button-danger:hover:not(:disabled) {
 
 .book-row:hover .book-index:not(:disabled),
 .book-row:focus-within .book-index:not(:disabled),
+.book-row:hover .book-edit,
+.book-row:focus-within .book-edit,
 .book-row:hover .book-remove,
 .book-row:focus-within .book-remove,
 .folder-passage:hover .folder-passage-remove,

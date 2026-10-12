@@ -178,6 +178,87 @@ describe("books", () => {
   });
 });
 
+describe("editing a book's title and author", () => {
+  const titles = () =>
+    Array.from(document.querySelectorAll(".book-title")).map((e) => e.textContent);
+
+  async function editTestBook(options: Parameters<typeof renderApp>[0] = {}) {
+    const app = renderApp(options);
+    await goTo(app.user, "Books");
+    await screen.findByText(TEST_BOOK);
+    await app.user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Edit" }));
+    return app;
+  }
+
+  it("saves a new title and clears the author", async () => {
+    const { user, callsTo } = await editTestBook();
+    const title = screen.getByRole("textbox", { name: "Title" });
+    const author = screen.getByRole("textbox", { name: "Author" });
+    expect(title).toHaveProperty("value", TEST_BOOK);
+    expect(author).toHaveProperty("value", "A. Tester");
+    expect(document.activeElement).toBe(title);
+
+    await user.clear(title);
+    await user.type(title, "Zen Research");
+    await user.clear(author);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText('Updated "Zen Research"');
+    expect(callsTo("update_book_details")).toEqual([
+      { bookId: 1, title: "Zen Research", author: "" },
+    ]);
+    expect(await screen.findByText("Zen Research")).toBeTruthy();
+    expect(within(bookRow("Zen Research")).getByText("Unknown author · 2 chapters")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+    expect(titles()).toEqual([LONG_BOOK, "Zen Research"]);
+  });
+
+  it("cancels with Cancel or Escape without saving", async () => {
+    const { user, callsTo } = await editTestBook();
+    await user.type(screen.getByRole("textbox", { name: "Title" }), " changed");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+    expect(screen.getByText(TEST_BOOK)).toBeTruthy();
+
+    await user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Edit" }));
+    await user.type(screen.getByRole("textbox", { name: "Author" }), " changed{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Author" })).toBeNull();
+    expect(within(bookRow(TEST_BOOK)).getByText("A. Tester · 2 chapters")).toBeTruthy();
+    expect(callsTo("update_book_details")).toEqual([]);
+  });
+
+  it("doesn't open the book when the form is clicked", async () => {
+    const { user } = await editTestBook();
+    await user.click(screen.getByRole("textbox", { name: "Author" }));
+    await user.click(screen.getByRole("textbox", { name: "Title" }).closest("li")!);
+    expect(document.querySelector(".reader")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1, name: "Books" })).toBeTruthy();
+  });
+
+  it("keeps the form open with what was typed when saving fails", async () => {
+    const { user } = await editTestBook({ fail: { update_book_details: "database is locked" } });
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.type(title, "Zen Research{Enter}");
+    await screen.findByText("Saving failed: database is locked");
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveProperty("value", "Zen Research");
+  });
+
+  it("filters by the new title, not the old one", async () => {
+    const { user } = await editTestBook();
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.type(title, "Zen Studies{Enter}");
+    await screen.findByText('Updated "Zen Studies"');
+    const box = screen.getByRole("searchbox", { name: "Filter books" });
+    await user.type(box, "zen");
+    expect(screen.getByText("Zen Studies")).toBeTruthy();
+    await user.clear(box);
+    await user.type(box, "research");
+    expect(screen.getByText('No books match "research".')).toBeTruthy();
+  });
+});
+
 describe("importing a folder", () => {
   const scan = {
     paths: ["/books/folder/a/test.epub", "/books/folder/b/copy.epub", "/books/folder/bad.epub"],

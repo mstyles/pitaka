@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
@@ -308,6 +308,10 @@ function BooksView({
 }: Props) {
   const [importStatus, setImportStatus] = useState("");
   const [books, setBooks] = useState<BookSummary[] | null>(null);
+  /** The row whose title and author are being edited, with what's typed. */
+  const [editing, setEditing] = useState<{ id: number; title: string; author: string } | null>(
+    null,
+  );
   /** Whether this build has chapter search; nothing about indexing shows without it. */
   const [canIndex, setCanIndex] = useState(false);
   const importing = folderImport?.running ?? false;
@@ -440,6 +444,25 @@ function BooksView({
     }
   }
 
+  async function saveDetails() {
+    if (!editing) return;
+    const { id, title, author } = editing;
+    try {
+      await invoke("update_book_details", { bookId: id, title, author });
+      const newTitle = title.trim().replace(/\s+/g, " ") || null;
+      setEditing(null);
+      setImportStatus(`Updated "${newTitle ?? "Untitled"}"`);
+      onLibraryChanged();
+      await refreshBooks();
+    } catch (err) {
+      setImportStatus(`Saving failed: ${err}`);
+    }
+  }
+
+  function cancelOnEscape(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") setEditing(null);
+  }
+
   return (
     <main className="container">
       <h1>Books</h1>
@@ -539,36 +562,79 @@ function BooksView({
         </div>
       ) : (
         <ul className="book-list">
-          {shown?.map((b) => (
-            <li key={b.id} className="book-row" onClick={() => onOpenBook(b.id)}>
-              <span className="book-title">{b.title ?? "Untitled"}</span>
-              <span className="book-meta">
-                {b.author ?? "Unknown author"} · {b.chapter_count} chapters
-                {canIndex && INDEX_STATE_NOTES[b.index_state]}
-              </span>
-              {canIndex && b.index_state !== "indexed" && (
-                <button
-                  className="book-index"
-                  disabled={current === b.id || queued.has(b.id)}
-                  onClick={(e) => {
-                    e.stopPropagation(); // the row itself opens the book
-                    act(() => indexer.queueIndex(b.id), "Indexing failed");
+          {shown?.map((b) =>
+            editing?.id === b.id ? (
+              <li key={b.id} className="book-row">
+                <form
+                  className="book-edit-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    saveDetails();
                   }}
                 >
-                  {current === b.id ? "Indexing…" : queued.has(b.id) ? "Queued" : "Index"}
+                  <input
+                    className="book-edit-title"
+                    aria-label="Title"
+                    placeholder="Untitled"
+                    value={editing.title}
+                    onChange={(e) => setEditing({ ...editing, title: e.currentTarget.value })}
+                    onKeyDown={cancelOnEscape}
+                    autoFocus
+                  />
+                  <input
+                    className="book-edit-author"
+                    aria-label="Author"
+                    placeholder="Unknown author"
+                    value={editing.author}
+                    onChange={(e) => setEditing({ ...editing, author: e.currentTarget.value })}
+                    onKeyDown={cancelOnEscape}
+                  />
+                  <button type="submit">Save</button>
+                  <button type="button" onClick={() => setEditing(null)}>
+                    Cancel
+                  </button>
+                </form>
+              </li>
+            ) : (
+              <li key={b.id} className="book-row" onClick={() => onOpenBook(b.id)}>
+                <span className="book-title">{b.title ?? "Untitled"}</span>
+                <span className="book-meta">
+                  {b.author ?? "Unknown author"} · {b.chapter_count} chapters
+                  {canIndex && INDEX_STATE_NOTES[b.index_state]}
+                </span>
+                {canIndex && b.index_state !== "indexed" && (
+                  <button
+                    className="book-index"
+                    disabled={current === b.id || queued.has(b.id)}
+                    onClick={(e) => {
+                      e.stopPropagation(); // the row itself opens the book
+                      act(() => indexer.queueIndex(b.id), "Indexing failed");
+                    }}
+                  >
+                    {current === b.id ? "Indexing…" : queued.has(b.id) ? "Queued" : "Index"}
+                  </button>
+                )}
+                <button
+                  className="book-edit"
+                  onClick={(e) => {
+                    e.stopPropagation(); // the row itself opens the book
+                    setEditing({ id: b.id, title: b.title ?? "", author: b.author ?? "" });
+                  }}
+                >
+                  Edit
                 </button>
-              )}
-              <button
-                className="book-remove"
-                onClick={(e) => {
-                  e.stopPropagation(); // the row itself opens the book
-                  removeBook(b);
-                }}
-              >
-                Remove
-              </button>
-            </li>
-          ))}
+                <button
+                  className="book-remove"
+                  onClick={(e) => {
+                    e.stopPropagation(); // the row itself opens the book
+                    removeBook(b);
+                  }}
+                >
+                  Remove
+                </button>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </main>

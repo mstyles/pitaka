@@ -223,6 +223,28 @@ describe("search in one book", () => {
     });
     expect(screen.getByPlaceholderText("Search your library…")).toBeTruthy();
   });
+
+  it("shows a book's new title after it's renamed", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Search");
+    await search(user, "neural networks");
+    await waitFor(() => expect(resultItems()).toHaveLength(2));
+
+    await goTo(user, "Books");
+    const row = (await screen.findByText(TEST_BOOK, { selector: ".book-title" })).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "Edit" }));
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.type(title, "Zen Research{Enter}");
+    await screen.findByText('Updated "Zen Research"');
+
+    await goTo(user, "Search");
+    await waitFor(() => expect(optionLabels()).toEqual(["All books", LONG_BOOK, "Zen Research"]));
+    await waitFor(() =>
+      expect(resultItems()[0].textContent).toContain("Zen Research · Chapter Two: Deeper Waters"),
+    );
+    for (const item of resultItems()) expect(item.textContent).not.toContain(TEST_BOOK);
+  });
 });
 
 describe("chapter search", () => {

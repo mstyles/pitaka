@@ -14,6 +14,7 @@ pub fn run() {
             commands::find_books,
             commands::search_library,
             commands::delete_book,
+            commands::update_book_details,
             commands::list_books,
             commands::get_book_chapters,
             commands::get_chapter_content,

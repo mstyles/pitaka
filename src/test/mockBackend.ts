@@ -191,6 +191,15 @@ export function installMockBackend({
     };
   }
 
+  /** Trims and collapses whitespace, and "" becomes null, as the core does. */
+  function cleanField(value: unknown) {
+    return String(value).trim().replace(/\s+/g, " ") || null;
+  }
+  /** A hit or bookmark with its book's current title, as the core reads it at query time. */
+  function withBookTitle<T extends { book_id: number; book_title: string | null }>(h: T): T {
+    return { ...h, book_title: books.find((b) => b.id === h.book_id)?.title ?? null };
+  }
+
   function findBlock(blockId: number) {
     for (const content of Object.values(data.chapter_content)) {
       const block = content.blocks.find((b) => b.id === blockId);
@@ -237,6 +246,16 @@ export function installMockBackend({
           notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
           return null;
         }
+        case "update_book_details": {
+          const id = args.bookId as number;
+          if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
+          books = books.map((b) =>
+            b.id === id
+              ? { ...b, title: cleanField(args.title), author: cleanField(args.author) }
+              : b,
+          );
+          return null;
+        }
         case "search_library": {
           const mode = args.mode as SearchMode;
           const bookId = args.bookId as number | null | undefined;
@@ -245,7 +264,7 @@ export function installMockBackend({
           const inScope = bookId == null ? books : books.filter((b) => b.id === bookId);
           if (search) return search(inScope, String(args.query), mode);
           const hits = data.search[`${mode}:${args.query}`] ?? [];
-          return hits.filter((h) => inScope.some((b) => b.id === h.book_id));
+          return hits.filter((h) => inScope.some((b) => b.id === h.book_id)).map(withBookTitle);
         }
         case "semantic_status":
           return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };
@@ -257,7 +276,7 @@ export function installMockBackend({
           return null;
         case "search_chapters": {
           const matches = data.chapter_matches?.[String(args.query)] ?? [];
-          return matches.filter((m) => books.some((b) => b.id === m.book_id));
+          return matches.filter((m) => books.some((b) => b.id === m.book_id)).map(withBookTitle);
         }
         case "get_book_chapters":
           return data.chapters[String(args.bookId)] ?? [];
@@ -326,7 +345,10 @@ export function installMockBackend({
         case "list_folder_bookmarks": {
           const id = args.folderId as number;
           folderIndex(id);
-          return bookmarks.filter((b) => b.folder_id === id).sort((a, b) => a.id - b.id);
+          return bookmarks
+            .filter((b) => b.folder_id === id)
+            .sort((a, b) => a.id - b.id)
+            .map(withBookTitle);
         }
         case "get_chapter_bookmarks": {
           const content = data.chapter_content[String(args.chapterId)];
