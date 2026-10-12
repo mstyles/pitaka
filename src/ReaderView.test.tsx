@@ -133,7 +133,6 @@ describe("reader", () => {
   });
 });
 
-<<<<<<< HEAD
 const LONG = fixtures.books.find((b) => b.title === "A Long Book for Scrolling")!;
 const LONG_CHAPTERS = fixtures.chapters[String(LONG.id)];
 const SAMPLE = fixtures.reading_position_sample!;
@@ -353,7 +352,9 @@ describe("reading position", () => {
     await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
     expect(document.querySelector(".reader-error")).toBeNull();
     expect(paragraphs()).toHaveLength(40);
-=======
+  });
+});
+
 async function openBook(user: ReturnType<typeof renderApp>["user"], title: string) {
   await goTo(user, "Books");
   await user.click(await screen.findByText(title, { selector: ".book-title" }));
@@ -482,6 +483,5 @@ describe("display settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Larger text" }));
     expect(readerStyle("--reader-size")).toBe("21px");
     expect(screen.queryByRole("toolbar")).toBeNull();
->>>>>>> 056b07c (Let readers set text size, spacing, width and theme)
   });
 });
