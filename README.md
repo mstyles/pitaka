@@ -36,6 +36,9 @@ to keep, and highlights and notes as you read.
   layout included, skipping the ones already in your library. PDFs need
   a text layer: scanned ones are refused. A wrong or missing title or
   author can be corrected on the Books screen, without changing the file.
+- **Covers**: each book's cover is taken from the EPUB (or a PDF's
+  front-page image), with a typographic cover for books without one, in
+  a list or a grid.
 - **Back up your library** to one file and restore it on another
   computer: books, folders, highlights and notes come back as they were,
   without the book files.
@@ -188,6 +191,29 @@ reading time. The reader saves a second after scrolling stops, when
 the chapter changes and when you leave it or close the window, and
 only once you've scrolled or changed chapter yourself, so a quick look
 at a search hit doesn't count as reading.
+
+Book covers (`ebook_research_core/src/cover.rs`, `db/covers.rs`) are
+found at import: the manifest item with the EPUB 3 `cover-image`
+property, else the image `<meta name="cover">` names (by id, or by href
+as some books write it), else the only image on the first page when
+that page has at most one paragraph of text; for a PDF, page 1 when it
+holds a single portrait JPEG at least 300px wide. The image is decoded
+with the `image` crate (JPEG and PNG only, at most 20 MB, 8000px a side
+and 256 MiB of decoding memory), laid on the paper colour if it has
+transparency, shrunk to fit 300×450 and stored as a quality-80 JPEG in
+the `book_covers` table (migration 007), one row per book, keyed in
+URLs by the first 12 hex digits of its SHA-256. A missing or broken
+cover never fails an import: the book is recorded as having none and
+gets a generated cover, a tinted card with its title. Books imported
+before covers are looked for once per launch by `backfill_covers`,
+which locks the library only around each query, not while reading a
+file, and emits `covers_found`; a book whose file is gone or changed is
+recorded as `unavailable`. The webview loads thumbnails from a `cover://`
+protocol (`cover://localhost/{id}-{key}`, `http://cover.localhost/…`
+on Windows) served by `commands::cover_protocol` with a year-long
+immutable cache, and the CSP allows `img-src 'self' cover:
+http://cover.localhost`. Covers live in `library.db`, so backups carry
+them and removing a book removes its cover.
 
 The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
 (`com.pitaka.app`) names the data directory, so changing it would lose
@@ -421,6 +447,36 @@ alongside the old one. Neither may change. The version comes from
   copying a backup over a live file through the backup API was seen at
   once by a connection already open on it. Not yet run against the
   real library from Rust, and not timed there.
+- `ebook_research_core/src/cover.rs` and `db/covers.rs` — book covers
+  (see [How it's built](#how-its-built)). Unit tests: a 600×900 JPEG
+  becomes a 300×450 one, 1588×2528 keeps its aspect ratio within 1px
+  and 100×150 isn't enlarged; a transparent PNG comes out as a JPEG on
+  the paper colour; random bytes, an empty file, an 8001px-wide JPEG
+  and a file over 20 MB are refused; keys are 12 lowercase hex digits
+  and differ between images. In `epub.rs`, the `cover-image` property
+  wins over `<meta name="cover">`, the meta works by id and by href,
+  a meta naming a page is ignored in favour of the first page's
+  image, an SVG `<image xlink:href>` on the first page is found but not
+  on a title page with two paragraphs, a cover file missing from the
+  zip leaves the book imported without one, and `read_epub_cover`
+  matches `parse_epub`. In `pdf.rs`, a single 400×600 DCTDecode image
+  on page 1 is the cover, and two images, a FlateDecode or JPXDecode
+  one, a landscape or a 200px-wide one, and `test.pdf` give none. In
+  `db/covers.rs`, an import writes a `book_covers` row for every book
+  (`epub` with a key `list_books` returns; `none` for no cover or
+  corrupt bytes), `book_cover` returns the JPEG, removing a book
+  removes its cover, the backfill fills only missing rows (a real
+  EPUB's cover found, a missing file and a changed file recorded as
+  `unavailable`, then nothing left to check), and migration 007 on a
+  library at 6 adds an empty table. The integration tests check that
+  `test.epub` (which has no images) gets a generated cover and leaves
+  the backfill nothing, and that a backup carries a cover to a new
+  install byte for byte. While planning, a Python survey of the real
+  library's 52 EPUBs found a cover for all 52 by these rules, and
+  Pillow thumbnails of them came to 1.0 MB in all. The `cover://`
+  protocol, the backfill on a real library and the CSP were not run:
+  none of it has been checked in the Tauri window (`npm run tauri dev`
+  or a release build).
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
@@ -642,8 +698,10 @@ alongside the old one. Neither may change. The version comes from
     is a directory: the old build exited with a panic, the new one
     stayed up with the dialog. The dialog itself wasn't looked at.
   - `src-tauri/tauri.conf.json` sets a Content Security Policy in place
-    of `null`: scripts, styles, fonts and images from the app only, IPC
-    via `ipc:`, no plugins, forms or framing. A looser `devCsp` allows
+    of `null`: scripts, styles, fonts and images from the app only
+    (plus book covers from its own `cover:` protocol), IPC via `ipc:`,
+    no plugins, forms or framing. The `cover:` source, added with book
+    covers, hasn't been checked in WebKitGTK under either policy. A looser `devCsp` allows
     Vite's inline styles and HMR websocket under `npm run tauri dev`.
     Checked that `tauri build --no-bundle` succeeds, that the build has
     no inline scripts or `data:` assets for the policy to block, and
@@ -825,7 +883,18 @@ alongside the old one. Neither may change. The version comes from
   box. The order, the sort toggle and keeping the filter across the
   reader are covered by `Books.test.tsx`, and title order (leading
   articles, numbers, accents, untitled last) by `BooksView.test.ts`.
-  Not checked in the Tauri window or in dark mode.
+  Not checked in the Tauri window or in dark mode. Walked again for
+  book covers, at 1000px wide in light mode: Home's recent rows and the
+  Books list show a generated cover for each book (the fixture's real
+  cover fails to load in a browser and falls back, as intended), Grid
+  shows tinted cards with title and author, hovering a card shows Edit
+  and Remove, Edit opens the stacked form inside the card, and the grid
+  was still chosen after a reload. No console errors. `Books.test.tsx`
+  and `Home.test.tsx` cover the `cover://` URL, the fallback, the grid,
+  editing and removing from a card, filtering, remembering the view
+  (including an unknown value and storage that throws) and the
+  background backfill refreshing the list. Not checked in dark mode or
+  at 560px, and not in the Tauri window.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
@@ -897,11 +966,11 @@ pitaka/
 ├── ebook_research_core/        <- core crate, no UI/Tauri dependency
 │   ├── Cargo.toml
 │   ├── migrations/             <- numbered schema migrations (001 = base schema)
-│   ├── src/{lib,epub,pdf}.rs
+│   ├── src/{lib,epub,pdf,cover}.rs
 │   ├── src/semantic.rs         <- chunking, the front-matter filter, the embedding model
 │   ├── src/db/                 <- mod.rs (migrations, open_db) + import / search /
 │   │                              library / bookmarks / annotations /
-│   │                              backup / semantic_index,
+│   │                              backup / covers / semantic_index,
 │   │                              re-exported as db::*
 │   ├── tests/integration.rs
 │   └── tests/semantic_eval/    <- labelled queries for ranking (local/ is git-ignored)
@@ -919,7 +988,8 @@ pitaka/
 │   ├── App.tsx                  <- current screen, reader target and back label
 │   ├── HomeView.tsx             <- launch screen: Books / Bookmarks & notes / Search
 │   ├── NavBar.tsx               <- header for switching between screens
-│   ├── BooksView.tsx            <- import (file or folder), book list, remove
+│   ├── BooksView.tsx            <- import (file or folder), book list or grid, remove
+│   ├── BookCover.tsx            <- a book's cover thumbnail, or a generated one
 │   ├── SearchView.tsx           <- search box and results (kept mounted)
 │   ├── BookmarksView.tsx        <- folder list, new folder
 │   ├── FolderView.tsx           <- one folder's passages
@@ -964,6 +1034,9 @@ runs. The DB's `PRAGMA user_version` records how many have been applied.
   finished, backfilled from the books that already had chunk rows.
 - 007 adds `reading_positions`, one row per opened book, cascading with
   the book and its paragraph; nothing to backfill.
+- 008 adds `book_covers`, one row per book once its cover has been
+  looked for, with a JPEG thumbnail when one was found. It starts
+  empty; the app fills it for existing books in the background.
 - `db::tests::migrations_are_valid` applies every migration to an empty
   in-memory DB, so a broken migration fails `cargo test`.
 - Libraries created before migrations were tracked have the 001 schema
@@ -1094,7 +1167,14 @@ In the same order of priority as the Python version, then newer ones.
      win. A title with no letters ("1984") is skipped as junk, falling
      back to the file name.
    - A page pdf-extract can't read fails the whole import.
-10. Backups:
+10. Covers:
+    - A PDF gets a cover only when page 1 is a single JPEG image;
+      otherwise, and for GIF, WebP or SVG covers, the book gets a
+      generated one.
+    - A book whose file was missing or changed when covers were first
+      looked for keeps a generated cover until it's removed and
+      re-imported.
+11. Backups:
     - Restoring replaces the whole library rather than merging the
       backup into it; the library it replaced is kept as
       `library-before-restore.pitaka` until the next restore.
@@ -1167,6 +1247,7 @@ Done:
 - [x] Back up the library to one file and restore it
 - [x] Reopen each book where you left it, with reading progress and
   Continue reading on Home
+- [x] Book covers on the Books screen and Home, with a grid view
 
 Later:
 
@@ -1194,6 +1275,7 @@ Later:
       without a rebuild
 - [ ] OCR support, so scanned or image-only books can be searched
 - [ ] PDF page numbers in search results and the reader
+- [ ] Render a PDF's first page as its cover (needs a PDF renderer)
 - [x] Edit a book's title and author from the library, for books whose
       metadata is missing or wrong
 

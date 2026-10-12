@@ -535,7 +535,7 @@ mod tests {
         let no_manifest = dir.path("no-manifest.pitaka");
         write_zip(&no_manifest, &[(LIBRARY_ENTRY, &library)]);
         let no_library = dir.path("no-library.pitaka");
-        write_zip(&no_library, &[(MANIFEST_ENTRY, &manifest_json(1, 6))]);
+        write_zip(&no_library, &[(MANIFEST_ENTRY, &manifest_json(1, 7))]);
         let newer_schema = dir.path("newer-schema.pitaka");
         write_zip(
             &newer_schema,
@@ -548,7 +548,7 @@ mod tests {
         write_zip(
             &newer_format,
             &[
-                (MANIFEST_ENTRY, &manifest_json(2, 6)),
+                (MANIFEST_ENTRY, &manifest_json(2, 7)),
                 (LIBRARY_ENTRY, &library),
             ],
         );
@@ -558,7 +558,7 @@ mod tests {
         write_zip(
             &corrupt,
             &[
-                (MANIFEST_ENTRY, &manifest_json(1, 6)),
+                (MANIFEST_ENTRY, &manifest_json(1, 7)),
                 (LIBRARY_ENTRY, &library),
             ],
         );
@@ -599,7 +599,13 @@ mod tests {
             old.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
             migrations().to_version(&mut old, 5).unwrap();
             let book = one_chapter_book("Old schema", &["The zebra grazes."]);
-            let book_id = load_book(&mut old, "/books/old.epub", "old", &book).unwrap();
+            let book_id = super::super::import::load_book_before_covers(
+                &mut old,
+                "/books/old.epub",
+                "old",
+                &book,
+            )
+            .unwrap();
             let block = block_ids(&old, book_id)[0];
             add_highlight(&old, block, 4, 9, "green").unwrap();
             book_id
@@ -619,6 +625,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, schema_version());
+        assert_eq!(list_books(&conn).unwrap()[0].cover, None);
         let annotations = list_book_annotations(&conn, book_id).unwrap();
         assert_eq!(annotations.len(), 1);
         assert_eq!(annotations[0].text, "zebra");

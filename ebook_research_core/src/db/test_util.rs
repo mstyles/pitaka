@@ -10,6 +10,7 @@ pub(super) fn one_chapter_book(title: &str, paragraphs: &[&str]) -> ParsedBook {
         title: Some(title.to_string()),
         author: None,
         format: "epub",
+        cover: None,
         chapters: vec![crate::epub::ParsedChapter {
             file_name: "ch1.xhtml".to_string(),
             title: "Chapter 1".to_string(),
@@ -28,6 +29,7 @@ pub(super) fn book_with_chapters(title: &str, chapters: &[&[&str]]) -> ParsedBoo
         title: Some(title.to_string()),
         author: None,
         format: "epub",
+        cover: None,
         chapters: chapters
             .iter()
             .enumerate()

@@ -11,7 +11,8 @@ use ebook_research_core::{
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State};
+use tauri::http::{header, Request, Response, StatusCode};
+use tauri::{AppHandle, Emitter, Manager, State, UriSchemeContext, UriSchemeResponder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[cfg(feature = "semantic")]
@@ -24,8 +25,6 @@ use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "semantic")]
 use std::sync::Arc;
-#[cfg(feature = "semantic")]
-use tauri::Emitter;
 
 /// Holds the open DB connection for the app's lifetime.
 /// Tauri gives you `app.manage(...)` for exactly this kind of shared state.
@@ -639,6 +638,65 @@ pub fn restore_library(
     }
     let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::restore_library(&mut conn, &path, &app_version(&app)).map_err(|e| format!("{e:#}"))
+}
+
+/// Frontend calls: `invoke("backfill_covers")` once per launch; listen for `covers_found` ({ checked, found }).
+/// Looks for the covers of books imported before Pitaka read them, on a
+/// blocking thread, and returns at once.
+#[tauri::command]
+pub fn backfill_covers(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        match db::backfill_covers(&state.conn) {
+            Ok(found) => {
+                let _ = app.emit("covers_found", found);
+            }
+            Err(e) => eprintln!("couldn't add book covers: {e:#}"),
+        }
+    });
+    Ok(())
+}
+
+/// Serves `cover://localhost/{book_id}-{key}` (`http://cover.localhost/…`
+/// on Windows): the book's cover thumbnail, a JPEG. The key changes with
+/// the image, so the response can be cached for good. A bad path, a book
+/// without a cover or a db error is a 404.
+pub fn cover_protocol(
+    ctx: UriSchemeContext<'_, tauri::Wry>,
+    request: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let app = ctx.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let thumb = cover_book_id(request.uri().path()).and_then(|book_id| {
+            let state = app.try_state::<AppState>()?;
+            let conn = state.conn.lock().ok()?;
+            db::book_cover(&conn, book_id).ok().flatten()
+        });
+        let response = match thumb {
+            Some(thumb) => Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/jpeg")
+                .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+                .body(thumb),
+            None => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Vec::new()),
+        };
+        // Building fails only on an invalid header, and these are fixed.
+        if let Ok(response) = response {
+            responder.respond(response);
+        }
+    });
+}
+
+/// The book id in a cover URL's path, `/{id}-{key}`: the digits before
+/// the `-`.
+fn cover_book_id(path: &str) -> Option<i64> {
+    let (id, _key) = path.trim_start_matches('/').split_once('-')?;
+    id.parse().ok()
 }
 
 /// The version in `src-tauri/Cargo.toml`, which a release bumps.

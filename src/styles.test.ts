@@ -103,8 +103,10 @@ describe("App.css tokens", () => {
   it("every var() it uses is defined", () => {
     const root = rules.find(isRoot)!;
     const defined = new Set(root.decls.map(([p]) => p));
-    // Set per element, not in :root: the highlight colour classes.
+    // Set per element, not in :root: the highlight colour classes, and a
+    // generated book cover's tint.
     defined.add("--hl");
+    defined.add("--cover-tint");
     const used = new Set(Array.from(css.matchAll(/var\((--[a-z0-9-]+)/g), (m) => m[1]));
     expect([...used].filter((name) => !defined.has(name))).toEqual([]);
   });

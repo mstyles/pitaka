@@ -12,6 +12,7 @@
 //!      by block-level tag, tracking char offsets within the chapter. A
 //!      chapter's title is its first `<h1>`/`<h2>`, else its TOC label,
 //!      else its `<head><title>`, else its file path.
+//!   5. Read the cover image's bytes (see `cover_path`), if there is one.
 
 use anyhow::{anyhow, Context, Result};
 use quick_xml::events::{BytesEnd, BytesStart, Event};
@@ -35,6 +36,9 @@ pub struct ParsedBook {
     /// The `books.format` value: `"epub"` or `"pdf"`.
     pub format: &'static str,
     pub chapters: Vec<ParsedChapter>,
+    /// The cover image's raw bytes, if the book has one Pitaka can find.
+    /// `crate::cover::thumbnail` decodes it at import.
+    pub cover: Option<Vec<u8>>,
 }
 
 const BLOCK_TAGS: &[&str] = &[
@@ -50,7 +54,11 @@ const BLOCK_TAGS: &[&str] = &[
     "blockquote",
 ];
 
-pub fn parse_epub(path: &str) -> Result<ParsedBook> {
+type EpubZip = zip::ZipArchive<std::fs::File>;
+
+/// Steps 1 and 2: opens the book and parses its OPF. Returns the zip, the
+/// OPF's folder within it and the OPF.
+fn open_epub(path: &str) -> Result<(EpubZip, String, Opf)> {
     let file = std::fs::File::open(path).with_context(|| format!("opening {path}"))?;
     let mut zip = zip::ZipArchive::new(file)?;
 
@@ -69,9 +77,18 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         s
     };
     // A zip entry name, so `/`-separated on every OS: not a `Path`.
-    let opf_dir = opf_path.rsplit_once('/').map_or("", |(dir, _)| dir);
+    let opf_dir = opf_path
+        .rsplit_once('/')
+        .map_or("", |(dir, _)| dir)
+        .to_string();
 
     let opf = parse_opf(&opf_xml)?;
+    Ok((zip, opf_dir, opf))
+}
+
+pub fn parse_epub(path: &str) -> Result<ParsedBook> {
+    let (mut zip, opf_dir, opf) = open_epub(path)?;
+    let opf_dir = opf_dir.as_str();
 
     // --- Step 3: table of contents -> first label per file ---
     let toc = toc_titles(&mut zip, opf_dir, &opf);
@@ -129,11 +146,94 @@ pub fn parse_epub(path: &str) -> Result<ParsedBook> {
         });
     }
 
+    // --- Step 5: the cover image ---
+    let cover = read_cover(&mut zip, opf_dir, &opf);
+
     Ok(ParsedBook {
         title: opf.title,
         author: opf.author,
         format: "epub",
         chapters,
+        cover,
+    })
+}
+
+/// Just the cover image's bytes, for adding covers to books imported
+/// before Pitaka read them. Reads only container.xml, the OPF and the
+/// image (or the first page, when it looks there). `Ok(None)` when the
+/// book has no cover Pitaka can find.
+pub fn read_epub_cover(path: &str) -> Result<Option<Vec<u8>>> {
+    let (mut zip, opf_dir, opf) = open_epub(path)?;
+    Ok(read_cover(&mut zip, &opf_dir, &opf))
+}
+
+/// The cover image's bytes. A cover that is missing from the zip or
+/// can't be read is `None`, never an error: a cover never fails an
+/// import.
+fn read_cover<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    opf_dir: &str,
+    opf: &Opf,
+) -> Option<Vec<u8>> {
+    let path = cover_path(zip, opf_dir, opf)?;
+    let file = zip.by_name(&path).ok()?;
+    // One byte over the limit is enough for `thumbnail` to refuse it,
+    // without reading a huge entry into memory.
+    let mut bytes = Vec::new();
+    file.take(crate::cover::MAX_SOURCE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    Some(bytes)
+}
+
+/// The zip path of the book's cover image: the OPF's cover (see
+/// `parse_opf`), else the only image on the first page, when that page
+/// is a cover page with at most one paragraph of text. A title page with
+/// a publisher's logo and real text doesn't count.
+fn cover_path<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    opf_dir: &str,
+    opf: &Opf,
+) -> Option<String> {
+    if let Some(item) = opf.cover_id.as_ref().and_then(|id| opf.manifest.get(id)) {
+        return Some(resolve_href(opf_dir, &item.href));
+    }
+    let first = opf
+        .spine
+        .iter()
+        .filter_map(|id| opf.manifest.get(id))
+        .find(|item| !item.is_nav())?;
+    let page_path = resolve_href(opf_dir, &first.href);
+    let mut xhtml = String::new();
+    zip.by_name(&page_path)
+        .ok()?
+        .read_to_string(&mut xhtml)
+        .ok()?;
+    if extract_chapter(&xhtml).blocks.len() > 1 {
+        return None;
+    }
+    let page_dir = page_path.rsplit_once('/').map_or("", |(dir, _)| dir);
+    first_image_href(&xhtml).map(|href| resolve_href(page_dir, &href))
+}
+
+/// The first `<img src>` or SVG `<image href>`/`<image xlink:href>` in a
+/// page, as written.
+fn first_image_href(xhtml: &str) -> Option<String> {
+    LenientReader::new(xhtml).find_map(|event| {
+        let (XmlEvent::Start(e) | XmlEvent::Empty(e)) = event else {
+            return None;
+        };
+        let attr_name = match local_name(e.name().as_ref()) {
+            "img" => "src",
+            "image" => "href",
+            _ => return None,
+        };
+        e.attributes()
+            .flatten()
+            .find(|attr| local_name(attr.key.as_ref()) == attr_name)
+            .and_then(|attr| attr.normalized_value(XmlVersion::Implicit1_0).ok())
+            .map(|href| href.trim().to_string())
+            .filter(|href| !href.is_empty())
     })
 }
 
@@ -180,6 +280,10 @@ struct Opf {
     toc_id: Option<String>,
     title: Option<String>,
     author: Option<String>,
+    /// The manifest id of the cover image: the first item with the EPUB 3
+    /// `cover-image` property, else the image `<meta name="cover">`
+    /// names.
+    cover_id: Option<String>,
 }
 
 fn parse_opf(opf_xml: &str) -> Result<Opf> {
@@ -188,6 +292,8 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
     let mut toc_id = None;
     let mut title = None;
     let mut author = None;
+    let mut cover_image_id: Option<String> = None;
+    let mut cover_meta: Option<String> = None;
     // The text so far of the open `<title>` or `<creator>`, which arrives
     // in pieces split at each entity.
     let mut title_text: Option<String> = None;
@@ -228,6 +334,13 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                             }
                         }
                         if let (Some(id), Some(href)) = (id, href) {
+                            if cover_image_id.is_none()
+                                && properties
+                                    .split_ascii_whitespace()
+                                    .any(|p| p == "cover-image")
+                            {
+                                cover_image_id = Some(id.clone());
+                            }
                             manifest.insert(
                                 id,
                                 ManifestItem {
@@ -254,6 +367,20 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
                                     attr.normalized_value(XmlVersion::Implicit1_0)?.to_string(),
                                 );
                             }
+                        }
+                    }
+                    "meta" if cover_meta.is_none() => {
+                        let attr = |key: &str| {
+                            e.attributes()
+                                .flatten()
+                                .find(|attr| attr.key.as_ref() == key)
+                                .and_then(|attr| {
+                                    attr.normalized_value(XmlVersion::Implicit1_0).ok()
+                                })
+                                .map(|v| v.trim().to_string())
+                        };
+                        if attr("name").as_deref() == Some("cover") {
+                            cover_meta = attr("content");
                         }
                     }
                     "title" => title_text = Some(String::new()),
@@ -283,12 +410,27 @@ fn parse_opf(opf_xml: &str) -> Result<Opf> {
         }
     }
 
+    // `<meta name="cover">` should give a manifest id, but some books
+    // give the image's href instead. Either must be an image.
+    let is_image = |item: &ManifestItem| item.media_type.starts_with("image/");
+    let cover_id = cover_image_id.or_else(|| {
+        let content = cover_meta?;
+        if manifest.get(&content).is_some_and(is_image) {
+            return Some(content);
+        }
+        manifest
+            .iter()
+            .find(|(_, item)| item.href == content && is_image(item))
+            .map(|(id, _)| id.clone())
+    });
+
     Ok(Opf {
         manifest,
         spine,
         toc_id,
         title,
         author,
+        cover_id,
     })
 }
 
@@ -1200,16 +1342,19 @@ mod toc_tests {
 
     /// Writes an EPUB with the given files (besides container.xml) to a
     /// temp path.
-    fn write_epub(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    pub(super) fn write_epub(name: &str, files: &[(&str, &[u8])]) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("pitaka-{name}-{}.epub", std::process::id()));
         let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
         let options = zip::write::SimpleFileOptions::default();
         let container = r#"<container><rootfiles>
             <rootfile full-path="OEBPS/content.opf"/>
         </rootfiles></container>"#;
-        for (file, content) in [("META-INF/container.xml", container)].iter().chain(files) {
+        for (file, content) in [("META-INF/container.xml", container.as_bytes())]
+            .iter()
+            .chain(files)
+        {
             zip.start_file(*file, options).unwrap();
-            zip.write_all(content.as_bytes()).unwrap();
+            zip.write_all(content).unwrap();
         }
         zip.finish().unwrap();
         path
@@ -1251,18 +1396,21 @@ mod toc_tests {
         let path = write_epub(
             "precedence",
             &[
-                ("OEBPS/content.opf", OPF),
-                ("OEBPS/nav/nav.xhtml", nav),
-                ("OEBPS/toc.ncx", NCX),
+                ("OEBPS/content.opf", OPF.as_bytes()),
+                ("OEBPS/nav/nav.xhtml", nav.as_bytes()),
+                ("OEBPS/toc.ncx", NCX.as_bytes()),
                 (
                     "OEBPS/Text/heading.xhtml",
-                    &chapter("Book", "<h2>Chapter One</h2><p>x</p>"),
+                    chapter("Book", "<h2>Chapter One</h2><p>x</p>").as_bytes(),
                 ),
                 (
                     "OEBPS/Text/div heading.xhtml",
-                    &chapter("Book", r#"<div class="ct">1 The Art</div><p>x</p>"#),
+                    chapter("Book", r#"<div class="ct">1 The Art</div><p>x</p>"#).as_bytes(),
                 ),
-                ("OEBPS/Text/none.xhtml", &chapter("Half Title", "<p>x</p>")),
+                (
+                    "OEBPS/Text/none.xhtml",
+                    chapter("Half Title", "<p>x</p>").as_bytes(),
+                ),
             ],
         );
         assert_eq!(
@@ -1281,14 +1429,177 @@ mod toc_tests {
         let path = write_epub(
             "ncx-fallback",
             &[
-                ("OEBPS/content.opf", OPF),
-                ("OEBPS/nav/nav.xhtml", nav),
-                ("OEBPS/toc.ncx", NCX),
-                ("OEBPS/Text/heading.xhtml", &chapter("Book", "<p>x</p>")),
-                ("OEBPS/Text/div heading.xhtml", &chapter("Book", "<p>x</p>")),
-                ("OEBPS/Text/none.xhtml", &chapter("Half Title", "<p>x</p>")),
+                ("OEBPS/content.opf", OPF.as_bytes()),
+                ("OEBPS/nav/nav.xhtml", nav.as_bytes()),
+                ("OEBPS/toc.ncx", NCX.as_bytes()),
+                (
+                    "OEBPS/Text/heading.xhtml",
+                    chapter("Book", "<p>x</p>").as_bytes(),
+                ),
+                (
+                    "OEBPS/Text/div heading.xhtml",
+                    chapter("Book", "<p>x</p>").as_bytes(),
+                ),
+                (
+                    "OEBPS/Text/none.xhtml",
+                    chapter("Half Title", "<p>x</p>").as_bytes(),
+                ),
             ],
         );
         assert_eq!(titles(&path), ["NCX heading", "NCX div", "Half Title"]);
+    }
+}
+#[cfg(test)]
+mod cover_tests {
+    use super::toc_tests::write_epub;
+    use super::{parse_epub, read_epub_cover, ParsedBook};
+
+    const CHAPTER: &str = "<html><body><h1>One</h1><p>Text.</p></body></html>";
+
+    /// An OPF with the given manifest items before the chapter's, and a
+    /// spine of `spine` then the chapter.
+    fn opf(metadata: &str, items: &str, spine: &str) -> String {
+        format!(
+            r#"<package><metadata>{metadata}</metadata><manifest>{items}
+                <item id="ch" href="Text/ch.xhtml" media-type="application/xhtml+xml"/>
+            </manifest><spine>{spine}<itemref idref="ch"/></spine></package>"#
+        )
+    }
+
+    /// Parses a book with the given OPF and extra files, then removes it.
+    fn parse(name: &str, opf: &str, files: &[(&str, &[u8])]) -> ParsedBook {
+        let mut all: Vec<(&str, &[u8])> = vec![
+            ("OEBPS/content.opf", opf.as_bytes()),
+            ("OEBPS/Text/ch.xhtml", CHAPTER.as_bytes()),
+        ];
+        all.extend_from_slice(files);
+        let path = write_epub(name, &all);
+        let book = parse_epub(path.to_str().unwrap());
+        std::fs::remove_file(&path).unwrap();
+        book.unwrap()
+    }
+
+    #[test]
+    fn cover_from_epub3_property() {
+        let opf = opf(
+            r#"<meta name="cover" content="other"/>"#,
+            r#"<item id="other" href="img/other.jpg" media-type="image/jpeg"/>
+               <item id="c" href="img/c.jpg" media-type="image/jpeg" properties="cover-image"/>"#,
+            "",
+        );
+        let book = parse(
+            "cover-epub3",
+            &opf,
+            &[
+                ("OEBPS/img/c.jpg", b"c bytes"),
+                ("OEBPS/img/other.jpg", b"other bytes"),
+            ],
+        );
+        assert_eq!(book.cover.as_deref(), Some(&b"c bytes"[..]));
+    }
+
+    #[test]
+    fn cover_from_epub2_meta() {
+        let image = r#"<item id="cov" href="img/cov.jpg" media-type="image/jpeg"/>"#;
+        let files: &[(&str, &[u8])] = &[("OEBPS/img/cov.jpg", b"cov bytes")];
+
+        let by_id = opf(r#"<meta name="cover" content="cov"/>"#, image, "");
+        let book = parse("cover-meta-id", &by_id, files);
+        assert_eq!(book.cover.as_deref(), Some(&b"cov bytes"[..]));
+
+        let by_href = opf(r#"<meta name="cover" content="img/cov.jpg"/>"#, image, "");
+        let book = parse("cover-meta-href", &by_href, files);
+        assert_eq!(book.cover.as_deref(), Some(&b"cov bytes"[..]));
+
+        // Pointing at a page, not an image: the meta is ignored, and the
+        // first page (an image-only cover page) is used instead.
+        let not_image = opf(
+            r#"<meta name="cover" content="cov"/>"#,
+            r#"<item id="cov" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>"#,
+            r#"<itemref idref="cov"/>"#,
+        );
+        let page = br#"<html><body><img src="../img/front.jpg" alt="Cover"/></body></html>"#;
+        let book = parse(
+            "cover-meta-page",
+            &not_image,
+            &[
+                ("OEBPS/Text/cover.xhtml", page),
+                ("OEBPS/img/front.jpg", b"front bytes"),
+            ],
+        );
+        assert_eq!(book.cover.as_deref(), Some(&b"front bytes"[..]));
+    }
+
+    #[test]
+    fn cover_from_first_spine_page() {
+        let opf = opf(
+            "",
+            r#"<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+               <item id="cp" href="Text/cover.xhtml" media-type="application/xhtml+xml"/>"#,
+            r#"<itemref idref="nav"/><itemref idref="cp"/>"#,
+        );
+        let nav = b"<html><body><nav epub:type=\"toc\"><ol></ol></nav></body></html>";
+        let svg_page = br#"<html><body><div><svg xmlns:xlink="http://www.w3.org/1999/xlink">
+            <image width="600" height="900" xlink:href="../images/front.jpg"/>
+        </svg></div></body></html>"#;
+        let book = parse(
+            "cover-spine",
+            &opf,
+            &[
+                ("OEBPS/nav.xhtml", nav),
+                ("OEBPS/Text/cover.xhtml", svg_page),
+                ("OEBPS/images/front.jpg", b"front bytes"),
+            ],
+        );
+        assert_eq!(book.cover.as_deref(), Some(&b"front bytes"[..]));
+
+        let title_page = br#"<html><body><img src="../images/front.jpg"/>
+            <p>A publisher</p><p>Copyright someone, 2001.</p></body></html>"#;
+        let book = parse(
+            "cover-spine-text",
+            &opf,
+            &[
+                ("OEBPS/nav.xhtml", nav),
+                ("OEBPS/Text/cover.xhtml", title_page),
+                ("OEBPS/images/front.jpg", b"front bytes"),
+            ],
+        );
+        assert_eq!(book.cover, None);
+    }
+
+    #[test]
+    fn missing_cover_file_is_no_cover() {
+        let opf = opf(
+            r#"<meta name="cover" content="cov"/>"#,
+            r#"<item id="cov" href="img/cov.jpg" media-type="image/jpeg"/>"#,
+            "",
+        );
+        let book = parse("cover-missing", &opf, &[]);
+        assert_eq!(book.cover, None);
+        assert_eq!(book.chapters.len(), 1);
+        assert_eq!(book.chapters[0].title, "One");
+    }
+
+    #[test]
+    fn read_epub_cover_matches_parse_epub() {
+        let opf = opf(
+            "",
+            r#"<item id="c" href="img/c.jpg" media-type="image/jpeg" properties="cover-image"/>"#,
+            "",
+        );
+        let path = write_epub(
+            "cover-read",
+            &[
+                ("OEBPS/content.opf", opf.as_bytes()),
+                ("OEBPS/Text/ch.xhtml", CHAPTER.as_bytes()),
+                ("OEBPS/img/c.jpg", b"c bytes"),
+            ],
+        );
+        let path = path.to_str().unwrap();
+        let parsed = parse_epub(path).unwrap().cover;
+        let read = read_epub_cover(path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(read.as_deref(), Some(&b"c bytes"[..]));
+        assert_eq!(read, parsed);
     }
 }

@@ -73,6 +73,8 @@ export type BookSummary = {
   highlight_count: number;
   note_count: number;
   index_state: IndexState;
+  /** The cover thumbnail's key, for its `cover://` URL; null means a generated cover. */
+  cover: string | null;
 };
 
 export type ChapterSummary = {
@@ -205,3 +207,6 @@ export type BackupManifest = {
   created_at: string;
   counts: LibraryCounts;
 };
+
+/** What the cover backfill did, sent as `covers_found` once it's done. */
+export type CoverBackfill = { checked: number; found: number };

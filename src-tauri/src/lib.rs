@@ -5,6 +5,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_asynchronous_uri_scheme_protocol("cover", commands::cover_protocol)
         .setup(|app| {
             commands::register(app);
             Ok(())
@@ -18,6 +19,7 @@ pub fn run() {
             commands::backup_library,
             commands::read_backup_manifest,
             commands::restore_library,
+            commands::backfill_covers,
             commands::list_books,
             commands::get_book_chapters,
             commands::get_chapter_content,

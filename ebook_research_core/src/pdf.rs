@@ -15,6 +15,7 @@
 //!   5. Take the title from the document metadata, else the largest text
 //!      on the first pages, else the most frequent running header, else the
 //!      file name.
+//!   6. Take the cover from page 1, when that page is a single JPEG.
 
 use crate::epub::{normalize_whitespace, resolve_ref, ParsedBook, ParsedChapter};
 use anyhow::{anyhow, bail, Context, Result};
@@ -96,7 +97,32 @@ pub fn parse_pdf(path: &str) -> Result<ParsedBook> {
         author,
         format: "pdf",
         chapters,
+        cover: page_one_jpeg(&doc),
     })
+}
+
+/// Just the cover image's bytes, for adding covers to books imported
+/// before Pitaka read them. `Ok(None)` when page 1 isn't a cover image.
+pub fn read_pdf_cover(path: &str) -> Result<Option<Vec<u8>>> {
+    let bytes = std::fs::read(path).with_context(|| format!("opening {path}"))?;
+    let doc = load(path, &bytes)?;
+    Ok(page_one_jpeg(&doc))
+}
+
+/// Page 1's image, when it holds exactly one, stored as a plain JPEG
+/// (only the `DCTDecode` filter), at least 300px wide and portrait
+/// (height 1.2 to 1.8 times the width): a scanned or designed front
+/// cover. Pitaka can't render a page, so any other first page gets a
+/// generated cover.
+fn page_one_jpeg(doc: &Document) -> Option<Vec<u8>> {
+    let page = *doc.get_pages().get(&1)?;
+    let images = doc.get_page_images(page).ok()?;
+    let [image] = images.as_slice() else {
+        return None;
+    };
+    let ratio = image.height as f64 / image.width as f64;
+    let is_jpeg = image.filters.as_deref() == Some(&["DCTDecode".to_string()][..]);
+    (is_jpeg && image.width >= 300 && (1.2..=1.8).contains(&ratio)).then(|| image.content.to_vec())
 }
 
 /// Loads the document, decrypting it with the empty password if it's
@@ -1047,6 +1073,72 @@ mod tests {
             .to_string();
         assert!(err.contains("couldn't read the text"), "{err}");
         assert!(err.contains("unexpected encoding"), "{err}");
+    }
+
+    /// A one-page document whose page holds these images, each given as
+    /// (filter, width, height). The image data is a stand-in: only the
+    /// cover check reads it, and it's returned unchanged.
+    fn doc_with_images(images: &[(&str, i64, i64)]) -> Document {
+        use pdf_extract::{Dictionary, Stream};
+        let mut doc = Document::with_version("1.5");
+        let mut xobjects = Dictionary::new();
+        for (i, (filter, width, height)) in images.iter().enumerate() {
+            let mut dict = Dictionary::new();
+            dict.set("Type", Object::Name(b"XObject".to_vec()));
+            dict.set("Subtype", Object::Name(b"Image".to_vec()));
+            dict.set("Width", *width);
+            dict.set("Height", *height);
+            dict.set("ColorSpace", Object::Name(b"DeviceRGB".to_vec()));
+            dict.set("BitsPerComponent", 8);
+            dict.set("Filter", Object::Name(filter.as_bytes().to_vec()));
+            let content = format!("image {i}").into_bytes();
+            let id = doc.add_object(Stream::new(dict, content).with_compression(false));
+            xobjects.set(format!("Im{i}"), Object::Reference(id));
+        }
+        let pages_id = doc.new_object_id();
+        let mut resources = Dictionary::new();
+        resources.set("XObject", xobjects);
+        let mut page = Dictionary::new();
+        page.set("Type", Object::Name(b"Page".to_vec()));
+        page.set("Parent", Object::Reference(pages_id));
+        page.set("Resources", resources);
+        let page_id = doc.add_object(page);
+        let mut pages = Dictionary::new();
+        pages.set("Type", Object::Name(b"Pages".to_vec()));
+        pages.set("Kids", vec![Object::Reference(page_id)]);
+        pages.set("Count", 1);
+        doc.objects.insert(pages_id, Object::Dictionary(pages));
+        let mut catalog = Dictionary::new();
+        catalog.set("Type", Object::Name(b"Catalog".to_vec()));
+        catalog.set("Pages", Object::Reference(pages_id));
+        let catalog_id = doc.add_object(catalog);
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+        doc
+    }
+
+    #[test]
+    fn page_one_jpeg_takes_a_single_portrait_jpeg() {
+        let doc = doc_with_images(&[("DCTDecode", 400, 600)]);
+        assert_eq!(page_one_jpeg(&doc).as_deref(), Some(&b"image 0"[..]));
+    }
+
+    #[test]
+    fn page_one_jpeg_skips_anything_else() {
+        for images in [
+            &[("DCTDecode", 400, 600), ("DCTDecode", 400, 600)][..],
+            &[("FlateDecode", 400, 600)],
+            &[("JPXDecode", 400, 600)],
+            &[("DCTDecode", 400, 300)],
+            &[("DCTDecode", 200, 300)],
+            &[],
+        ] {
+            let doc = doc_with_images(images);
+            assert_eq!(page_one_jpeg(&doc), None, "{images:?}");
+        }
+        let bytes = std::fs::read(fixture("test.pdf")).unwrap();
+        let doc = load("test.pdf", &bytes).unwrap();
+        assert_eq!(page_one_jpeg(&doc), None);
+        assert_eq!(read_pdf_cover(&fixture("test.pdf")).unwrap(), None);
     }
 
     #[test]
