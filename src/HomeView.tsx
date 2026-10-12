@@ -1,6 +1,11 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import EmptyState from "./EmptyState";
+import { BookmarkIcon, BooksIcon, SearchIcon } from "./icons";
 import type { Screen } from "./NavBar";
+import { SkeletonRows } from "./Skeleton";
+import StatusLine, { failed } from "./StatusLine";
+import { useDelayed } from "./useDelayed";
 import type { BookmarkFolder, BookSummary } from "./types";
 
 type Props = {
@@ -15,25 +20,17 @@ function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-const ICONS: Record<Exclude<Screen, "home">, ReactNode> = {
-  books: (
-    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z" />
-  ),
-  bookmarks: <path d="M6 3h12v18l-6-5-6 5z" />,
-  search: (
-    <>
-      <circle cx="10.5" cy="10.5" r="6" />
-      <path d="M15 15l5.5 5.5" />
-    </>
-  ),
+const ICONS: Record<Exclude<Screen, "home">, ComponentType<{ size?: number }>> = {
+  books: BooksIcon,
+  bookmarks: BookmarkIcon,
+  search: SearchIcon,
 };
 
 function CardIcon({ screen }: { screen: Exclude<Screen, "home"> }) {
+  const Icon = ICONS[screen];
   return (
     <span className="home-card-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="22" height="22">
-        {ICONS[screen]}
-      </svg>
+      <Icon size={22} />
     </span>
   );
 }
@@ -58,6 +55,7 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
   }, []);
 
   const emptyLibrary = books?.length === 0;
+  const showSkeleton = useDelayed(books == null && errors.length === 0);
 
   let booksDetail = "";
   let searchDetail = "";
@@ -112,6 +110,30 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
           </button>
         ))}
       </div>
+      {books == null && showSkeleton && (
+        <section className="home-recent" aria-labelledby="home-recent-label">
+          <h2 id="home-recent-label" className="section-label">
+            Your library
+          </h2>
+          <SkeletonRows count={3} label="Loading library" className="home-recent-list" />
+        </section>
+      )}
+      {emptyLibrary && (
+        <div className="home-recent">
+          <EmptyState
+            icon={<BooksIcon size={28} />}
+            title="Welcome to Pitaka"
+            actions={
+              <button className="button-primary" onClick={() => onNavigate("books")}>
+                Go to Books
+              </button>
+            }
+          >
+            Import your EPUBs and PDFs to search them, bookmark passages and keep notes. Everything
+            stays on this computer.
+          </EmptyState>
+        </div>
+      )}
       {books && books.length > 0 && (
         <section className="home-recent" aria-labelledby="home-recent-label">
           <h2 id="home-recent-label" className="section-label">
@@ -140,9 +162,7 @@ function HomeView({ onNavigate, onOpenBook }: Props) {
         </section>
       )}
       {errors.map((e) => (
-        <p key={e} className="status">
-          {e}
-        </p>
+        <StatusLine key={e} status={failed(e)} />
       ))}
     </main>
   );

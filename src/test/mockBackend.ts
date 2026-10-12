@@ -69,6 +69,8 @@ export type MockOptions = {
   importErrors?: Record<string, string>;
   /** When set, each `import_book` call waits for this before answering. */
   importGate?: Promise<unknown>;
+  /** Commands that wait for their promise to settle before answering, e.g. to see a loading state. */
+  gates?: Partial<Record<string, Promise<unknown>>>;
   /** What the "Import book" file picker returns; null means cancelled. */
   openPath?: string | null;
   /** What the "Import folder" picker returns; null means cancelled. */
@@ -104,6 +106,7 @@ export function installMockBackend({
   importError,
   importErrors = {},
   importGate,
+  gates = {},
   openPath = "/books/test.epub",
   openDir = "/books/folder",
   scan,
@@ -116,8 +119,9 @@ export function installMockBackend({
   backupError,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
-  const startingBooks = () =>
-    initialBooks.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
+  const withIndexState = (list: BookSummary[]) =>
+    list.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
+  const startingBooks = () => withIndexState(initialBooks);
   let books = startingBooks();
 
   // Bookmark state, seeded from the fixtures and kept consistent the way the
@@ -226,343 +230,348 @@ export function installMockBackend({
 
   // `shouldMockEvents` lets the app's `listen` calls work without Rust, and
   // tests send indexing events with `indexingEvents`.
+  function answer(cmd: string, args: Record<string, unknown>) {
+    if (fail[cmd]) throw fail[cmd];
+
+    switch (cmd) {
+      case "list_books":
+        return books.map((b) => ({
+          ...b,
+          bookmark_count: bookmarks.filter((bm) => bm.book_id === b.id).length,
+          ...counts(b.id),
+        }));
+      case "import_book": {
+        const importBook = () => {
+          if (importError) throw importError;
+          const error = importErrors[String(args.path)];
+          if (error) throw error;
+          const imported = data.books.find((b) => b.id === data.import_new!.book_id)!;
+          if (books.some((b) => b.id === imported.id)) return data.import_again;
+          books = [...books, { ...imported }];
+          return data.import_new;
+        };
+        return importGate ? importGate.then(importBook) : importBook();
+      }
+      case "find_books":
+        return scan ?? data.find_books;
+      case "delete_book": {
+        const id = args.bookId as number;
+        if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
+        books = books.filter((b) => b.id !== id);
+        bookmarks = bookmarks.filter((b) => b.book_id !== id);
+        highlights = highlights.filter((h) => bookOf(h.content_block_id) !== id);
+        notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
+        return null;
+      }
+      case "update_book_details": {
+        const id = args.bookId as number;
+        if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
+        books = books.map((b) =>
+          b.id === id
+            ? { ...b, title: cleanField(args.title), author: cleanField(args.author) }
+            : b,
+        );
+        return null;
+      }
+      case "search_library": {
+        const mode = args.mode as SearchMode;
+        const bookId = args.bookId as number | null | undefined;
+        // Scoped ranks equal library-wide ones (pinned by the core test
+        // search_can_be_limited_to_one_book), so filtering is enough.
+        const inScope = bookId == null ? books : books.filter((b) => b.id === bookId);
+        if (search) return search(inScope, String(args.query), mode);
+        const hits = data.search[`${mode}:${args.query}`] ?? [];
+        return hits.filter((h) => inScope.some((b) => b.id === h.book_id)).map(withBookTitle);
+      }
+      case "semantic_status":
+        return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };
+      case "queue_index":
+        return 1;
+      case "queue_index_all":
+        return books.filter((b) => b.index_state !== "indexed").length;
+      case "stop_indexing":
+        return null;
+      case "search_chapters": {
+        const matches = data.chapter_matches?.[String(args.query)] ?? [];
+        return matches.filter((m) => books.some((b) => b.id === m.book_id)).map(withBookTitle);
+      }
+      case "get_book_chapters":
+        return data.chapters[String(args.bookId)] ?? [];
+      case "get_chapter_content": {
+        const content = data.chapter_content[String(args.chapterId)];
+        if (!content) throw `no chapter with id ${args.chapterId}`;
+        return content;
+      }
+      case "create_bookmark_folder": {
+        const folder = {
+          id: nextFolderId++,
+          name: folderName(args.name),
+          created_at: sqliteNow(),
+        };
+        folders = [...folders, folder];
+        return withCount(folder);
+      }
+      case "rename_bookmark_folder": {
+        const id = args.folderId as number;
+        const i = folderIndex(id);
+        folders[i] = { ...folders[i], name: folderName(args.name, id) };
+        return null;
+      }
+      case "delete_bookmark_folder": {
+        const id = args.folderId as number;
+        folderIndex(id);
+        folders = folders.filter((f) => f.id !== id);
+        bookmarks = bookmarks.filter((b) => b.folder_id !== id);
+        return null;
+      }
+      case "list_bookmark_folders":
+        return folders
+          .map(withCount)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
+      case "add_bookmark": {
+        const folderId = args.folderId as number;
+        const blockId = args.contentBlockId as number;
+        folderIndex(folderId);
+        const { content, block } = findBlock(blockId);
+        const existing = bookmarks.find(
+          (b) => b.folder_id === folderId && b.content_block_id === blockId,
+        );
+        if (existing) return existing.id;
+        const bookmark: FolderBookmark = {
+          id: nextBookmarkId++,
+          folder_id: folderId,
+          content_block_id: blockId,
+          book_id: content.book_id,
+          book_title: books.find((b) => b.id === content.book_id)?.title ?? null,
+          chapter_id: content.chapter_id,
+          chapter_idx: content.chapter_idx,
+          chapter_title: content.chapter_title,
+          text: block.text,
+        };
+        bookmarks = [...bookmarks, bookmark];
+        return bookmark.id;
+      }
+      case "remove_bookmark": {
+        const before = bookmarks.length;
+        bookmarks = bookmarks.filter(
+          (b) => !(b.folder_id === args.folderId && b.content_block_id === args.contentBlockId),
+        );
+        if (bookmarks.length === before) throw "that passage isn't in this folder";
+        return null;
+      }
+      case "list_folder_bookmarks": {
+        const id = args.folderId as number;
+        folderIndex(id);
+        return bookmarks
+          .filter((b) => b.folder_id === id)
+          .sort((a, b) => a.id - b.id)
+          .map(withBookTitle);
+      }
+      case "get_chapter_bookmarks": {
+        const content = data.chapter_content[String(args.chapterId)];
+        const order = new Map(content?.blocks.map((b) => [b.id, b.block_idx]));
+        return bookmarks
+          .filter((b) => b.chapter_id === args.chapterId)
+          .sort(
+            (a, b) =>
+              order.get(a.content_block_id)! - order.get(b.content_block_id)! ||
+              a.folder_id - b.folder_id,
+          )
+          .map((b): BlockBookmark => ({
+            content_block_id: b.content_block_id,
+            folder_id: b.folder_id,
+          }));
+      }
+      case "add_highlight": {
+        const color = checkColor(args.color);
+        const blockId = args.contentBlockId as number;
+        const { block } = findBlock(blockId);
+        const [start, end] = [args.start as number, args.end as number];
+        if (start < 0 || start >= end || end > Array.from(block.text).length) {
+          throw `highlight range ${start}..${end} is outside the paragraph`;
+        }
+        if (
+          highlights.some(
+            (h) => h.content_block_id === blockId && h.start_offset < end && h.end_offset > start,
+          )
+        ) {
+          throw "that overlaps an existing highlight";
+        }
+        const highlight: Highlight = {
+          id: nextHighlightId++,
+          content_block_id: blockId,
+          start_offset: start,
+          end_offset: end,
+          color,
+          created_at: sqliteNow(),
+        };
+        highlights = [...highlights, highlight];
+        return highlight;
+      }
+      case "set_highlight_color": {
+        const color = checkColor(args.color);
+        const h = findHighlight(args.highlightId as number);
+        highlights = highlights.map((x) => (x === h ? { ...h, color } : x));
+        return null;
+      }
+      case "delete_highlight": {
+        const h = findHighlight(args.highlightId as number);
+        notes = notes.filter((n) => n.highlight_id !== h.id);
+        highlights = highlights.filter((x) => x !== h);
+        return null;
+      }
+      case "add_highlight_note":
+      case "add_paragraph_note": {
+        const body = checkBody(args.body);
+        let blockId: number;
+        let highlightId: number | null = null;
+        if (cmd === "add_highlight_note") {
+          const h = findHighlight(args.highlightId as number);
+          if (notes.some((n) => n.highlight_id === h.id)) throw "that highlight already has a note";
+          blockId = h.content_block_id;
+          highlightId = h.id;
+        } else {
+          blockId = args.contentBlockId as number;
+          findBlock(blockId);
+          if (notes.some((n) => n.content_block_id === blockId && n.highlight_id == null)) {
+            throw "that paragraph already has a note";
+          }
+        }
+        const now = sqliteNow();
+        const note: Note = {
+          id: nextNoteId++,
+          content_block_id: blockId,
+          highlight_id: highlightId,
+          body,
+          created_at: now,
+          updated_at: now,
+        };
+        notes = [...notes, note];
+        return note;
+      }
+      case "update_note": {
+        const body = checkBody(args.body);
+        const n = findNote(args.noteId as number);
+        notes = notes.map((x) => (x === n ? { ...n, body, updated_at: sqliteNow() } : x));
+        return null;
+      }
+      case "delete_note": {
+        const n = findNote(args.noteId as number);
+        notes = notes.filter((x) => x !== n);
+        return null;
+      }
+      case "get_chapter_annotations": {
+        const inChapter = (blockId: number) =>
+          blockPlace(blockId).content.chapter_id === args.chapterId;
+        return {
+          highlights: highlights
+            .filter((h) => inChapter(h.content_block_id))
+            .sort(byReadingOrder((h) => readingOrder(h.content_block_id, h.id))),
+          notes: notes
+            .filter((n) => inChapter(n.content_block_id))
+            .sort(byReadingOrder((n) => readingOrder(n.content_block_id, n.highlight_id))),
+        } satisfies ChapterAnnotations;
+      }
+      case "list_annotated_books":
+        return books
+          .map((b): AnnotatedBook => ({
+            book_id: b.id,
+            title: b.title,
+            author: b.author,
+            ...counts(b.id),
+          }))
+          .filter((b) => b.highlight_count > 0 || b.note_count > 0)
+          .sort(
+            (a, b) =>
+              (a.title ?? "").toLowerCase().localeCompare((b.title ?? "").toLowerCase()) ||
+              a.book_id - b.book_id,
+          );
+      case "list_book_annotations": {
+        const bookId = args.bookId as number;
+        if (!books.some((b) => b.id === bookId)) throw `no book with id ${bookId}`;
+        const entry = (
+          blockId: number,
+          h: Highlight | null,
+          note: Note | undefined,
+        ): BookAnnotation => {
+          const { content, block } = blockPlace(blockId);
+          return {
+            content_block_id: blockId,
+            chapter_id: content.chapter_id,
+            chapter_idx: content.chapter_idx,
+            chapter_title: content.chapter_title,
+            highlight_id: h?.id ?? null,
+            color: h?.color ?? null,
+            text: h
+              ? Array.from(block.text).slice(h.start_offset, h.end_offset).join("")
+              : block.text,
+            note_id: note?.id ?? null,
+            note_body: note?.body ?? null,
+          };
+        };
+        return [
+          ...highlights
+            .filter((h) => bookOf(h.content_block_id) === bookId)
+            .map((h) =>
+              entry(
+                h.content_block_id,
+                h,
+                notes.find((n) => n.highlight_id === h.id),
+              ),
+            ),
+          ...notes
+            .filter((n) => n.highlight_id == null && bookOf(n.content_block_id) === bookId)
+            .map((n) => entry(n.content_block_id, null, n)),
+        ].sort(byReadingOrder((e) => readingOrder(e.content_block_id, e.highlight_id)));
+      }
+      case "backup_library":
+        if (backupError) throw backupError;
+        return {
+          ...fixtures.backup_manifest!,
+          counts: {
+            books: books.length,
+            bookmark_folders: folders.length,
+            bookmarks: bookmarks.length,
+            highlights: highlights.length,
+            notes: notes.length,
+          },
+        } satisfies BackupManifest;
+      case "read_backup_manifest":
+        if (backupError) throw backupError;
+        return fixtures.backup_manifest;
+      case "restore_library":
+        if (backupError) throw backupError;
+        // As if restoring a backup of the fixture library, which the
+        // manifest describes, even when the test started with no books.
+        books = withIndexState(data.books);
+        folders = startingFolders();
+        bookmarks = startingBookmarks();
+        highlights = startingHighlights();
+        notes = startingNotes();
+        return fixtures.backup_manifest!.counts;
+      case "plugin:dialog|save":
+        return savePath;
+      case "plugin:dialog|open": {
+        const options = args.options as { directory?: boolean } | undefined;
+        return options?.directory ? openDir : openPath;
+      }
+      case "plugin:dialog|message": {
+        // `ask` resolves true when the answer equals its okLabel.
+        const buttons = args.buttons as { OkCancelCustom?: [string, string] } | undefined;
+        const [ok, cancel] = buttons?.OkCancelCustom ?? ["Yes", "No"];
+        return confirm ? ok : cancel;
+      }
+      default:
+        throw new Error(`unmocked command: ${cmd}`);
+    }
+  }
+
   mockIPC(
     (cmd, payload) => {
       const args = (payload ?? {}) as Record<string, unknown>;
       calls.push({ cmd, args });
-      if (fail[cmd]) throw fail[cmd];
-
-      switch (cmd) {
-        case "list_books":
-          return books.map((b) => ({
-            ...b,
-            bookmark_count: bookmarks.filter((bm) => bm.book_id === b.id).length,
-            ...counts(b.id),
-          }));
-        case "import_book": {
-          const importBook = () => {
-            if (importError) throw importError;
-            const error = importErrors[String(args.path)];
-            if (error) throw error;
-            const imported = data.books.find((b) => b.id === data.import_new!.book_id)!;
-            if (books.some((b) => b.id === imported.id)) return data.import_again;
-            books = [...books, { ...imported }];
-            return data.import_new;
-          };
-          return importGate ? importGate.then(importBook) : importBook();
-        }
-        case "find_books":
-          return scan ?? data.find_books;
-        case "delete_book": {
-          const id = args.bookId as number;
-          if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
-          books = books.filter((b) => b.id !== id);
-          bookmarks = bookmarks.filter((b) => b.book_id !== id);
-          highlights = highlights.filter((h) => bookOf(h.content_block_id) !== id);
-          notes = notes.filter((n) => bookOf(n.content_block_id) !== id);
-          return null;
-        }
-        case "update_book_details": {
-          const id = args.bookId as number;
-          if (!books.some((b) => b.id === id)) throw `no book with id ${id}`;
-          books = books.map((b) =>
-            b.id === id
-              ? { ...b, title: cleanField(args.title), author: cleanField(args.author) }
-              : b,
-          );
-          return null;
-        }
-        case "search_library": {
-          const mode = args.mode as SearchMode;
-          const bookId = args.bookId as number | null | undefined;
-          // Scoped ranks equal library-wide ones (pinned by the core test
-          // search_can_be_limited_to_one_book), so filtering is enough.
-          const inScope = bookId == null ? books : books.filter((b) => b.id === bookId);
-          if (search) return search(inScope, String(args.query), mode);
-          const hits = data.search[`${mode}:${args.query}`] ?? [];
-          return hits.filter((h) => inScope.some((b) => b.id === h.book_id)).map(withBookTitle);
-        }
-        case "semantic_status":
-          return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };
-        case "queue_index":
-          return 1;
-        case "queue_index_all":
-          return books.filter((b) => b.index_state !== "indexed").length;
-        case "stop_indexing":
-          return null;
-        case "search_chapters": {
-          const matches = data.chapter_matches?.[String(args.query)] ?? [];
-          return matches.filter((m) => books.some((b) => b.id === m.book_id)).map(withBookTitle);
-        }
-        case "get_book_chapters":
-          return data.chapters[String(args.bookId)] ?? [];
-        case "get_chapter_content": {
-          const content = data.chapter_content[String(args.chapterId)];
-          if (!content) throw `no chapter with id ${args.chapterId}`;
-          return content;
-        }
-        case "create_bookmark_folder": {
-          const folder = {
-            id: nextFolderId++,
-            name: folderName(args.name),
-            created_at: sqliteNow(),
-          };
-          folders = [...folders, folder];
-          return withCount(folder);
-        }
-        case "rename_bookmark_folder": {
-          const id = args.folderId as number;
-          const i = folderIndex(id);
-          folders[i] = { ...folders[i], name: folderName(args.name, id) };
-          return null;
-        }
-        case "delete_bookmark_folder": {
-          const id = args.folderId as number;
-          folderIndex(id);
-          folders = folders.filter((f) => f.id !== id);
-          bookmarks = bookmarks.filter((b) => b.folder_id !== id);
-          return null;
-        }
-        case "list_bookmark_folders":
-          return folders
-            .map(withCount)
-            .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
-        case "add_bookmark": {
-          const folderId = args.folderId as number;
-          const blockId = args.contentBlockId as number;
-          folderIndex(folderId);
-          const { content, block } = findBlock(blockId);
-          const existing = bookmarks.find(
-            (b) => b.folder_id === folderId && b.content_block_id === blockId,
-          );
-          if (existing) return existing.id;
-          const bookmark: FolderBookmark = {
-            id: nextBookmarkId++,
-            folder_id: folderId,
-            content_block_id: blockId,
-            book_id: content.book_id,
-            book_title: books.find((b) => b.id === content.book_id)?.title ?? null,
-            chapter_id: content.chapter_id,
-            chapter_idx: content.chapter_idx,
-            chapter_title: content.chapter_title,
-            text: block.text,
-          };
-          bookmarks = [...bookmarks, bookmark];
-          return bookmark.id;
-        }
-        case "remove_bookmark": {
-          const before = bookmarks.length;
-          bookmarks = bookmarks.filter(
-            (b) => !(b.folder_id === args.folderId && b.content_block_id === args.contentBlockId),
-          );
-          if (bookmarks.length === before) throw "that passage isn't in this folder";
-          return null;
-        }
-        case "list_folder_bookmarks": {
-          const id = args.folderId as number;
-          folderIndex(id);
-          return bookmarks
-            .filter((b) => b.folder_id === id)
-            .sort((a, b) => a.id - b.id)
-            .map(withBookTitle);
-        }
-        case "get_chapter_bookmarks": {
-          const content = data.chapter_content[String(args.chapterId)];
-          const order = new Map(content?.blocks.map((b) => [b.id, b.block_idx]));
-          return bookmarks
-            .filter((b) => b.chapter_id === args.chapterId)
-            .sort(
-              (a, b) =>
-                order.get(a.content_block_id)! - order.get(b.content_block_id)! ||
-                a.folder_id - b.folder_id,
-            )
-            .map((b): BlockBookmark => ({
-              content_block_id: b.content_block_id,
-              folder_id: b.folder_id,
-            }));
-        }
-        case "add_highlight": {
-          const color = checkColor(args.color);
-          const blockId = args.contentBlockId as number;
-          const { block } = findBlock(blockId);
-          const [start, end] = [args.start as number, args.end as number];
-          if (start < 0 || start >= end || end > Array.from(block.text).length) {
-            throw `highlight range ${start}..${end} is outside the paragraph`;
-          }
-          if (
-            highlights.some(
-              (h) => h.content_block_id === blockId && h.start_offset < end && h.end_offset > start,
-            )
-          ) {
-            throw "that overlaps an existing highlight";
-          }
-          const highlight: Highlight = {
-            id: nextHighlightId++,
-            content_block_id: blockId,
-            start_offset: start,
-            end_offset: end,
-            color,
-            created_at: sqliteNow(),
-          };
-          highlights = [...highlights, highlight];
-          return highlight;
-        }
-        case "set_highlight_color": {
-          const color = checkColor(args.color);
-          const h = findHighlight(args.highlightId as number);
-          highlights = highlights.map((x) => (x === h ? { ...h, color } : x));
-          return null;
-        }
-        case "delete_highlight": {
-          const h = findHighlight(args.highlightId as number);
-          notes = notes.filter((n) => n.highlight_id !== h.id);
-          highlights = highlights.filter((x) => x !== h);
-          return null;
-        }
-        case "add_highlight_note":
-        case "add_paragraph_note": {
-          const body = checkBody(args.body);
-          let blockId: number;
-          let highlightId: number | null = null;
-          if (cmd === "add_highlight_note") {
-            const h = findHighlight(args.highlightId as number);
-            if (notes.some((n) => n.highlight_id === h.id))
-              throw "that highlight already has a note";
-            blockId = h.content_block_id;
-            highlightId = h.id;
-          } else {
-            blockId = args.contentBlockId as number;
-            findBlock(blockId);
-            if (notes.some((n) => n.content_block_id === blockId && n.highlight_id == null)) {
-              throw "that paragraph already has a note";
-            }
-          }
-          const now = sqliteNow();
-          const note: Note = {
-            id: nextNoteId++,
-            content_block_id: blockId,
-            highlight_id: highlightId,
-            body,
-            created_at: now,
-            updated_at: now,
-          };
-          notes = [...notes, note];
-          return note;
-        }
-        case "update_note": {
-          const body = checkBody(args.body);
-          const n = findNote(args.noteId as number);
-          notes = notes.map((x) => (x === n ? { ...n, body, updated_at: sqliteNow() } : x));
-          return null;
-        }
-        case "delete_note": {
-          const n = findNote(args.noteId as number);
-          notes = notes.filter((x) => x !== n);
-          return null;
-        }
-        case "get_chapter_annotations": {
-          const inChapter = (blockId: number) =>
-            blockPlace(blockId).content.chapter_id === args.chapterId;
-          return {
-            highlights: highlights
-              .filter((h) => inChapter(h.content_block_id))
-              .sort(byReadingOrder((h) => readingOrder(h.content_block_id, h.id))),
-            notes: notes
-              .filter((n) => inChapter(n.content_block_id))
-              .sort(byReadingOrder((n) => readingOrder(n.content_block_id, n.highlight_id))),
-          } satisfies ChapterAnnotations;
-        }
-        case "list_annotated_books":
-          return books
-            .map((b): AnnotatedBook => ({
-              book_id: b.id,
-              title: b.title,
-              author: b.author,
-              ...counts(b.id),
-            }))
-            .filter((b) => b.highlight_count > 0 || b.note_count > 0)
-            .sort(
-              (a, b) =>
-                (a.title ?? "").toLowerCase().localeCompare((b.title ?? "").toLowerCase()) ||
-                a.book_id - b.book_id,
-            );
-        case "list_book_annotations": {
-          const bookId = args.bookId as number;
-          if (!books.some((b) => b.id === bookId)) throw `no book with id ${bookId}`;
-          const entry = (
-            blockId: number,
-            h: Highlight | null,
-            note: Note | undefined,
-          ): BookAnnotation => {
-            const { content, block } = blockPlace(blockId);
-            return {
-              content_block_id: blockId,
-              chapter_id: content.chapter_id,
-              chapter_idx: content.chapter_idx,
-              chapter_title: content.chapter_title,
-              highlight_id: h?.id ?? null,
-              color: h?.color ?? null,
-              text: h
-                ? Array.from(block.text).slice(h.start_offset, h.end_offset).join("")
-                : block.text,
-              note_id: note?.id ?? null,
-              note_body: note?.body ?? null,
-            };
-          };
-          return [
-            ...highlights
-              .filter((h) => bookOf(h.content_block_id) === bookId)
-              .map((h) =>
-                entry(
-                  h.content_block_id,
-                  h,
-                  notes.find((n) => n.highlight_id === h.id),
-                ),
-              ),
-            ...notes
-              .filter((n) => n.highlight_id == null && bookOf(n.content_block_id) === bookId)
-              .map((n) => entry(n.content_block_id, null, n)),
-          ].sort(byReadingOrder((e) => readingOrder(e.content_block_id, e.highlight_id)));
-        }
-        case "backup_library":
-          if (backupError) throw backupError;
-          return {
-            ...fixtures.backup_manifest!,
-            counts: {
-              books: books.length,
-              bookmark_folders: folders.length,
-              bookmarks: bookmarks.length,
-              highlights: highlights.length,
-              notes: notes.length,
-            },
-          } satisfies BackupManifest;
-        case "read_backup_manifest":
-          if (backupError) throw backupError;
-          return fixtures.backup_manifest;
-        case "restore_library":
-          if (backupError) throw backupError;
-          // As if restoring a backup of the starting library.
-          books = startingBooks();
-          folders = startingFolders();
-          bookmarks = startingBookmarks();
-          highlights = startingHighlights();
-          notes = startingNotes();
-          return fixtures.backup_manifest!.counts;
-        case "plugin:dialog|save":
-          return savePath;
-        case "plugin:dialog|open": {
-          const options = args.options as { directory?: boolean } | undefined;
-          return options?.directory ? openDir : openPath;
-        }
-        case "plugin:dialog|message": {
-          // `ask` resolves true when the answer equals its okLabel.
-          const buttons = args.buttons as { OkCancelCustom?: [string, string] } | undefined;
-          const [ok, cancel] = buttons?.OkCancelCustom ?? ["Yes", "No"];
-          return confirm ? ok : cancel;
-        }
-        default:
-          throw new Error(`unmocked command: ${cmd}`);
-      }
+      const gate = gates[cmd];
+      return gate ? gate.then(() => answer(cmd, args)) : answer(cmd, args);
     },
     { shouldMockEvents: true },
   );

@@ -87,7 +87,7 @@ describe("home", () => {
       await user.click(within(row).getByRole("button", { name: "Remove" }));
       await waitFor(() => expect(screen.queryByText(title)).toBeNull());
     }
-    expect(screen.getByText("No books yet. Import an EPUB or PDF to start.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Your library is empty" })).toBeTruthy();
 
     await goTo(user, "Home");
     await waitFor(() => expect(detail("Books")).toBe("Import your first book"));
@@ -96,6 +96,10 @@ describe("home", () => {
     expect(screen.queryByText("Your library")).toBeNull();
     // The folder outlives its passages.
     expect(detail("Bookmarks & notes")).toBe("1 folder · 0 passages");
+
+    expect(screen.getByRole("heading", { name: "Welcome to Pitaka" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Go to Books" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Books" })).toBeTruthy();
   });
 
   it("shows an error when the library can't be loaded", async () => {

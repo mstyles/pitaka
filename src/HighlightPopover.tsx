@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { COLORS } from "./SelectionToolbar";
+import StatusLine, { failed } from "./StatusLine";
 import type { Highlight } from "./types";
 
 type Props = {
@@ -111,7 +112,7 @@ function HighlightPopover({
           Remove
         </button>
       </div>
-      {error && <div className="bookmark-popover-error">{error}</div>}
+      <StatusLine status={error ? failed(error) : null} className="bookmark-popover-error" />
     </div>
   );
 }

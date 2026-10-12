@@ -46,6 +46,9 @@ not clicked through in the Tauri window").
   checks); a new button is unclassed (secondary) unless it's the
   screen's main action (`button-primary`), a row action
   (`button-quiet button-sm`) or destructive (`button-danger`).
+  Report outcomes with `StatusLine` (toasts only for background work
+  finishing on another screen), an empty list with `EmptyState`, and
+  take icons from `src/icons.tsx`, which alone imports `lucide-react`.
 - Tests go in the core crate (`#[cfg(test)]` in the module, or
   `tests/integration.rs` against `test.epub`). Note `test.epub`'s spine
   starts with `nav.xhtml`, so find chapters by title, not index.

@@ -116,4 +116,15 @@ describe("restoring", () => {
     expect(restore.disabled).toBe(true);
     expect(restore.title).toBe("Stop indexing to restore a backup");
   });
+
+  it("offers Restore on a new install's empty library", async () => {
+    const { user, callsTo } = renderApp({ openPath: BACKUP, books: [] });
+    await goTo(user, "Books");
+    await screen.findByRole("heading", { name: "Your library is empty" });
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(`Restored ${FIXTURE_COUNTS}`)).toBeTruthy();
+    expect(callsTo("restore_library")).toEqual([{ path: BACKUP }]);
+    expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Your library is empty" })).toBeNull();
+  });
 });

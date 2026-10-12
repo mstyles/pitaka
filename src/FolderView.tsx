@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
+import EmptyState from "./EmptyState";
+import { BookmarkIcon } from "./icons";
+import { SkeletonPassages } from "./Skeleton";
+import StatusLine, { failed, type Status } from "./StatusLine";
 import type { BookmarkFolder, FolderBookmark } from "./types";
+import { useDelayed } from "./useDelayed";
 
 type Props = {
   folder: BookmarkFolder;
@@ -17,16 +22,18 @@ function passageCount(n: number) {
 
 /** One bookmark folder's passages, each a click away from its place in the book. */
 function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
-  const [passages, setPassages] = useState<FolderBookmark[]>([]);
+  // Null until loaded, so the folder doesn't say it's empty first.
+  const [passages, setPassages] = useState<FolderBookmark[] | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<Status | null>(null);
+  const showSkeleton = useDelayed(passages == null && status == null);
 
   async function refreshPassages() {
     try {
       setPassages(await invoke<FolderBookmark[]>("list_folder_bookmarks", { folderId: folder.id }));
     } catch (err) {
-      setStatus(`Loading folder failed: ${err}`);
+      setStatus(failed(`Loading folder failed: ${err}`));
     }
   }
 
@@ -39,16 +46,17 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
     try {
       await invoke("rename_bookmark_folder", { folderId: folder.id, name: newName });
       setRenaming(false);
-      setStatus("");
+      setStatus(null);
       onChanged();
     } catch (err) {
-      setStatus(`Rename failed: ${err}`);
+      setStatus(failed(`Rename failed: ${err}`));
     }
   }
 
   async function deleteFolder() {
+    const n = passages?.length ?? folder.bookmark_count;
     const confirmed = await ask(
-      `Delete the folder "${folder.name}" and its ${passages.length} bookmark${passages.length === 1 ? "" : "s"}? The passages stay in their books.`,
+      `Delete the folder "${folder.name}" and its ${n} bookmark${n === 1 ? "" : "s"}? The passages stay in their books.`,
       { title: "Delete folder", kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" },
     );
     if (!confirmed) return;
@@ -57,7 +65,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
       onChanged();
       onBack();
     } catch (err) {
-      setStatus(`Delete failed: ${err}`);
+      setStatus(failed(`Delete failed: ${err}`));
     }
   }
 
@@ -67,7 +75,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
       await refreshPassages();
       onChanged();
     } catch (err) {
-      setStatus(`Remove failed: ${err}`);
+      setStatus(failed(`Remove failed: ${err}`));
     }
   }
 
@@ -98,7 +106,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
               type="button"
               onClick={() => {
                 setRenaming(false);
-                setStatus("");
+                setStatus(null);
               }}
             >
               Cancel
@@ -121,12 +129,18 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
           </>
         )}
       </div>
-      <div className="folder-status">{status || passageCount(passages.length)}</div>
+      {status ? (
+        <StatusLine status={status} className="folder-status" />
+      ) : (
+        <div className="folder-status">{passages && passageCount(passages.length)}</div>
+      )}
 
-      {passages.length === 0 ? (
-        <p className="folder-empty">
-          No passages yet. Open a book and click the bookmark icon beside a paragraph.
-        </p>
+      {passages == null ? (
+        showSkeleton && <SkeletonPassages count={2} label="Loading passages" />
+      ) : passages.length === 0 ? (
+        <EmptyState icon={<BookmarkIcon size={28} />} title="This folder is empty">
+          Open a book and click the bookmark icon beside a paragraph to add it here.
+        </EmptyState>
       ) : (
         <ul className="folder-passages">
           {passages.map((p) => (

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import StatusLine, { failed } from "./StatusLine";
 import type { BookmarkFolder } from "./types";
 
 type Props = {
@@ -95,7 +96,7 @@ function BookmarkPopover({ contentBlockId, folders, checkedFolderIds, onChanged,
           autoFocus
         />
       </form>
-      {error && <div className="bookmark-popover-error">{error}</div>}
+      <StatusLine status={error ? failed(error) : null} className="bookmark-popover-error" />
     </div>
   );
 }

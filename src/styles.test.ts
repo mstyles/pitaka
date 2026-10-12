@@ -109,6 +109,29 @@ describe("App.css tokens", () => {
     expect([...used].filter((name) => !defined.has(name))).toEqual([]);
   });
 
+  it("every animation is a short entrance or one of the loading loops", () => {
+    const bad = values((p) => p === "animation").filter(
+      (v) =>
+        !/var\(--motion-(fast|base)\)/.test(v.value) &&
+        !/^(spin|skeleton-pulse) [\d.]+s (linear|ease-in-out) infinite$/.test(v.value) &&
+        v.value !== "none !important",
+    );
+    expect(values((p) => p === "animation").length).toBeGreaterThan(0);
+    expect(bad).toEqual([]);
+  });
+
+  it("turns animation off under prefers-reduced-motion", () => {
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\s*\{[^}]*\{\s*animation: none !important;\s*\}/,
+    );
+  });
+
+  it("leaves icon strokes to Lucide", () => {
+    // Lucide sets the stroke as attributes; CSS may fill an icon, not restroke it.
+    const bad = values((p) => p.startsWith("stroke"));
+    expect(bad).toEqual([]);
+  });
+
   it("every colour token has a dark value", () => {
     const [light, dark] = rules.filter(isRoot);
     const lightColours = light.decls

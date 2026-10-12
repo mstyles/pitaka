@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { sortBooks } from "./BooksView";
+import EmptyState from "./EmptyState";
+import { SearchIcon } from "./icons";
+import StatusLine, { failed, type Status } from "./StatusLine";
 import type { BookSummary, ChapterMatch, SearchMode, SearchResult, SemanticStatus } from "./types";
 
 /** Where a result opens the reader: a passage hit or a chapter match. */
@@ -42,7 +45,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
   const [semantic, setSemantic] = useState<SemanticStatus | null>(null);
   const [searching, setSearching] = useState(false);
   const [exactWords, setExactWords] = useState(false);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<Status | null>(null);
   // False until the first search returns, so the count line doesn't say "No results" up front.
   const [searched, setSearched] = useState(false);
   // For the "Search in" picker.
@@ -88,10 +91,10 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
           await invoke<SearchResult[]>("search_library", { query: q, mode, bookId: book }),
         );
       }
-      setStatus("");
+      setStatus(null);
       setSearched(true);
     } catch (err) {
-      setStatus(`Search failed: ${err}`);
+      setStatus(failed(`Search failed: ${err}`));
     } finally {
       setSearching(false);
     }
@@ -105,7 +108,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
     if (scope !== "passages") {
       setScope("passages");
       setSearched(false);
-      setStatus("");
+      setStatus(null);
     }
     inputRef.current?.focus();
     runSearch(query, exactWords, "passages", bookId);
@@ -149,7 +152,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
     if (next === "chapters") setChapterResults([]);
     else setResults([]);
     setSearched(false);
-    setStatus("");
+    setStatus(null);
     runSearch(query, exactWords, next, bookId);
   }
 
@@ -157,6 +160,8 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
   const count = chapterScope ? chapterResults.length : results.length;
   const noun = chapterScope ? "chapter" : "result";
   const scopedBook = chapterScope ? undefined : books.find((b) => b.id === bookId);
+  // Old results dim while a search runs, rather than jumping when it returns.
+  const resultsClass = searching ? "results results-stale" : "results";
 
   return (
     <main className="container">
@@ -191,10 +196,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
         }}
       >
         <div className="search-field">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <circle cx="10.5" cy="10.5" r="6" />
-            <path d="M15 15l5.5 5.5" />
-          </svg>
+          <SearchIcon />
           <input
             ref={inputRef}
             value={query}
@@ -240,7 +242,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
         )}
       </form>
       {status ? (
-        <p className="status">{status}</p>
+        <StatusLine status={status} />
       ) : (
         searched && (
           <p className="result-count">
@@ -248,9 +250,28 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
           </p>
         )
       )}
+      {!status && searched && count === 0 && (
+        <EmptyState
+          compact
+          actions={
+            scopedBook && (
+              <button className="button-quiet" onClick={() => changeBook(null)}>
+                Search all books
+              </button>
+            )
+          }
+        >
+          {chapterScope
+            ? "Chapter search matches meaning, so try describing the idea differently."
+            : "Try fewer or different words." +
+              (exactWords
+                ? " Exact words only matches whole words; turn it off to match other forms."
+                : "")}
+        </EmptyState>
+      )}
 
       {chapterScope ? (
-        <ul className="results">
+        <ul className={resultsClass} aria-busy={searching || undefined}>
           {chapterResults.map((m) => (
             <li key={m.chapter_id} onClick={() => onOpenResult(m)}>
               <div className="result-meta">
@@ -263,7 +284,7 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
           ))}
         </ul>
       ) : (
-        <ul className="results">
+        <ul className={resultsClass} aria-busy={searching || undefined}>
           {results.map((r) => (
             <li key={r.content_block_id} onClick={() => onOpenResult(r)}>
               <div className="result-meta">
