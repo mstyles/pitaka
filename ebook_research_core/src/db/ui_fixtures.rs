@@ -77,7 +77,7 @@ fn ui_fixtures_are_current() {
         (SearchMode::Stemmed, "stemmed", "quincunx"),
         (SearchMode::Stemmed, "stemmed", "zzzz"),
     ] {
-        let hits = search(&conn, query, mode, 50).unwrap();
+        let hits = search(&conn, query, mode, None, 50).unwrap();
         searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
     }
 
@@ -265,7 +265,7 @@ fn ui_fixtures_for_demo_are_current() {
             (SearchMode::Stemmed, "stemmed"),
             (SearchMode::Exact, "exact"),
         ] {
-            let hits = search(&conn, query, mode, 50).unwrap();
+            let hits = search(&conn, query, mode, None, 50).unwrap();
             searches.insert(format!("{name}:{query}"), to_value(hits).unwrap());
         }
     }

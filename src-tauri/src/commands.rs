@@ -328,16 +328,18 @@ fn find_chapters(_app: &AppHandle, _query: &str) -> Result<Vec<ChapterMatch>, St
     Err("semantic search isn't available in this build".into())
 }
 
-/// Frontend calls: `invoke("search_library", { query: "neural networks", mode: "exact" })`
-/// (`mode` is `"stemmed"` or `"exact"`).
+/// Frontend calls: `invoke("search_library", { query: "neural networks", mode: "exact", bookId: 1 })`
+/// (`mode` is `"stemmed"` or `"exact"`; `bookId` null or omitted searches
+/// the whole library).
 #[tauri::command]
 pub fn search_library(
     query: String,
     mode: SearchMode,
+    book_id: Option<i64>,
     state: State<AppState>,
 ) -> Result<Vec<SearchResult>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    db::search(&conn, &query, mode, 50).map_err(|e| e.to_string())
+    db::search(&conn, &query, mode, book_id, 50).map_err(|e| e.to_string())
 }
 
 /// Frontend calls: `invoke("delete_book", { bookId: 1 })`. Removes the book

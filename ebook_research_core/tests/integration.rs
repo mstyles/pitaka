@@ -39,7 +39,8 @@ fn parses_and_indexes_and_searches() {
     let book_id = outcome.book_id;
     assert!(book_id > 0);
 
-    let results = search(&conn, "neural networks", SearchMode::Stemmed, 10).expect("search failed");
+    let results =
+        search(&conn, "neural networks", SearchMode::Stemmed, None, 10).expect("search failed");
     assert!(
         !results.is_empty(),
         "expected search hits for 'neural networks'"
@@ -50,12 +51,44 @@ fn parses_and_indexes_and_searches() {
         results[0].snippet
     );
 
-    let results2 =
-        search(&conn, "transformers OR attention", SearchMode::Stemmed, 10).expect("search failed");
+    // Scoped to the only book, the same hits; to another id, none.
+    let scoped = search(
+        &conn,
+        "neural networks",
+        SearchMode::Stemmed,
+        Some(book_id),
+        10,
+    )
+    .expect("search failed");
+    let ids =
+        |hits: &[db::SearchResult]| hits.iter().map(|h| h.content_block_id).collect::<Vec<_>>();
+    assert_eq!(ids(&scoped), ids(&results));
+    assert!(search(
+        &conn,
+        "neural networks",
+        SearchMode::Stemmed,
+        Some(book_id + 1),
+        10
+    )
+    .expect("search failed")
+    .is_empty());
+
+    let results2 = search(
+        &conn,
+        "transformers OR attention",
+        SearchMode::Stemmed,
+        None,
+        10,
+    )
+    .expect("search failed");
     assert_eq!(results2.len(), 2, "expected 2 hits, got {:?}", results2);
 
     // --- exact vs stemmed search ---
-    let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
+    let hits = |q: &str, mode| {
+        search(&conn, q, mode, None, 10)
+            .expect("search failed")
+            .len()
+    };
     assert!(
         hits("network", SearchMode::Stemmed) > 0,
         "stemmed 'network' should match 'networks'"
@@ -94,7 +127,8 @@ fn parses_and_indexes_and_searches() {
             "neural AND",
             "",
         ] {
-            search(&conn, q, mode, 10).unwrap_or_else(|e| panic!("{q:?} ({mode:?}) failed: {e}"));
+            search(&conn, q, mode, None, 10)
+                .unwrap_or_else(|e| panic!("{q:?} ({mode:?}) failed: {e}"));
         }
         assert_eq!(
             hits("machine-learning", mode),
@@ -223,7 +257,7 @@ fn skips_duplicate_imports() {
         .unwrap();
     assert_eq!(books, 1);
     assert_eq!(
-        search(&conn, "gradient", SearchMode::Exact, 10)
+        search(&conn, "gradient", SearchMode::Exact, None, 10)
             .unwrap()
             .len(),
         1,
@@ -258,7 +292,7 @@ fn deletes_and_reimports_a_book() {
         .is_empty());
     for mode in [SearchMode::Stemmed, SearchMode::Exact] {
         assert!(
-            search(&conn, "neural networks", mode, 10)
+            search(&conn, "neural networks", mode, None, 10)
                 .unwrap()
                 .is_empty(),
             "{mode:?}"
@@ -274,9 +308,11 @@ fn deletes_and_reimports_a_book() {
         !again.already_imported,
         "a removed book should import as new"
     );
-    assert!(!search(&conn, "neural networks", SearchMode::Stemmed, 10)
-        .unwrap()
-        .is_empty());
+    assert!(
+        !search(&conn, "neural networks", SearchMode::Stemmed, None, 10)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A library created before migrations were tracked (the 001 schema with
@@ -308,7 +344,11 @@ fn upgrades_unversioned_library() {
             .unwrap();
         assert_eq!(version, 6);
 
-        let hits = |q: &str, mode| search(&conn, q, mode, 10).expect("search failed").len();
+        let hits = |q: &str, mode| {
+            search(&conn, q, mode, None, 10)
+                .expect("search failed")
+                .len()
+        };
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
             assert_eq!(
                 hits("samsara", mode),
@@ -477,14 +517,14 @@ fn expands_transliteration_variants() {
 
     for mode in [SearchMode::Stemmed, SearchMode::Exact] {
         assert!(
-            search_with_variants(&conn, "neuronal", mode, 10, &empty)
+            search_with_variants(&conn, "neuronal", mode, None, 10, &empty)
                 .unwrap()
                 .is_empty(),
             "{mode:?}: the book really doesn't contain \"neuronal\""
         );
 
-        let neural = search_with_variants(&conn, "neural", mode, 10, &empty).unwrap();
-        let neuronal = search_with_variants(&conn, "neuronal", mode, 10, &variants).unwrap();
+        let neural = search_with_variants(&conn, "neural", mode, None, 10, &empty).unwrap();
+        let neuronal = search_with_variants(&conn, "neuronal", mode, None, 10, &variants).unwrap();
         assert!(!neural.is_empty(), "{mode:?}");
         assert_eq!(
             neural
@@ -499,7 +539,7 @@ fn expands_transliteration_variants() {
         );
 
         // A term whose group matches nothing extra ranks exactly as before.
-        let expanded = search_with_variants(&conn, "neural", mode, 10, &variants).unwrap();
+        let expanded = search_with_variants(&conn, "neural", mode, None, 10, &variants).unwrap();
         for (plain, exp) in neural.iter().zip(&expanded) {
             assert_eq!(plain.content_block_id, exp.content_block_id, "{mode:?}");
             assert_eq!(plain.rank, exp.rank, "{mode:?}: ranking must not shift");
@@ -507,8 +547,8 @@ fn expands_transliteration_variants() {
         }
 
         // A term with no group is untouched.
-        let a = search_with_variants(&conn, "quincunx", mode, 10, &empty).unwrap();
-        let b = search_with_variants(&conn, "quincunx", mode, 10, &variants).unwrap();
+        let a = search_with_variants(&conn, "quincunx", mode, None, 10, &empty).unwrap();
+        let b = search_with_variants(&conn, "quincunx", mode, None, 10, &variants).unwrap();
         assert_eq!(a.len(), b.len(), "{mode:?}");
         for (x, y) in a.iter().zip(&b) {
             assert_eq!(x.content_block_id, y.content_block_id, "{mode:?}");
@@ -519,12 +559,19 @@ fn expands_transliteration_variants() {
     // The same through the public `search`, against the shipped list: a term
     // that isn't listed behaves exactly as it always has.
     assert_eq!(
-        search(&conn, "neural networks", SearchMode::Stemmed, 10)
+        search(&conn, "neural networks", SearchMode::Stemmed, None, 10)
             .unwrap()
             .len(),
-        search_with_variants(&conn, "neural networks", SearchMode::Stemmed, 10, &empty)
-            .unwrap()
-            .len()
+        search_with_variants(
+            &conn,
+            "neural networks",
+            SearchMode::Stemmed,
+            None,
+            10,
+            &empty
+        )
+        .unwrap()
+        .len()
     );
 
     drop(conn);
@@ -1310,7 +1357,7 @@ fn imports_a_pdf() {
         .collect();
     assert_eq!(titles, ["Front matter", "Introduction", "Methods"]);
     for mode in [SearchMode::Stemmed, SearchMode::Exact] {
-        let hits = search(&conn, "gradient", mode, 10).unwrap();
+        let hits = search(&conn, "gradient", mode, None, 10).unwrap();
         assert_eq!(hits.len(), 1, "{mode:?}");
         assert_eq!(hits[0].book_id, first.book_id, "{mode:?}");
     }

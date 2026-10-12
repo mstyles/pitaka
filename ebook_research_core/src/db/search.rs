@@ -264,16 +264,23 @@ fn query_has_closing_quote(chars: &std::iter::Peekable<std::str::Chars>) -> bool
     chars.clone().skip(1).any(|c| c == '"')
 }
 
-/// Searches the whole library. `query` is what the user typed; see
-/// `to_fts_query` for how it's interpreted. Terms with a known
-/// transliteration variant also match it, in both modes.
+/// Searches the whole library, or only the book `book_id` when it's given.
+/// `query` is what the user typed; see `to_fts_query` for how it's
+/// interpreted. Terms with a known transliteration variant also match it,
+/// in both modes.
+///
+/// The book is filtered before `limit` applies, so a book whose hits rank
+/// below the library's top `limit` still gets them, and ranks are the same
+/// either way: `bm25()` scores against the whole index. An id with no book
+/// finds nothing rather than failing.
 pub fn search(
     conn: &Connection,
     query: &str,
     mode: SearchMode,
+    book_id: Option<i64>,
     limit: i64,
 ) -> Result<Vec<SearchResult>> {
-    search_with_variants(conn, query, mode, limit, VariantIndex::bundled())
+    search_with_variants(conn, query, mode, book_id, limit, VariantIndex::bundled())
 }
 
 /// [`search`], against a given variant list instead of the bundled one, so
@@ -282,6 +289,7 @@ pub fn search_with_variants(
     conn: &Connection,
     query: &str,
     mode: SearchMode,
+    book_id: Option<i64>,
     limit: i64,
     variants: &VariantIndex,
 ) -> Result<Vec<SearchResult>> {
@@ -298,12 +306,12 @@ pub fn search_with_variants(
          JOIN content_blocks cb ON cb.id = {fts}.rowid
          JOIN chapters ch       ON ch.id = cb.chapter_id
          JOIN books b           ON b.id = cb.book_id
-         WHERE {fts} MATCH ?1
+         WHERE {fts} MATCH ?1 AND (?3 IS NULL OR cb.book_id = ?3)
          ORDER BY rank
          LIMIT ?2"
     ))?;
 
-    let rows = stmt.query_map(params![fts_query, limit], |row| {
+    let rows = stmt.query_map(params![fts_query, limit, book_id], |row| {
         Ok(SearchResult {
             book_id: row.get(0)?,
             book_title: row.get(1)?,
@@ -494,7 +502,7 @@ mod tests {
             "dharma explained monks",
         ] {
             for mode in [SearchMode::Stemmed, SearchMode::Exact] {
-                search_with_variants(&conn, query, mode, 50, &variants)
+                search_with_variants(&conn, query, mode, None, 50, &variants)
                     .unwrap_or_else(|e| panic!("{query:?} in {mode:?} is not valid FTS5: {e}"));
             }
         }
@@ -518,23 +526,77 @@ mod tests {
 
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
             // "dharma" appears nowhere in the book.
-            assert!(search_with_variants(&conn, "dharma", mode, 50, &empty)
-                .unwrap()
-                .is_empty());
-            let hits = search_with_variants(&conn, "dharma", mode, 50, &variants).unwrap();
+            assert!(
+                search_with_variants(&conn, "dharma", mode, None, 50, &empty)
+                    .unwrap()
+                    .is_empty()
+            );
+            let hits = search_with_variants(&conn, "dharma", mode, None, 50, &variants).unwrap();
             assert_eq!(hits.len(), 1, "{mode:?}");
             assert!(hits[0].snippet.contains("[dhamma]"), "{}", hits[0].snippet);
 
             // A term with a group ranks and highlights exactly as it did
             // before, since the other member matches nothing here.
-            let plain = search_with_variants(&conn, "dhamma", mode, 50, &empty).unwrap();
-            let expanded = search_with_variants(&conn, "dhamma", mode, 50, &variants).unwrap();
+            let plain = search_with_variants(&conn, "dhamma", mode, None, 50, &empty).unwrap();
+            let expanded =
+                search_with_variants(&conn, "dhamma", mode, None, 50, &variants).unwrap();
             assert_eq!(plain.len(), expanded.len());
             for (a, b) in plain.iter().zip(&expanded) {
                 assert_eq!(a.content_block_id, b.content_block_id);
                 assert_eq!(a.rank, b.rank, "expansion must not shift ranking");
                 assert_eq!(a.snippet, b.snippet);
             }
+        }
+    }
+
+    #[test]
+    fn search_can_be_limited_to_one_book() {
+        let mut conn = open_db(":memory:").unwrap();
+        // Short paragraphs rank above long ones, so the first book fills
+        // the top of the library-wide results.
+        let short = one_chapter_book(
+            "Short",
+            &[
+                "The dhamma one.",
+                "The dhamma two.",
+                "The dhamma three.",
+                "The dhamma four.",
+                "The dhamma five.",
+            ],
+        );
+        let long = one_chapter_book(
+            "Long",
+            &[
+                "A much longer paragraph that mentions the dhamma only once among many other words.",
+                "Another long paragraph, which also brings up the dhamma just once in all this text.",
+            ],
+        );
+        let short_id = load_book(&mut conn, "/s.epub", "hs", &short).unwrap();
+        let long_id = load_book(&mut conn, "/l.epub", "hl", &long).unwrap();
+
+        for mode in [SearchMode::Stemmed, SearchMode::Exact] {
+            let all = search(&conn, "dhamma", mode, None, 50).unwrap();
+            assert_eq!(all.len(), 7, "{mode:?}");
+
+            let scoped = search(&conn, "dhamma", mode, Some(long_id), 50).unwrap();
+            let expected: Vec<_> = all.iter().filter(|h| h.book_id == long_id).collect();
+            assert_eq!(scoped.len(), 2, "{mode:?}");
+            for (a, b) in scoped.iter().zip(&expected) {
+                assert_eq!(a.content_block_id, b.content_block_id);
+                assert_eq!(a.rank, b.rank, "scoping must not shift ranking");
+                assert_eq!(a.snippet, b.snippet);
+            }
+
+            // The book is filtered before the limit, not after it.
+            let top2 = search(&conn, "dhamma", mode, None, 2).unwrap();
+            assert!(top2.iter().all(|h| h.book_id == short_id), "{mode:?}");
+            let scoped2 = search(&conn, "dhamma", mode, Some(long_id), 2).unwrap();
+            assert_eq!(scoped2.len(), 2, "{mode:?}");
+            assert!(scoped2.iter().all(|h| h.book_id == long_id));
+
+            assert!(search(&conn, "dhamma", mode, Some(9999), 50)
+                .unwrap()
+                .is_empty());
         }
     }
 

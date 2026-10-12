@@ -34,6 +34,36 @@ describe("reader", () => {
     expect(within(sidebar).getByText("Fixture Author")).toBeTruthy();
   });
 
+  it("searches just this book from the sidebar", async () => {
+    const { user, callsTo } = renderApp();
+    await goTo(user, "Search");
+    await search(user, "quincunx");
+    await waitFor(() => expect(resultItems()).toHaveLength(1));
+    await goTo(user, "Books");
+    await user.click(
+      await screen.findByText("A Long Book for Scrolling", { selector: ".book-title" }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Search this book" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Search" })).toBeTruthy();
+    await waitFor(() => expect(callsTo("search_library")).toHaveLength(2));
+    expect(callsTo("search_library")[1]).toEqual({
+      query: "quincunx",
+      mode: "stemmed",
+      bookId: 2,
+    });
+    const box = screen.getByPlaceholderText("Search A Long Book for Scrolling…");
+    expect(document.activeElement).toBe(box);
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Search in" }).value).toBe("2");
+
+    await waitFor(() => expect(resultItems()).toHaveLength(1));
+    await user.click(resultItems()[0]);
+    await waitFor(() =>
+      expect(document.getElementById(`block-${HIT.content_block_id}`)).not.toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "← Search results" })).toBeTruthy();
+  });
+
   it("centres and briefly flashes a search hit", async () => {
     const { user, callsTo } = renderApp({ fakeTimers: true });
     await goTo(user, "Search");

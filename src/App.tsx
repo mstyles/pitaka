@@ -24,6 +24,8 @@ function App() {
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [bookFilter, setBookFilter] = useState("");
   const [bookSort, setBookSort] = useState<BookSort>("title");
+  // Passage search's book scope; the reader sets it too.
+  const [searchBookId, setSearchBookId] = useState<number | null>(null);
   const { dismissFinished, ...indexer } = useIndexing();
   const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
 
@@ -86,6 +88,8 @@ function App() {
         <SearchView
           active={screen === "search" && reader == null}
           libraryVersion={libraryVersion}
+          bookId={searchBookId}
+          onBookIdChange={setSearchBookId}
           onOpenResult={(r) =>
             setReader({
               bookId: r.book_id,
@@ -104,6 +108,11 @@ function App() {
           backLabel={reader.backLabel}
           openNoteId={reader.openNoteId}
           onBack={() => setReader(null)}
+          onSearchBook={(bookId) => {
+            setSearchBookId(bookId);
+            setReader(null);
+            navigate("search");
+          }}
         />
       )}
     </>

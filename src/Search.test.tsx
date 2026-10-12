@@ -15,7 +15,9 @@ describe("search", () => {
     await goTo(user, "Search");
     await search(user, "neural networks");
     await waitFor(() => expect(resultItems()).toHaveLength(2));
-    expect(callsTo("search_library")).toEqual([{ query: "neural networks", mode: "stemmed" }]);
+    expect(callsTo("search_library")).toEqual([
+      { query: "neural networks", mode: "stemmed", bookId: null },
+    ]);
     const marks = resultItems()[0].querySelectorAll("mark");
     expect(Array.from(marks, (m) => m.textContent)).toEqual(["Neural", "networks"]);
     expect(resultItems()[0].textContent).toContain(`${TEST_BOOK} · Chapter Two: Deeper Waters`);
@@ -37,7 +39,11 @@ describe("search", () => {
     await waitFor(() => expect(resultItems()).toHaveLength(2));
     await user.click(screen.getByLabelText("Exact words"));
     await waitFor(() => expect(callsTo("search_library")).toHaveLength(2));
-    expect(callsTo("search_library")[1]).toEqual({ query: "neural networks", mode: "exact" });
+    expect(callsTo("search_library")[1]).toEqual({
+      query: "neural networks",
+      mode: "exact",
+      bookId: null,
+    });
   });
 
   it("focuses the search box when opened", async () => {
@@ -71,7 +77,11 @@ describe("search", () => {
 
     await goTo(user, "Search");
     await waitFor(() => expect(callsTo("search_library")).toHaveLength(2));
-    expect(callsTo("search_library")[1]).toEqual({ query: "neural networks", mode: "stemmed" });
+    expect(callsTo("search_library")[1]).toEqual({
+      query: "neural networks",
+      mode: "stemmed",
+      bookId: null,
+    });
     await waitFor(() => expect(resultItems()).toHaveLength(0));
   });
 
@@ -122,6 +132,96 @@ describe("search", () => {
       'if a < b then <img src=x onerror="alert(1)"> neural nets',
     );
     expect(Array.from(item.querySelectorAll("mark"), (m) => m.textContent)).toEqual(["neural"]);
+  });
+});
+
+describe("search in one book", () => {
+  const LONG_BOOK = "A Long Book for Scrolling";
+
+  function picker() {
+    return screen.getByRole<HTMLSelectElement>("combobox", { name: "Search in" });
+  }
+
+  function optionLabels() {
+    return Array.from(picker().options, (o) => o.textContent);
+  }
+
+  it("lists every book by title after All books", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Search");
+    await waitFor(() => expect(optionLabels()).toEqual(["All books", LONG_BOOK, TEST_BOOK]));
+    expect(picker().value).toBe("");
+  });
+
+  it("re-runs the search limited to the chosen book", async () => {
+    const { user, callsTo } = renderApp();
+    await goTo(user, "Search");
+    await search(user, "neural networks");
+    await waitFor(() => expect(resultItems()).toHaveLength(2));
+    await waitFor(() => expect(optionLabels()).toHaveLength(3));
+
+    await user.selectOptions(picker(), LONG_BOOK);
+    await waitFor(() => expect(callsTo("search_library")).toHaveLength(2));
+    expect(callsTo("search_library")[1]).toEqual({
+      query: "neural networks",
+      mode: "stemmed",
+      bookId: 2,
+    });
+    expect(await screen.findByText("No results")).toBeTruthy();
+    expect(screen.getByPlaceholderText(`Search ${LONG_BOOK}…`)).toBeTruthy();
+
+    await user.selectOptions(picker(), TEST_BOOK);
+    await waitFor(() => expect(resultItems()).toHaveLength(2));
+    expect(callsTo("search_library")[2]).toMatchObject({ bookId: 1 });
+    for (const item of resultItems()) {
+      expect(item.querySelector(".result-meta")!.textContent).not.toContain(TEST_BOOK);
+    }
+    expect(resultItems()[0].querySelector(".result-meta")!.textContent).toBe(
+      "Chapter Two: Deeper Waters",
+    );
+
+    await user.selectOptions(picker(), "All books");
+    await waitFor(() => expect(callsTo("search_library")).toHaveLength(4));
+    expect(callsTo("search_library")[3]).toMatchObject({ bookId: null });
+    expect(screen.getByPlaceholderText("Search your library…")).toBeTruthy();
+  });
+
+  it("isn't offered for chapters or a one-book library", async () => {
+    const chapters = renderApp({ semantic: { available: true, indexed_books: 2, total_books: 2 } });
+    await goTo(chapters.user, "Search");
+    await waitFor(() => expect(optionLabels()).toHaveLength(3));
+    await chapters.user.click(await screen.findByRole("button", { name: "Chapters" }));
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+    cleanup();
+
+    const one = renderApp({ books: fixtures.books.slice(0, 1) });
+    await goTo(one.user, "Search");
+    await waitFor(() => expect(one.callsTo("list_books").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("combobox", { name: "Search in" })).toBeNull();
+  });
+
+  it("goes back to all books when the chosen book is removed", async () => {
+    const { user, callsTo } = renderApp();
+    await goTo(user, "Search");
+    await waitFor(() => expect(optionLabels()).toHaveLength(3));
+    await user.selectOptions(picker(), TEST_BOOK);
+    await search(user, "neural networks");
+    await waitFor(() => expect(resultItems()).toHaveLength(2));
+    expect(callsTo("search_library")[0]).toMatchObject({ bookId: 1 });
+
+    await goTo(user, "Books");
+    const row = (await screen.findByText(TEST_BOOK, { selector: ".book-title" })).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    await screen.findByText(`Removed "${TEST_BOOK}"`);
+
+    await goTo(user, "Search");
+    await waitFor(() => expect(callsTo("search_library")).toHaveLength(2));
+    expect(callsTo("search_library")[1]).toEqual({
+      query: "neural networks",
+      mode: "stemmed",
+      bookId: null,
+    });
+    expect(screen.getByPlaceholderText("Search your library…")).toBeTruthy();
   });
 });
 

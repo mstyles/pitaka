@@ -239,9 +239,13 @@ export function installMockBackend({
         }
         case "search_library": {
           const mode = args.mode as SearchMode;
-          if (search) return search(books, String(args.query), mode);
+          const bookId = args.bookId as number | null | undefined;
+          // Scoped ranks equal library-wide ones (pinned by the core test
+          // search_can_be_limited_to_one_book), so filtering is enough.
+          const inScope = bookId == null ? books : books.filter((b) => b.id === bookId);
+          if (search) return search(inScope, String(args.query), mode);
           const hits = data.search[`${mode}:${args.query}`] ?? [];
-          return hits.filter((h) => books.some((b) => b.id === h.book_id));
+          return hits.filter((h) => inScope.some((b) => b.id === h.book_id));
         }
         case "semantic_status":
           return { ...(data.semantic_status ?? NO_SEMANTIC), ...semantic };

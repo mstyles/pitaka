@@ -96,6 +96,7 @@ h1 {
 /* Controls */
 
 input:not([type="checkbox"]),
+select,
 button {
   min-height: 40px;
   border-radius: var(--radius);
@@ -131,6 +132,7 @@ input[type="checkbox"] {
 }
 
 input:focus-visible,
+select:focus-visible,
 button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -504,6 +506,12 @@ button.button-danger:hover:not(:disabled) {
   color: var(--muted);
   font-size: 0.9em;
 }
+.search-book {
+  max-width: 16em;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
 .search-mode {
   display: flex;
   align-items: center;
@@ -649,6 +657,25 @@ button.button-danger:hover:not(:disabled) {
   margin-top: 0.2em;
   font-size: 13px;
   color: var(--muted);
+}
+
+.reader-search-book {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin-top: 12px;
+  min-height: 0;
+  padding: 0.3em 0.75em;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reader-search-book svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .reader-chapter-list {
