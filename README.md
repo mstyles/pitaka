@@ -491,7 +491,7 @@ alongside the old one. Neither may change. The version comes from
     `src/NavBar.tsx` is the `Home · Books · Bookmarks & notes · Search` header
     on every other screen except the reader.
   - `src/BooksView.tsx` — native file-picker → `import_book`, and a
-    book list from `list_books` with Remove. "Import folder…" picks a
+    book list from `list_books` with Remove. "Import folder" picks a
     folder → `find_books`, then calls `import_book` once per book
     ("Importing 3 of 40…", with Stop), and sums up ("Imported 12 books,
     3 already in library, 2 failed") with each failure's path and
@@ -507,18 +507,17 @@ alongside the old one. Neither may change. The version comes from
     the Search screen re-runs so its results and book picker show the
     new title. Covered by `Books.test.tsx` and `Search.test.tsx` against
     the mocked backend; not yet clicked through in the Tauri window.
-    **Back up…** saves
-    the library through the save dialog ("Backed up 2 books, 1 bookmark
-    folder, … to …"), and **Restore…** reads the chosen backup's
-    manifest, asks with its date, version and counts, then restores and
-    reloads the list; App drops any open folder, book or search scope,
-    whose ids no longer mean anything. Restore is disabled while a book
-    is queued for indexing. Covered by `Backup.test.tsx` (cancelling,
-    the status lines, the dialog's wording, declining, a newer backup
-    refused without asking, the folder list after a restore, the
-    disabled button) and `Demo.test.tsx` (the demo's "Backups need the
-    desktop app"). Not clicked through in `npm run dev:mock` or the
-    Tauri window.
+    **Back up** saves the library through the save dialog ("Backed up 2
+    books, 1 bookmark folder, … to …"), and **Restore** reads the chosen
+    backup's manifest, asks with its date, version and counts, then
+    restores and reloads the list; App drops any open folder, book or
+    search scope, whose ids no longer mean anything. Restore is disabled
+    while a book is queued for indexing. Covered by `Backup.test.tsx`
+    (cancelling, the status lines, the dialog's wording, declining, a
+    newer backup refused without asking, the folder list after a
+    restore, the disabled button) and `Demo.test.tsx` (the demo's
+    "Backups need the desktop app"). Not clicked through in `npm run
+    dev:mock` or the Tauri window.
   - `src/SearchView.tsx` — in a build with semantic search, a
     Passages / Chapters switch; Chapters calls `search_chapters` and
     lists each chapter with a plain-text preview of the part that

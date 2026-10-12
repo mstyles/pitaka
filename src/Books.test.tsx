@@ -23,7 +23,7 @@ describe("books", () => {
     const { user, callsTo } = renderApp();
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await user.click(screen.getByRole("button", { name: "Import book" }));
     await screen.findByText("Already in library as book #1");
     expect(callsTo("import_book")).toEqual([{ path: "/books/test.epub" }]);
   });
@@ -35,7 +35,7 @@ describe("books", () => {
     await user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(screen.queryByText(TEST_BOOK)).toBeNull());
 
-    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await user.click(screen.getByRole("button", { name: "Import book" }));
     await screen.findByText("Imported book #1");
     expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
   });
@@ -44,7 +44,7 @@ describe("books", () => {
     const { user, callsTo } = renderApp({ openPath: null });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await user.click(screen.getByRole("button", { name: "Import book" }));
     await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
     const { options } = callsTo("plugin:dialog|open")[0] as {
       options: { filters: { extensions: string[] }[] };
@@ -56,7 +56,7 @@ describe("books", () => {
     const { user, callsTo } = renderApp({ openPath: null });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await user.click(screen.getByRole("button", { name: "Import book" }));
     await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
     expect(callsTo("import_book")).toEqual([]);
   });
@@ -268,7 +268,7 @@ describe("importing a folder", () => {
   // Without the test book, so the first copy of it is new.
   const books = fixtures.books.filter((b) => b.title !== TEST_BOOK);
   const importButtons = () =>
-    ["Import book…", "Import folder…"].map(
+    ["Import book", "Import folder"].map(
       (name) => screen.getByRole("button", { name }) as HTMLButtonElement,
     );
 
@@ -283,7 +283,7 @@ describe("importing a folder", () => {
     const { user, callsTo } = renderApp({ scan, importErrors, books });
     await goTo(user, "Books");
     await screen.findByText(LONG_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
 
     await screen.findByText("Imported 1 book, 1 already in library, 1 failed");
     expect(callsTo("find_books")).toEqual([{ dir: "/books/folder" }]);
@@ -297,7 +297,7 @@ describe("importing a folder", () => {
     const { user, callsTo } = renderApp({ openDir: null });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     await waitFor(() => expect(callsTo("plugin:dialog|open")).toHaveLength(1));
     expect(callsTo("find_books")).toEqual([]);
     expect(callsTo("import_book")).toEqual([]);
@@ -307,7 +307,7 @@ describe("importing a folder", () => {
     const { user } = renderApp({ scan: { paths: [], unreadable: [] } });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     expect(await screen.findByText("No EPUB or PDF files in /books/folder")).toBeTruthy();
   });
 
@@ -316,7 +316,7 @@ describe("importing a folder", () => {
     const { user, callsTo } = renderApp({ scan, importErrors, books, importGate: promise });
     await goTo(user, "Books");
     await screen.findByText(LONG_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     await screen.findByText("Importing 1 of 3…");
     expect(importButtons().every((b) => b.disabled)).toBe(true);
 
@@ -333,7 +333,7 @@ describe("importing a folder", () => {
     const { user, callsTo } = renderApp({ scan, importErrors, books, importGate: promise });
     await goTo(user, "Books");
     await screen.findByText(LONG_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     await screen.findByText("Importing 1 of 3…");
 
     await goTo(user, "Bookmarks & notes");
@@ -351,7 +351,7 @@ describe("importing a folder", () => {
     const { user } = renderApp({ fail: { find_books: "couldn't read /books/folder: denied" } });
     await goTo(user, "Books");
     await screen.findByText(TEST_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     expect(
       await screen.findByText("Import failed: couldn't read /books/folder: denied"),
     ).toBeTruthy();
@@ -513,7 +513,7 @@ describe("indexing for chapter search", () => {
     const { user, callsTo } = renderApp({ ...INDEXING, scan, importGate });
     await goTo(user, "Books");
     await screen.findByText(LONG_BOOK);
-    await user.click(screen.getByRole("button", { name: "Import folder…" }));
+    await user.click(screen.getByRole("button", { name: "Import folder" }));
     await screen.findByText("Importing 1 of 2…");
     await act(() => indexingEvents.progress({ book_id: 2, done: 1, total: 3, queued: 0 }));
 

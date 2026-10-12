@@ -69,9 +69,9 @@ export type MockOptions = {
   importErrors?: Record<string, string>;
   /** When set, each `import_book` call waits for this before answering. */
   importGate?: Promise<unknown>;
-  /** What the "Import book…" file picker returns; null means cancelled. */
+  /** What the "Import book" file picker returns; null means cancelled. */
   openPath?: string | null;
-  /** What the "Import folder…" picker returns; null means cancelled. */
+  /** What the "Import folder" picker returns; null means cancelled. */
   openDir?: string | null;
   /** Answers `find_books`, in place of the fixtures' scan. */
   scan?: BookScan;
@@ -85,7 +85,7 @@ export type MockOptions = {
   semantic?: Partial<SemanticStatus>;
   /** Overrides books' `index_state`, by book id. */
   indexStates?: Record<number, IndexState>;
-  /** What the "Back up…" save dialog returns; null means cancelled. */
+  /** What the "Back up" save dialog returns; null means cancelled. */
   savePath?: string | null;
   /** When set, the backup and restore commands always reject with this message. */
   backupError?: string;

@@ -33,14 +33,14 @@ describe("browser demo", () => {
   it("explains that importing needs the desktop app", async () => {
     const { user } = renderApp(demoOptions());
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Import book…" }));
+    await user.click(screen.getByRole("button", { name: "Import book" }));
     expect(await screen.findByText(`Import failed: ${DEMO_IMPORT_ERROR}`)).toBeTruthy();
   });
 
   it("explains that backups need the desktop app", async () => {
     const { user } = renderApp(demoOptions());
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Back up…" }));
+    await user.click(screen.getByRole("button", { name: "Back up" }));
     expect(await screen.findByText(`Backup failed: ${DEMO_BACKUP_ERROR}`)).toBeTruthy();
   });
 

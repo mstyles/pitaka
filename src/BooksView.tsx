@@ -557,20 +557,20 @@ function BooksView({
 
       <div className="row">
         <button className="button-primary" onClick={importBook} disabled={importing}>
-          Import book…
+          Import book
         </button>
         <button onClick={importFolder} disabled={importing}>
-          Import folder…
+          Import folder
         </button>
         <button onClick={backUp} disabled={importing}>
-          Back up…
+          Back up
         </button>
         <button
           onClick={restore}
           disabled={importing || anyQueued}
           title={anyQueued ? "Stop indexing to restore a backup" : undefined}
         >
-          Restore…
+          Restore
         </button>
         {canIndex && unindexed.length > 0 && !anyQueued && (
           <button

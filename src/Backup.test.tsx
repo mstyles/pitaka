@@ -16,7 +16,7 @@ describe("backing up", () => {
   it("does nothing when the save dialog is cancelled", async () => {
     const { user, callsTo } = renderApp({ savePath: null });
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Back up…" }));
+    await user.click(screen.getByRole("button", { name: "Back up" }));
     await waitFor(() => expect(callsTo("plugin:dialog|save")).toHaveLength(1));
     expect(callsTo("backup_library")).toEqual([]);
   });
@@ -24,7 +24,7 @@ describe("backing up", () => {
   it("backs up to the chosen file and says what it holds", async () => {
     const { user, callsTo } = renderApp();
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Back up…" }));
+    await user.click(screen.getByRole("button", { name: "Back up" }));
     expect(
       await screen.findByText(`Backed up ${FIXTURE_COUNTS} to /backups/pitaka-backup.pitaka`),
     ).toBeTruthy();
@@ -36,7 +36,7 @@ describe("backing up", () => {
   it("shows why a backup failed", async () => {
     const { user } = renderApp({ fail: { backup_library: "couldn't write /backups: disk full" } });
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Back up…" }));
+    await user.click(screen.getByRole("button", { name: "Back up" }));
     expect(
       await screen.findByText("Backup failed: couldn't write /backups: disk full"),
     ).toBeTruthy();
@@ -47,7 +47,7 @@ describe("restoring", () => {
   it("says what the backup holds before asking to restore it", async () => {
     const { user, callsTo } = renderApp({ openPath: BACKUP, confirm: false });
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Restore…" }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
     await waitFor(() => expect(callsTo("plugin:dialog|message")).toHaveLength(1));
     expect(callsTo("read_backup_manifest")).toEqual([{ path: BACKUP }]);
     const date = new Date("2026-01-01T00:00:00Z").toLocaleDateString(undefined, {
@@ -72,7 +72,7 @@ describe("restoring", () => {
     await user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(screen.queryByText(TEST_BOOK)).toBeNull());
 
-    await user.click(screen.getByRole("button", { name: "Restore…" }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
     expect(await screen.findByText(`Restored ${FIXTURE_COUNTS}`)).toBeTruthy();
     expect(callsTo("restore_library")).toEqual([{ path: BACKUP }]);
     expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
@@ -86,7 +86,7 @@ describe("restoring", () => {
       fail: { read_backup_manifest: error },
     });
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Restore…" }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
     expect(await screen.findByText(`Restore failed: ${error}`)).toBeTruthy();
     expect(callsTo("plugin:dialog|message")).toEqual([]);
     expect(callsTo("restore_library")).toEqual([]);
@@ -99,7 +99,7 @@ describe("restoring", () => {
     await screen.findByRole("heading", { name: FOLDER.name });
 
     await goTo(user, "Books");
-    await user.click(screen.getByRole("button", { name: "Restore…" }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
     await screen.findByText(`Restored ${FIXTURE_COUNTS}`);
     await goTo(user, "Bookmarks & notes");
     expect(screen.queryByRole("heading", { name: FOLDER.name })).toBeNull();
@@ -112,7 +112,7 @@ describe("restoring", () => {
     await screen.findByText(TEST_BOOK);
     await user.click(within(bookRow(TEST_BOOK)).getByRole("button", { name: "Index" }));
     await within(bookRow(TEST_BOOK)).findByRole("button", { name: "Queued" });
-    const restore = screen.getByRole("button", { name: "Restore…" }) as HTMLButtonElement;
+    const restore = screen.getByRole("button", { name: "Restore" }) as HTMLButtonElement;
     expect(restore.disabled).toBe(true);
     expect(restore.title).toBe("Stop indexing to restore a backup");
   });
