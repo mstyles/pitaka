@@ -45,6 +45,10 @@
   --text-2xl: 2.25rem; /* 36 */
   --text-display: 3.5rem; /* 56 */
   --text-read: 1.1875rem; /* 19, the reader's text */
+  /* The reader's settings (readerSettings.ts) set these on .reader. */
+  --reader-size: var(--text-read);
+  --reader-leading: var(--leading-read);
+  --reader-measure: 34em; /* of the text size, so a line holds ~70 characters */
 
   --leading-tight: 1.2;
   --leading-ui: 1.5;
@@ -84,8 +88,14 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+ * Themes: the system's, unless the reader's Display panel picks one
+ * (readerSettings.ts sets data-theme on <html>). Light is :root as it
+ * stands; the dark tokens are written twice, and styles.test.ts keeps the
+ * two the same.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]):not([data-theme="sepia"]) {
     --bg: #1c1814;
     --surface: #25201a;
     --text: #ede4d3;
@@ -114,6 +124,50 @@
 
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1c1814;
+  --surface: #25201a;
+  --text: #ede4d3;
+  --muted: #b0a48f;
+  --border: #3a3228;
+  --accent: #e0995e;
+  --on-accent: #1c1814;
+  --danger: #e07a67;
+  --mark: rgba(224, 153, 94, 0.35);
+  --flash: rgba(224, 153, 94, 0.16);
+  --hl-yellow: rgba(230, 190, 60, 0.3);
+  --hl-green: rgba(120, 190, 100, 0.28);
+  --hl-blue: rgba(100, 160, 230, 0.3);
+  --hl-pink: rgba(235, 120, 160, 0.3);
+  --rule-neutral: #5a4f42;
+  --accent-strong: #eaae7c;
+  --hover: rgba(237, 228, 211, 0.08);
+
+  color-scheme: dark;
+}
+
+:root[data-theme="sepia"] {
+  --bg: #efe2c8;
+  --surface: #f6ecd8;
+  --text: #3a2b1c;
+  --muted: #6a563f;
+  --border: #dcc8a3;
+  --accent: #8a3d14;
+  --on-accent: #f6ecd8;
+  --danger: #9a3324;
+  --mark: #e8c98a;
+  --flash: rgba(200, 140, 40, 0.25);
+  --hl-yellow: rgba(238, 190, 40, 0.38);
+  --hl-green: rgba(110, 175, 80, 0.32);
+  --hl-blue: rgba(80, 145, 215, 0.28);
+  --hl-pink: rgba(225, 100, 145, 0.28);
+  --rule-neutral: #c4ab80;
+  --accent-strong: #73320f;
+  --hover: rgba(58, 43, 28, 0.07);
+
+  color-scheme: light;
 }
 
 *,
@@ -973,6 +1027,8 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 }
 .scope-toggle button:last-child {
   border-radius: 0 var(--radius) var(--radius) 0;
+}
+.scope-toggle button + button {
   margin-left: -1px;
 }
 .scope-toggle button[aria-pressed="true"] {
@@ -1053,6 +1109,7 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 .folder-passage-text {
   font-family: var(--font-read);
   line-height: var(--leading-read);
+  font-variant-numeric: oldstyle-nums proportional-nums;
 }
 
 .result-snippet mark {
@@ -1154,6 +1211,84 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   color: var(--muted);
 }
 
+/* Display: under Search this book, opening the settings panel below it. */
+.reader-display {
+  display: flex;
+  margin-top: var(--space-2);
+  color: var(--muted);
+}
+
+.reader-display-glyph {
+  font-family: var(--font-read);
+  font-weight: 600;
+}
+
+.reader-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* The sidebar's full inner width, out of .reader-book's side margins. */
+  margin: var(--space-3) calc(-1 * var(--space-2)) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: var(--text-sm);
+  animation: pop-in var(--motion-fast) var(--ease-out);
+}
+
+.reader-settings .section-label {
+  margin: 0 0 var(--space-1);
+}
+
+.reader-settings .scope-toggle {
+  display: flex;
+  margin-top: 0;
+}
+
+.reader-settings .scope-toggle button {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1);
+}
+
+/* Four themes in the sidebar's width: each swatch sits above its name. */
+.reader-settings-themes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.reader-settings-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid;
+}
+
+.reader-settings-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.reader-settings-size button {
+  width: var(--control-h-sm);
+  padding: 0;
+}
+
+.reader-settings-size-value {
+  min-width: var(--space-8);
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-settings-reset {
+  align-self: flex-start;
+}
+
 .reader-chapter-list {
   list-style: none;
   margin: var(--space-4) 0 0;
@@ -1185,6 +1320,11 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   overflow-y: auto;
   /* Room on the left for the bookmark icons in narrow windows. */
   padding: var(--space-12) var(--space-8) var(--space-12) var(--space-12);
+  /* At large sizes, enough for the bookmark and note icons (at about -2.25em). */
+  padding-left: max(var(--space-12), calc(2.5 * var(--reader-size)));
+  /* ReaderView keeps the top paragraph in place when the settings reflow
+     the text; the browser's own scroll anchoring would move it again. */
+  overflow-anchor: none;
 }
 
 /* Runs edge to edge over .reader-content's padding, and stays at the top.
@@ -1215,11 +1355,12 @@ button.button-quiet.button-danger:hover:not(:disabled) {
 
 .reader-text {
   position: relative; /* for the selection toolbar */
-  max-width: 640px;
+  max-width: var(--reader-measure);
   margin: 0 auto;
   font-family: var(--font-read);
-  font-size: var(--text-read);
-  line-height: var(--leading-read);
+  font-size: var(--reader-size);
+  line-height: var(--reader-leading);
+  font-variant-numeric: oldstyle-nums proportional-nums;
 }
 
 .reader-paragraph {
@@ -1227,6 +1368,28 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   margin: 0 0 1em;
   border-radius: 4px;
   transition: background-color 1.5s ease;
+  /* Fewer one-word last lines; ignored where unsupported. */
+  text-wrap: pretty;
+  /* Opening quotes and closing stops hang into the margin (WebKit only). */
+  hanging-punctuation: first allow-end last;
+}
+
+/* The chapter's title, when it's the first block (chapterOpening.ts). In
+   em, so it scales with the reading text. */
+.reader-chapter-heading {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.5em;
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+  margin: 0 0 1em;
+}
+
+/* The first paragraph of prose. Without the font's smcp (font-synthesis is
+   off), the line shows unchanged rather than as faked small caps. */
+.reader-opening::first-line {
+  font-variant-caps: small-caps;
+  letter-spacing: 0.04em;
 }
 
 .reader-paragraph.flash {
@@ -1528,29 +1691,29 @@ mark.hl {
 }
 
 /*
- * Wide windows get a margin column beside the text (sidebar 272 + padding
- * 80 + text 640 + gap 24 + margin 240 ≈ 1256). It's always there, so
+ * Wide windows get a margin column beside the text: text (--reader-measure,
+ * 646px at the defaults) + gap 24 + margin 240, which useMarginColumn in
+ * ReaderView.tsx checks there's room for, as the text width follows the
+ * reader settings and a media query can't read them. It's always there, so
  * opening a note doesn't reflow the text, and it's in normal flow, so a
  * tall card pushes the next paragraph down rather than overlapping it.
  */
-@media (min-width: 1280px) {
-  .reader-text {
-    max-width: 904px;
-  }
+.reader-text.with-margin {
+  max-width: calc(var(--reader-measure) + 24px + 240px);
+}
 
-  .reader-block {
-    display: grid;
-    grid-template-columns: 640px 240px;
-    column-gap: 24px;
-    align-items: start;
-  }
+.with-margin .reader-block {
+  display: grid;
+  grid-template-columns: minmax(0, var(--reader-measure)) 240px;
+  column-gap: 24px;
+  align-items: start;
+}
 
-  /* The bottom margin matches the paragraph's, for a card taller than it. */
-  .note-margin,
-  .note-margin:empty {
-    display: flex;
-    margin: 0.3em 0 1em;
-  }
+/* The bottom margin matches the paragraph's, for a card taller than it. */
+.with-margin .note-margin,
+.with-margin .note-margin:empty {
+  display: flex;
+  margin: 0.3em 0 1em;
 }
 
 /* Bookmarks & notes screen */
@@ -1565,6 +1728,7 @@ mark.hl {
 
 .annotation-quote {
   font-family: var(--font-read);
+  font-variant-numeric: oldstyle-nums proportional-nums;
   padding-left: var(--space-3);
   border-left: 3px solid var(--rule-neutral);
 }

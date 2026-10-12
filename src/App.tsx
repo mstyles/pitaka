@@ -15,6 +15,7 @@ import BooksView, {
 import HomeView from "./HomeView";
 import NavBar, { type Screen } from "./NavBar";
 import ReaderView from "./ReaderView";
+import { applyTheme, loadSettings, saveSettings } from "./readerSettings";
 import SearchView from "./SearchView";
 import { done, failed, type Status } from "./StatusLine";
 import Toaster, { type Toast } from "./Toaster";
@@ -53,6 +54,8 @@ function App() {
   const { dismissFinished, ...indexer } = useIndexing();
   const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Here rather than in the reader, so the theme applies on every screen.
+  const [readerSettings, setReaderSettings] = useState(loadSettings);
   const nextToastId = useRef(1);
   const booksShowing = screen === "books" && reader == null;
   // Read from the effects below, which run on events rather than on screen changes.
@@ -65,6 +68,11 @@ function App() {
     const id = nextToastId.current++;
     setToasts((ts) => [...ts, { ...status, id }].slice(-MAX_TOASTS));
   }
+
+  useEffect(() => {
+    saveSettings(readerSettings);
+    applyTheme(readerSettings.theme);
+  }, [readerSettings]);
 
   // The Books screen's own status lines now have the same news.
   useEffect(() => {
@@ -217,6 +225,8 @@ function App() {
           focusBlockId={reader.focusBlockId}
           backLabel={reader.backLabel}
           openNoteId={reader.openNoteId}
+          settings={readerSettings}
+          onSettingsChange={setReaderSettings}
           onBack={() => setReader(null)}
           onSearchBook={(bookId) => {
             setSearchBookId(bookId);

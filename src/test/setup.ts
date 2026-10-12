@@ -8,6 +8,9 @@ Element.prototype.scrollIntoView = vi.fn();
 
 afterEach(async () => {
   cleanup();
+  // Reader settings and the theme they set outlast a render.
+  localStorage.clear();
+  delete document.documentElement.dataset.theme;
   // Unmounting stops event listeners through a promise, which needs the
   // mocked IPC still in place when it settles.
   await new Promise((resolve) => setTimeout(resolve, 0));

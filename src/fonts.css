@@ -1,6 +1,8 @@
 /* Bundled from fontsource 5.3.0 (@fontsource-variable/*), latin and latin-ext
    subsets only. SIL Open Font License 1.1; the licences sit next to the files
-   in assets/fonts/.
+   in assets/fonts/. Literata is subset from upstream by
+   `scripts/subset-literata.sh` instead, keeping old-style figures and small
+   caps (`onum`, `smcp`, `c2sc`), which fontsource strips.
 
    The latin subsets' unicode-range leaves out U+0304 (combining macron),
    which fontsource/Google list in both subsets. With it in, Chrome shapes
