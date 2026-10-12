@@ -3,8 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { segments, selectionOffsets } from "./annotate";
 import BookmarkPopover from "./BookmarkPopover";
 import HighlightPopover from "./HighlightPopover";
+import { BookmarkIcon, PenIcon, SearchIcon } from "./icons";
 import NoteCard from "./NoteCard";
 import SelectionToolbar from "./SelectionToolbar";
+import StatusLine, { failed } from "./StatusLine";
 import type {
   BlockBookmark,
   BookmarkFolder,
@@ -17,6 +19,7 @@ import type {
   HighlightColor,
   Note,
 } from "./types";
+import { useDelayed } from "./useDelayed";
 
 /** The selection toolbar's state: what's selected, and where to draw it. */
 type Toolbar = {
@@ -31,14 +34,6 @@ type Toolbar = {
 type DraftNote = { contentBlockId: number; highlightId: number | null };
 
 const NO_ANNOTATIONS: ChapterAnnotations = { highlights: [], notes: [] };
-
-function PenIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-      <path d="M11.5 1.5l3 3-9 9H2.5v-3z" />
-    </svg>
-  );
-}
 
 /** The element a node is, or is in. */
 function elementOf(node: Node | null) {
@@ -69,6 +64,8 @@ function ReaderView({
 }: Props) {
   const [book, setBook] = useState<BookSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
+  /** Tells a book whose chapters are loading apart from one with none. */
+  const [chaptersLoaded, setChaptersLoaded] = useState(false);
   const [activeChapterId, setActiveChapterId] = useState<number | null>(initialChapterId ?? null);
   const [content, setContent] = useState<ChapterContent | null>(null);
   const [flashBlockId, setFlashBlockId] = useState<number | null>(focusBlockId ?? null);
@@ -90,6 +87,9 @@ function ReaderView({
   } | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
+  const loadingContent = content == null && !error;
+  const showTextSkeleton = useDelayed(loadingContent);
+  const showChapterSkeleton = useDelayed(!chaptersLoaded && !error);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +97,7 @@ function ReaderView({
       .then((chs) => {
         if (cancelled) return;
         setChapters(chs);
+        setChaptersLoaded(true);
         setActiveChapterId((prev) => prev ?? chs[0]?.id ?? null);
       })
       .catch((err) => setError(`Loading chapters failed: ${err}`));
@@ -327,7 +328,7 @@ function ReaderView({
         aria-expanded={open}
         onClick={() => toggleNote(note.id)}
       >
-        <PenIcon />
+        <PenIcon size={11} />
       </button>
     );
   }
@@ -410,14 +411,23 @@ function ReaderView({
           <div className="reader-book">
             <div className="reader-book-title">{book.title ?? "Untitled"}</div>
             <div className="reader-book-author">{book.author ?? "Unknown author"}</div>
-            <button className="reader-search-book button-sm" onClick={() => onSearchBook(bookId)}>
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                <circle cx="10.5" cy="10.5" r="6" />
-                <path d="M15 15l5.5 5.5" />
-              </svg>
+            <button
+              className="reader-search-book button-sm button-icon"
+              onClick={() => onSearchBook(bookId)}
+            >
+              <SearchIcon size={16} />
               Search this book
             </button>
           </div>
+        )}
+        {showChapterSkeleton && (
+          <ul className="reader-chapter-list" aria-busy="true" aria-label="Loading chapters">
+            {Array.from({ length: 6 }, (_, i) => (
+              <li key={i} className="skeleton-chapter">
+                <span className="skeleton skeleton-title" />
+              </li>
+            ))}
+          </ul>
         )}
         <ul className="reader-chapter-list">
           {chapters.map((c) => (
@@ -436,10 +446,19 @@ function ReaderView({
         <div
           className="reader-text"
           ref={textRef}
+          aria-busy={showTextSkeleton || undefined}
           onMouseUp={selectionEnded}
           onKeyUp={selectionEnded}
         >
-          {error && <p className="reader-error">{error}</p>}
+          {error && <StatusLine status={failed(error)} className="reader-error" />}
+          {showTextSkeleton &&
+            Array.from({ length: 4 }, (_, i) => (
+              <p key={i} className="skeleton-paragraph">
+                <span className="skeleton skeleton-line" />
+                <span className="skeleton skeleton-line" />
+                <span className="skeleton skeleton-line" />
+              </p>
+            ))}
           {toolbar && (
             <SelectionToolbar
               top={toolbar.top}
@@ -476,7 +495,7 @@ function ReaderView({
                   aria-expanded={ownOpen}
                   onClick={() => toggleParagraphNote(b, own)}
                 >
-                  <PenIcon />
+                  <PenIcon size={13} />
                 </button>
                 {popoverHighlight && highlightPopover && (
                   <HighlightPopover
@@ -505,9 +524,7 @@ function ReaderView({
                     setPopoverBlockId((open) => (open === b.id ? null : b.id));
                   }}
                 >
-                  <svg viewBox="0 0 16 20" width="14" height="18" aria-hidden="true">
-                    <path d="M2 1h12v18l-6-5-6 5z" />
-                  </svg>
+                  <BookmarkIcon />
                 </button>
                 {popoverBlockId === b.id && (
                   <BookmarkPopover

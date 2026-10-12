@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
+import StatusLine, { failed } from "./StatusLine";
 import type { HighlightColor, Note } from "./types";
 
 type Props = {
@@ -133,7 +134,7 @@ function NoteCard({
           </div>
         </>
       )}
-      {error && <div className="bookmark-popover-error">{error}</div>}
+      <StatusLine status={error ? failed(error) : null} className="bookmark-popover-error" />
     </div>
   );
 }

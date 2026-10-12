@@ -188,6 +188,19 @@ describe("books", () => {
     await goTo(user, "Books");
     expect(await screen.findByText("Loading library failed: database is locked")).toBeTruthy();
   });
+
+  it("offers importing and restoring once each in an empty library", async () => {
+    const { user, callsTo } = renderApp({ books: [] });
+    await goTo(user, "Books");
+    await screen.findByRole("heading", { name: "Your library is empty" });
+    for (const name of ["Import book", "Import folder", "Restore"]) {
+      expect(screen.getAllByRole("button", { name })).toHaveLength(1);
+    }
+    expect(screen.queryByRole("button", { name: "Back up" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Import book" }));
+    await waitFor(() => expect(callsTo("import_book")).toHaveLength(1));
+    expect(await screen.findByText(TEST_BOOK)).toBeTruthy();
+  });
 });
 
 describe("editing a book's title and author", () => {

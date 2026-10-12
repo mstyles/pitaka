@@ -2,6 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import EmptyState from "./EmptyState";
+import { BackupIcon, BooksIcon, FolderIcon, ImportIcon, RestoreIcon, SearchIcon } from "./icons";
+import { SkeletonRows } from "./Skeleton";
+import StatusLine, { busy, done, failed, info, type Status } from "./StatusLine";
+import { useDelayed } from "./useDelayed";
 import type {
   BackupManifest,
   BookSummary,
@@ -212,7 +217,7 @@ const INDEX_STATE_NOTES: Record<BookSummary["index_state"], string> = {
   indexed: "",
 };
 
-function plural(n: number, word: string) {
+export function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
@@ -287,23 +292,29 @@ export function sortBooks(books: BookSummary[], sort: BookSort) {
   });
 }
 
-function folderImportLine(f: FolderImport) {
-  if (f.scanError) return `Import failed: ${f.scanError}`;
+/**
+ * Where a folder import is up to, or how it ended. "1 failed" is still done:
+ * the failed paths are listed in red below it.
+ */
+export function folderImportLine(f: FolderImport): Status {
+  if (f.scanError) return failed(`Import failed: ${f.scanError}`);
   if (f.running) {
-    return f.total === 0
-      ? `Looking for books in ${f.dir}…`
-      : `Importing ${Math.min(f.done + 1, f.total)} of ${f.total}…`;
+    return busy(
+      f.total === 0
+        ? `Looking for books in ${f.dir}…`
+        : `Importing ${Math.min(f.done + 1, f.total)} of ${f.total}…`,
+    );
   }
-  if (f.total === 0) return `No EPUB or PDF files in ${f.dir}`;
+  if (f.total === 0) return info(`No EPUB or PDF files in ${f.dir}`);
   const prefix = f.stopped ? `Stopped after ${f.done} of ${f.total}: ` : "";
   if (f.imported === 0 && f.failures.length === 0 && f.already > 0) {
-    return `${prefix}Nothing new: ${f.already} already in library`;
+    return info(`${prefix}Nothing new: ${f.already} already in library`);
   }
   const parts = [];
   if (f.imported > 0) parts.push(`Imported ${plural(f.imported, "book")}`);
   if (f.already > 0) parts.push(`${f.already} already in library`);
   if (f.failures.length > 0) parts.push(`${f.failures.length} failed`);
-  return prefix + (parts.length > 0 ? parts.join(", ") : "nothing imported");
+  return done(prefix + (parts.length > 0 ? parts.join(", ") : "nothing imported"));
 }
 
 /** A failed path as it sits under the picked folder. */
@@ -341,7 +352,7 @@ function BooksView({
   stopFolderImport,
   clearFolderImport,
 }: Props) {
-  const [importStatus, setImportStatus] = useState("");
+  const [importStatus, setImportStatus] = useState<Status | null>(null);
   const [books, setBooks] = useState<BookSummary[] | null>(null);
   /** The row whose title and author are being edited, with what's typed. */
   const [editing, setEditing] = useState<{ id: number; title: string; author: string } | null>(
@@ -359,7 +370,7 @@ function BooksView({
     try {
       setBooks(await invoke<BookSummary[]>("list_books"));
     } catch (err) {
-      setImportStatus(`Loading library failed: ${err}`);
+      setImportStatus(failed(`Loading library failed: ${err}`));
     }
   }
 
@@ -384,28 +395,28 @@ function BooksView({
     if (settled) refreshBooks();
   }, [settled]);
 
-  function indexingLine() {
-    if (!indexing) return paused ? `Stopped indexing. ${PAUSED_NOTE}` : null;
+  function indexingLine(): Status | null {
+    if (!indexing) return paused ? info(`Stopped indexing. ${PAUSED_NOTE}`) : null;
     const book = books?.find((b) => b.id === indexing.book_id);
     const title = book ? (book.title ?? "Untitled") : `book #${indexing.book_id}`;
     if (indexing.kind === "failed") {
-      return `Indexing ${title} for chapter search failed: ${indexing.error}`;
+      return failed(`Indexing ${title} for chapter search failed: ${indexing.error}`);
     }
-    const { done, total } = indexing;
+    const { done: n, total } = indexing;
     if (indexing.kind === "stopped") {
-      return `Stopped indexing ${title} at ${done}/${total} chapters. ${PAUSED_NOTE}`;
+      return info(`Stopped indexing ${title} at ${n}/${total} chapters. ${PAUSED_NOTE}`);
     }
-    if (done === total) return `Indexed ${title} for chapter search`;
-    if (paused) return `Stopping indexing ${title} after the chapter in progress…`;
+    if (n === total) return done(`Indexed ${title} for chapter search`);
+    if (paused) return info(`Stopping indexing ${title} after the chapter in progress…`);
     const more = indexing.queued > 0 ? ` · ${plural(indexing.queued, "more book")} queued` : "";
-    return `Indexing ${title} for chapter search… ${done}/${total} chapters${more}`;
+    return busy(`Indexing ${title} for chapter search… ${n}/${total} chapters${more}`);
   }
 
   async function act(action: () => Promise<unknown>, failure: string) {
     try {
       await action();
     } catch (err) {
-      setImportStatus(`${failure}: ${err}`);
+      setImportStatus(failed(`${failure}: ${err}`));
     }
   }
 
@@ -420,6 +431,8 @@ function BooksView({
       sort,
     );
   const filtering = filter.trim() !== "";
+  const emptyLibrary = books?.length === 0;
+  const showSkeleton = useDelayed(books == null);
 
   async function importBook() {
     const path = await open({
@@ -429,16 +442,18 @@ function BooksView({
     if (!path || Array.isArray(path)) return;
 
     clearFolderImport();
-    setImportStatus(`Importing ${path}…`);
+    setImportStatus(busy(`Importing ${path}…`));
     try {
       const { book_id, already_imported } = await invoke<ImportOutcome>("import_book", { path });
       setImportStatus(
-        already_imported ? `Already in library as book #${book_id}` : `Imported book #${book_id}`,
+        done(
+          already_imported ? `Already in library as book #${book_id}` : `Imported book #${book_id}`,
+        ),
       );
       if (!already_imported) onLibraryChanged();
       await refreshBooks();
     } catch (err) {
-      setImportStatus(`Import failed: ${err}`);
+      setImportStatus(failed(`Import failed: ${err}`));
     }
   }
 
@@ -446,7 +461,7 @@ function BooksView({
     const dir = await open({ directory: true, multiple: false });
     if (!dir || Array.isArray(dir)) return;
     // The row shows whichever import happened last.
-    setImportStatus("");
+    setImportStatus(null);
     startFolderImport(dir);
   }
 
@@ -458,12 +473,12 @@ function BooksView({
     if (!path) return;
 
     clearFolderImport();
-    setImportStatus("Backing up…");
+    setImportStatus(busy("Backing up…"));
     try {
       const { counts } = await invoke<BackupManifest>("backup_library", { path });
-      setImportStatus(`Backed up ${countsLine(counts)} to ${path}`);
+      setImportStatus(done(`Backed up ${countsLine(counts)} to ${path}`));
     } catch (err) {
-      setImportStatus(`Backup failed: ${err}`);
+      setImportStatus(failed(`Backup failed: ${err}`));
     }
   }
 
@@ -476,7 +491,7 @@ function BooksView({
     try {
       manifest = await invoke<BackupManifest>("read_backup_manifest", { path });
     } catch (err) {
-      setImportStatus(`Restore failed: ${err}`);
+      setImportStatus(failed(`Restore failed: ${err}`));
       return;
     }
     const fileName = path.split(/[\\/]/).pop();
@@ -492,14 +507,14 @@ function BooksView({
     );
     if (!confirmed) return;
 
-    setImportStatus("Restoring…");
+    setImportStatus(busy("Restoring…"));
     try {
       const counts = await invoke<LibraryCounts>("restore_library", { path });
-      setImportStatus(`Restored ${countsLine(counts)}`);
+      setImportStatus(done(`Restored ${countsLine(counts)}`));
       onLibraryReplaced();
       await refreshBooks();
     } catch (err) {
-      setImportStatus(`Restore failed: ${err}`);
+      setImportStatus(failed(`Restore failed: ${err}`));
     }
   }
 
@@ -524,11 +539,11 @@ function BooksView({
 
     try {
       await invoke("delete_book", { bookId: book.id });
-      setImportStatus(`Removed "${title}"`);
+      setImportStatus(done(`Removed "${title}"`));
       onLibraryChanged();
       await refreshBooks();
     } catch (err) {
-      setImportStatus(`Remove failed: ${err}`);
+      setImportStatus(failed(`Remove failed: ${err}`));
     }
   }
 
@@ -539,11 +554,11 @@ function BooksView({
       await invoke("update_book_details", { bookId: id, title, author });
       const newTitle = title.trim().replace(/\s+/g, " ") || null;
       setEditing(null);
-      setImportStatus(`Updated "${newTitle ?? "Untitled"}"`);
+      setImportStatus(done(`Updated "${newTitle ?? "Untitled"}"`));
       onLibraryChanged();
       await refreshBooks();
     } catch (err) {
-      setImportStatus(`Saving failed: ${err}`);
+      setImportStatus(failed(`Saving failed: ${err}`));
     }
   }
 
@@ -551,27 +566,47 @@ function BooksView({
     if (e.key === "Escape") setEditing(null);
   }
 
+  const importBookButton = (
+    <button className="button-primary button-icon" onClick={importBook} disabled={importing}>
+      <ImportIcon />
+      Import book
+    </button>
+  );
+  const importFolderButton = (
+    <button className="button-icon" onClick={importFolder} disabled={importing}>
+      <FolderIcon />
+      Import folder
+    </button>
+  );
+  const restoreButton = (
+    <button
+      className="button-icon"
+      onClick={restore}
+      disabled={importing || anyQueued}
+      title={anyQueued ? "Stop indexing to restore a backup" : undefined}
+    >
+      <RestoreIcon />
+      Restore
+    </button>
+  );
+
   return (
     <main className="container">
       <h1>Books</h1>
 
       <div className="row">
-        <button className="button-primary" onClick={importBook} disabled={importing}>
-          Import book
-        </button>
-        <button onClick={importFolder} disabled={importing}>
-          Import folder
-        </button>
-        <button onClick={backUp} disabled={importing}>
-          Back up
-        </button>
-        <button
-          onClick={restore}
-          disabled={importing || anyQueued}
-          title={anyQueued ? "Stop indexing to restore a backup" : undefined}
-        >
-          Restore
-        </button>
+        {/* An empty library offers these in its empty state instead, so each appears once. */}
+        {!emptyLibrary && (
+          <>
+            {importBookButton}
+            {importFolderButton}
+            <button className="button-icon" onClick={backUp} disabled={importing}>
+              <BackupIcon />
+              Back up
+            </button>
+            {restoreButton}
+          </>
+        )}
         {canIndex && unindexed.length > 0 && !anyQueued && (
           <button
             onClick={() =>
@@ -582,7 +617,7 @@ function BooksView({
           </button>
         )}
         {importing && <button onClick={stopFolderImport}>Stop import</button>}
-        <span>{importStatus || (folderImport && folderImportLine(folderImport))}</span>
+        <StatusLine status={importStatus ?? (folderImport && folderImportLine(folderImport))} />
       </div>
       {folderImport && folderImport.failures.length > 0 && (
         <ul className="import-failures">
@@ -596,7 +631,7 @@ function BooksView({
       )}
       {canIndex && line && (
         <div className="row index-progress">
-          <span>{line}</span>
+          <StatusLine status={line} />
           {current != null && !paused && (
             <button onClick={() => act(indexer.stopIndexing, "Stopping failed")}>
               Stop indexing
@@ -608,10 +643,7 @@ function BooksView({
       {books && books.length > 0 && (
         <div className="row books-filter">
           <div className="search-field">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <circle cx="10.5" cy="10.5" r="6" />
-              <path d="M15 15l5.5 5.5" />
-            </svg>
+            <SearchIcon />
             <input
               type="search"
               aria-label="Filter books"
@@ -646,18 +678,36 @@ function BooksView({
         </div>
       )}
       {books && filtering && shown!.length > 0 && (
-        <p className="status">
+        <p className="result-count">
           Showing {shown!.length} of {plural(books.length, "book")}
         </p>
       )}
 
-      {books?.length === 0 ? (
-        <p className="section-empty">No books yet. Import an EPUB or PDF to start.</p>
+      {books == null ? (
+        showSkeleton && <SkeletonRows count={3} label="Loading books" className="book-list" />
+      ) : emptyLibrary ? (
+        <EmptyState
+          icon={<BooksIcon size={28} />}
+          title="Your library is empty"
+          actions={
+            <>
+              {importBookButton}
+              {importFolderButton}
+              <span className="empty-state-or">Moving from another computer?</span>
+              {restoreButton}
+            </>
+          }
+        >
+          Import an EPUB or PDF, or a whole folder of them. Pitaka reads each book once and keeps
+          its text on this computer.
+        </EmptyState>
       ) : shown?.length === 0 ? (
-        <div className="row">
-          <p className="section-empty">No books match "{filter.trim()}".</p>
-          <button onClick={() => onFilterChange("")}>Clear filter</button>
-        </div>
+        <EmptyState
+          compact
+          actions={<button onClick={() => onFilterChange("")}>Clear filter</button>}
+        >
+          No books match "{filter.trim()}".
+        </EmptyState>
       ) : (
         <ul className="book-list">
           {shown?.map((b) =>

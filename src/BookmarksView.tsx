@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import BookAnnotationsView from "./BookAnnotationsView";
+import EmptyState from "./EmptyState";
 import FolderView from "./FolderView";
+import { SkeletonRows } from "./Skeleton";
+import StatusLine, { failed, type Status } from "./StatusLine";
 import type { AnnotatedBook, BookAnnotation, BookmarkFolder, FolderBookmark } from "./types";
+import { useDelayed } from "./useDelayed";
 
 type Props = {
   /** Held by App so the open folder survives a trip into the reader. */
@@ -32,13 +36,13 @@ function BookmarksView({
   const [folders, setFolders] = useState<BookmarkFolder[] | null>(null);
   const [annotated, setAnnotated] = useState<AnnotatedBook[] | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<Status | null>(null);
 
   async function refreshFolders() {
     try {
       setFolders(await invoke<BookmarkFolder[]>("list_bookmark_folders"));
     } catch (err) {
-      setStatus(`Loading bookmark folders failed: ${err}`);
+      setStatus(failed(`Loading bookmark folders failed: ${err}`));
     }
   }
 
@@ -47,22 +51,39 @@ function BookmarksView({
     refreshFolders();
     invoke<AnnotatedBook[]>("list_annotated_books")
       .then(setAnnotated)
-      .catch((err) => setStatus(`Loading highlights and notes failed: ${err}`));
+      .catch((err) => setStatus(failed(`Loading highlights and notes failed: ${err}`)));
   }, []);
 
   async function createFolder() {
     try {
       await invoke<BookmarkFolder>("create_bookmark_folder", { name: newFolderName });
       setNewFolderName("");
-      setStatus("");
+      setStatus(null);
       await refreshFolders();
     } catch (err) {
-      setStatus(`Creating folder failed: ${err}`);
+      setStatus(failed(`Creating folder failed: ${err}`));
     }
   }
 
-  // Still loading; a load error falls through so it can be shown.
-  if ((folders == null || annotated == null) && !status) return null;
+  const loading = (folders == null || annotated == null) && !status;
+  const showSkeleton = useDelayed(loading);
+  // Still loading: nothing at first, so an open folder doesn't flash the
+  // lists on return from the reader, then skeleton lists. A load error falls
+  // through so it can be shown.
+  if (loading) {
+    if (!showSkeleton || openFolderId != null || openAnnotationsBookId != null) return null;
+    return (
+      <main className="container">
+        <h1>Bookmarks &amp; notes</h1>
+        <h2 className="section-label">Folders</h2>
+        <SkeletonRows count={2} label="Loading folders" className="folder-list" />
+        <section className="annotated-books">
+          <h2 className="section-label">Highlights &amp; notes</h2>
+          <SkeletonRows count={2} label="Loading highlights and notes" className="folder-list" />
+        </section>
+      </main>
+    );
+  }
   const openBook = annotated?.find((b) => b.book_id === openAnnotationsBookId);
   if (openBook) {
     return (
@@ -93,9 +114,9 @@ function BookmarksView({
           Folders
         </h2>
         {folders?.length === 0 ? (
-          <p className="section-empty">
+          <EmptyState compact>
             No bookmark folders yet. Create one here, or bookmark a passage while reading.
-          </p>
+          </EmptyState>
         ) : (
           <ul className="folder-list">
             {folders?.map((f) => (
@@ -130,7 +151,7 @@ function BookmarksView({
           Highlights &amp; notes
         </h2>
         {annotated?.length === 0 ? (
-          <p className="section-empty">Select text while reading to highlight it or add a note.</p>
+          <EmptyState compact>Select text while reading to highlight it or add a note.</EmptyState>
         ) : (
           <ul className="folder-list">
             {annotated?.map((b) => (
@@ -148,7 +169,7 @@ function BookmarksView({
           </ul>
         )}
       </section>
-      {status && <p className="status">{status}</p>}
+      <StatusLine status={status} />
     </main>
   );
 }

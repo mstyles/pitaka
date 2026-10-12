@@ -133,6 +133,22 @@ describe("search", () => {
     );
     expect(Array.from(item.querySelectorAll("mark"), (m) => m.textContent)).toEqual(["neural"]);
   });
+
+  it("suggests what to try when nothing is found", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Search");
+    await search(user, "zzzz");
+    expect(await screen.findByText("Try fewer or different words.")).toBeTruthy();
+    // One book in the library-wide search: nothing to widen.
+    expect(screen.queryByRole("button", { name: "Search all books" })).toBeNull();
+
+    await user.click(screen.getByLabelText("Exact words"));
+    expect(
+      await screen.findByText(
+        "Try fewer or different words. Exact words only matches whole words; turn it off to match other forms.",
+      ),
+    ).toBeTruthy();
+  });
 });
 
 describe("search in one book", () => {
@@ -244,6 +260,25 @@ describe("search in one book", () => {
       expect(resultItems()[0].textContent).toContain("Zen Research · Chapter Two: Deeper Waters"),
     );
     for (const item of resultItems()) expect(item.textContent).not.toContain(TEST_BOOK);
+  });
+
+  it("suggests searching every book when one book has no results", async () => {
+    const { user, callsTo } = renderApp();
+    await goTo(user, "Search");
+    await waitFor(() => expect(optionLabels()).toHaveLength(3));
+    await user.selectOptions(picker(), LONG_BOOK);
+    await search(user, "neural networks");
+    expect(await screen.findByText("No results")).toBeTruthy();
+    expect(screen.getByText("Try fewer or different words.")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Search all books" }));
+    await waitFor(() => expect(resultItems()).toHaveLength(2));
+    expect(callsTo("search_library").slice(-1)[0]).toEqual({
+      query: "neural networks",
+      mode: "stemmed",
+      bookId: null,
+    });
+    expect(screen.queryByRole("button", { name: "Search all books" })).toBeNull();
   });
 });
 

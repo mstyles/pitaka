@@ -1,3 +1,4 @@
+import StatusLine, { failed } from "./StatusLine";
 import type { HighlightColor } from "./types";
 
 export const COLORS: HighlightColor[] = ["yellow", "green", "blue", "pink"];
@@ -42,7 +43,7 @@ function SelectionToolbar({ top, left, valid, error, onHighlight, onAddNote }: P
       ) : (
         <span className="selection-toolbar-message">Highlights stay within one paragraph</span>
       )}
-      {error && <div className="selection-toolbar-error">{error}</div>}
+      <StatusLine status={error ? failed(error) : null} className="selection-toolbar-error" />
     </div>
   );
 }

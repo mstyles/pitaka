@@ -156,6 +156,9 @@ TypeScript frontend). The Rust side is split into two crates on purpose:
 This is a Cargo workspace (root `Cargo.toml`) with both crates as
 members, sharing one `Cargo.lock`/`target/`.
 
+The frontend's dependencies beyond React and Tauri's own packages are
+one: `lucide-react`, for icons, imported only through `src/icons.tsx`.
+
 Backups (`ebook_research_core/src/db/backup.rs`) are a `.pitaka` zip
 holding a stored `manifest.json` (format, app and schema version, date
 and counts) and the library as a deflated `library.db`. On the way out,
@@ -618,6 +621,29 @@ alongside the old one. Neither may change. The version comes from
     checked at 560px, with no sideways scrolling. The home cards' titles
     are 20px, not the planned 24px, which wrapped "Bookmarks & notes".
     Not checked in the browser demo or the Tauri window (WebKitGTK).
+  - Status, loading and empty states: every outcome is a `StatusLine`
+    (`src/StatusLine.tsx`), a live region (`role="status"`, or
+    `"alert"` for an error) with a spinner while busy, a tick when done
+    and red with an alert icon on failure. Background work that ends
+    while the Books screen isn't showing (a folder import, a book's
+    indexing failing, the indexing queue emptying) raises a toast
+    (`src/Toaster.tsx`) with Show and Dismiss; errors stay until
+    dismissed, the rest go after 6 s. Lists show skeletons only once a
+    load has taken 200ms (`src/useDelayed.ts`), and a folder or a book's
+    notes no longer says it's empty before its entries arrive. Empty
+    lists use `src/EmptyState.tsx`; a new install's empty library offers
+    Import book, Import folder and Restore. Motion is entrance-only
+    (screens fade, popovers and note cards pop in) and turned off under
+    `prefers-reduced-motion`. Icons are Lucide's, re-exported from
+    `src/icons.tsx`, the only file that imports `lucide-react`. Covered
+    by `src/Feedback.test.tsx`, `src/icons.test.tsx`, the style checks
+    and the updated screen tests. Checked in Chrome against the mocked
+    backend: the nav and button icons, a backup's done line, the empty
+    library on Books and Home, an empty folder, a popover's wrapped
+    error, the toasts for an indexing failure and the queue emptying,
+    and the Books skeleton in dark colours (list_books slowed by hand).
+    Not checked: `prefers-reduced-motion` in a browser, a screen reader,
+    or the Tauri window (WebKitGTK).
 
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
@@ -844,6 +870,12 @@ pitaka/
 │   ├── SelectionToolbar.tsx     <- highlight or note a text selection
 │   ├── HighlightPopover.tsx     <- recolour or remove a highlight
 │   ├── NoteCard.tsx             <- a note in the reader's margin
+│   ├── StatusLine.tsx           <- announced busy / done / error / info line
+│   ├── Toaster.tsx              <- toasts for background work done elsewhere
+│   ├── EmptyState.tsx           <- what an empty screen or list says
+│   ├── Skeleton.tsx             <- placeholder rows and cards while loading
+│   ├── useDelayed.ts            <- waits 200ms before a loading state shows
+│   ├── icons.tsx                <- the app's Lucide icons, the one import point
 │   ├── annotate.ts              <- highlight runs, selection offsets
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
@@ -1038,6 +1070,8 @@ Done:
 - [x] Paper visual style: bundled serif fonts, colour tokens with a
       matching dark mode
 - [x] Type and spacing scales and a button hierarchy
+- [x] Status lines and toasts, loading and empty states, entrance
+      motion and a shared icon set
 - [x] Public showcase: MIT/Apache-2.0 licence, a project page on GitHub
       Pages, and a browser demo with a CC0 book and a search checked
       against the core's

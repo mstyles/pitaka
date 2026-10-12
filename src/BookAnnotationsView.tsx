@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import EmptyState from "./EmptyState";
+import { HighlightIcon } from "./icons";
+import { SkeletonPassages } from "./Skeleton";
+import StatusLine, { failed, type Status } from "./StatusLine";
 import type { AnnotatedBook, BookAnnotation } from "./types";
+import { useDelayed } from "./useDelayed";
 
 type Props = {
   book: AnnotatedBook;
@@ -14,19 +19,21 @@ function plural(n: number, word: string) {
 
 /** One book's highlights and notes in reading order, under chapter headings. */
 function BookAnnotationsView({ book, onBack, onOpenEntry }: Props) {
-  const [entries, setEntries] = useState<BookAnnotation[]>([]);
-  const [status, setStatus] = useState("");
+  // Null until loaded, so the screen doesn't briefly list nothing.
+  const [entries, setEntries] = useState<BookAnnotation[] | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
+  const showSkeleton = useDelayed(entries == null && status == null);
 
   // Remounted on return from the reader, so this also picks up changes made there.
   useEffect(() => {
     invoke<BookAnnotation[]>("list_book_annotations", { bookId: book.book_id })
       .then(setEntries)
-      .catch((err) => setStatus(`Loading highlights and notes failed: ${err}`));
+      .catch((err) => setStatus(failed(`Loading highlights and notes failed: ${err}`)));
   }, [book.book_id]);
 
   // Entries arrive in reading order, so each chapter's are already together.
   const chapters: { id: number; title: string; entries: BookAnnotation[] }[] = [];
-  for (const e of entries) {
+  for (const e of entries ?? []) {
     if (chapters[chapters.length - 1]?.id !== e.chapter_id) {
       chapters.push({
         id: e.chapter_id,
@@ -45,10 +52,21 @@ function BookAnnotationsView({ book, onBack, onOpenEntry }: Props) {
         </button>
         <h2 className="folder-name">{book.title ?? "Untitled"}</h2>
       </div>
-      <div className="folder-status">
-        {status ||
-          `${plural(book.highlight_count, "highlight")}, ${plural(book.note_count, "note")}`}
-      </div>
+      {status ? (
+        <StatusLine status={status} className="folder-status" />
+      ) : (
+        <div className="folder-status">
+          {`${plural(book.highlight_count, "highlight")}, ${plural(book.note_count, "note")}`}
+        </div>
+      )}
+      {entries == null && showSkeleton && (
+        <SkeletonPassages count={2} label="Loading highlights and notes" />
+      )}
+      {entries?.length === 0 && (
+        <EmptyState icon={<HighlightIcon size={28} />} title="No highlights or notes left">
+          Everything in this book was removed. Select text while reading to add more.
+        </EmptyState>
+      )}
       {chapters.map((ch) => (
         <section key={ch.id} className="annotation-chapter">
           <h3 className="section-label">{ch.title}</h3>
