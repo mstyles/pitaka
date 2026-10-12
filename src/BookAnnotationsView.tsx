@@ -40,7 +40,9 @@ function BookAnnotationsView({ book, onBack, onOpenEntry }: Props) {
   return (
     <main className="container">
       <div className="folder-header">
-        <button onClick={onBack}>← Bookmarks &amp; notes</button>
+        <button className="button-quiet" onClick={onBack}>
+          ← Bookmarks &amp; notes
+        </button>
         <h2 className="folder-name">{book.title ?? "Untitled"}</h2>
       </div>
       <div className="folder-status">

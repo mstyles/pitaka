@@ -19,6 +19,18 @@ describe("books", () => {
     expect(within(bookRow(LONG_BOOK)).getByText("Fixture Author · 3 chapters")).toBeTruthy();
   });
 
+  it("styles Import book as primary and a row's Remove as quiet and destructive", async () => {
+    const { user } = renderApp();
+    await goTo(user, "Books");
+    await screen.findByText(TEST_BOOK);
+    expect(screen.getByRole("button", { name: "Import book" }).classList).toContain(
+      "button-primary",
+    );
+    const remove = within(bookRow(TEST_BOOK)).getByRole("button", { name: "Remove" });
+    expect(remove.classList).toContain("button-quiet");
+    expect(remove.classList).toContain("button-danger");
+  });
+
   it("says when an imported book is already in the library", async () => {
     const { user, callsTo } = renderApp();
     await goTo(user, "Books");

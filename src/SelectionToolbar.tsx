@@ -35,7 +35,7 @@ function SelectionToolbar({ top, left, valid, error, onHighlight, onAddNote }: P
               onClick={() => onHighlight(c)}
             />
           ))}
-          <button className="selection-toolbar-note" onClick={onAddNote}>
+          <button className="button-sm" onClick={onAddNote}>
             Add note
           </button>
         </>

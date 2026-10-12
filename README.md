@@ -599,7 +599,25 @@ alongside the old one. Neither may change. The version comes from
     the latin ranges. Not checked in the Tauri window (WebKitGTK).
     Colours are tokens in `src/App.css` with a dark variant that follows
     the system theme; checked in the browser in light and dark, with
-    muted text at 5.4:1 (light) and 7.2:1 (dark) contrast.
+    muted text at 5.4:1 (light) and 7.2:1 (dark) contrast. Type sizes,
+    line heights, spacing and control heights are tokens too (rem, on a
+    4px spacing grid), so every meta line and small button is the same
+    size on every screen; `src/styles.test.ts` fails on a hand-written
+    size, an undefined token or a colour token with no dark value. The
+    reader's em-based offsets that track the 19px text are the listed
+    exceptions. Buttons come in four styles, primary, secondary
+    (unclassed), quiet and danger, plus small; contrast of the new
+    pairs, computed from the hex values: on-accent on the primary hover
+    7.8:1 light and 9.1:1 dark, danger on the surface 6.4:1 and 5.5:1,
+    muted on the hover wash 5.0:1 and 5.8:1. Checked in Chrome against
+    the mocked backend at 1366px, light and dark: Home, Books (row
+    actions at rest and hovered, the edit form), Search results,
+    Bookmarks, a folder and its rename form, and the reader's selection
+    toolbar, highlight popover, bookmark popover and a note card in the
+    margin column, editing and reading. Books and the reader were also
+    checked at 560px, with no sideways scrolling. The home cards' titles
+    are 20px, not the planned 24px, which wrapped "Bookmarks & notes".
+    Not checked in the browser demo or the Tauri window (WebKitGTK).
 
 - Frontend tests (`npm test`, Vitest + Testing Library in jsdom) render
   the whole app against a mocked backend (`src/test/mockBackend.ts`,
@@ -831,7 +849,7 @@ pitaka/
 │   ├── test/                    <- mocked backend, fixtures, test setup
 │   ├── fonts.css                <- @font-face rules for the bundled fonts
 │   ├── assets/fonts/            <- woff2 files + their OFL licences
-│   ├── App.css                  <- Paper colour tokens and all styles
+│   ├── App.css                  <- Paper tokens (colour, type, spacing) and all styles
 │   └── types.ts                 <- TS mirrors of the Rust command types
 └── package.json
 ```
@@ -1019,6 +1037,7 @@ Done:
 - [x] Launch screen with separate Books, Bookmarks and Search screens
 - [x] Paper visual style: bundled serif fonts, colour tokens with a
       matching dark mode
+- [x] Type and spacing scales and a button hierarchy
 - [x] Public showcase: MIT/Apache-2.0 licence, a project page on GitHub
       Pages, and a browser demo with a CC0 book and a search checked
       against the core's

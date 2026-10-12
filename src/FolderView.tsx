@@ -74,7 +74,9 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
   return (
     <main className="container">
       <div className="folder-header">
-        <button onClick={onBack}>← Bookmarks</button>
+        <button className="button-quiet" onClick={onBack}>
+          ← Bookmarks
+        </button>
         {renaming ? (
           <form
             className="folder-rename"
@@ -89,7 +91,9 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
               aria-label="Folder name"
               autoFocus
             />
-            <button type="submit">Save</button>
+            <button type="submit" className="button-primary">
+              Save
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -132,7 +136,7 @@ function FolderView({ folder, onBack, onOpenBookmark, onChanged }: Props) {
                   {p.book_title ?? "Untitled"} — {p.chapter_title ?? `Chapter ${p.chapter_idx + 1}`}
                 </span>
                 <button
-                  className="folder-passage-remove"
+                  className="folder-passage-remove button-quiet button-danger button-sm"
                   onClick={(e) => {
                     e.stopPropagation(); // the passage itself opens the reader
                     removePassage(p);

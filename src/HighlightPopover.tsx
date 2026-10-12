@@ -102,8 +102,12 @@ function HighlightPopover({
         ))}
       </div>
       <div className="highlight-popover-row">
-        {!hasNote && <button onClick={onAddNote}>Add note</button>}
-        <button className="button-danger" onClick={remove}>
+        {!hasNote && (
+          <button className="button-sm" onClick={onAddNote}>
+            Add note
+          </button>
+        )}
+        <button className="button-danger button-sm" onClick={remove}>
           Remove
         </button>
       </div>
