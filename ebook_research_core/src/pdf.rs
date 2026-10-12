@@ -273,15 +273,16 @@ fn to_roman(mut n: u32, digits: &[(u32, &str)]) -> String {
     out
 }
 
-/// Splits a page's lines into paragraphs on blank lines. Within a
-/// paragraph, lines are joined by `join_line`.
+/// Splits a page's lines into paragraphs on blank lines, except after a
+/// soft hyphen, whose word goes on past the gap. Within a paragraph,
+/// lines are joined by `join_line`.
 fn page_paragraphs(lines: &[String]) -> Vec<String> {
     let mut paragraphs = Vec::new();
     let mut current = String::new();
     for line in lines {
         let line = line.trim();
         if line.is_empty() {
-            if !current.is_empty() {
+            if !current.is_empty() && !current.ends_with('\u{ad}') {
                 paragraphs.push(normalize_whitespace(&current));
                 current.clear();
             }
@@ -299,9 +300,17 @@ fn page_paragraphs(lines: &[String]) -> Vec<String> {
 /// hyphen. Then a following lowercase letter means a word broken across
 /// the line ("gen-" / "erosity" gives "generosity"), and anything else a
 /// hyphenated compound ("Attribution-" / "NonCommercial" gives
-/// "Attribution-NonCommercial").
+/// "Attribution-NonCommercial"). A soft hyphen (U+00AD), which OCR tools
+/// like ABBYY FineReader put at line ends, only ever marks a broken word,
+/// so it's dropped, with any stray space OCR left before it, and the halves
+/// joined whatever case follows.
 fn join_line(text: &mut String, line: &str) {
     if text.is_empty() {
+        text.push_str(line);
+        return;
+    }
+    if text.ends_with('\u{ad}') {
+        text.truncate(text.trim_end_matches('\u{ad}').trim_end().len());
         text.push_str(line);
         return;
     }
@@ -322,18 +331,26 @@ fn starts_lowercase(text: &str) -> bool {
 }
 
 /// Joins a page's last paragraph to the next page's first when it doesn't
-/// end a sentence and the next one starts lowercase. The joined paragraph
-/// stays on the page where it starts.
+/// end a sentence and the next one starts lowercase, or when it ends with a
+/// soft hyphen, which always breaks a word. The joined paragraph
+/// stays on the page where it starts, so a page it takes all of is left
+/// empty, and the paragraph can carry on onto the page after.
 fn join_across_pages(pages: &mut [Vec<String>]) {
+    // The page holding the paragraph the next page might continue.
+    let mut open = 0;
     for i in 1..pages.len() {
         let (before, after) = pages.split_at_mut(i);
-        let (Some(last), Some(next)) = (before[i - 1].last_mut(), after[0].first()) else {
-            continue;
-        };
-        let ends_sentence = last.chars().last().is_some_and(|c| ".?!:\"”’)".contains(c));
-        if !ends_sentence && starts_lowercase(next) {
-            let next = after[0].remove(0);
-            join_line(last, &next);
+        let mut joined = false;
+        if let (Some(last), Some(next)) = (before[open].last_mut(), after[0].first()) {
+            let ends_sentence = last.chars().last().is_some_and(|c| ".?!:\"”’)".contains(c));
+            if (!ends_sentence && starts_lowercase(next)) || last.ends_with('\u{ad}') {
+                let next = after[0].remove(0);
+                join_line(last, &next);
+                joined = true;
+            }
+        }
+        if !(joined && after[0].is_empty()) {
+            open = i;
         }
     }
 }
@@ -783,13 +800,14 @@ mod tests {
     #[test]
     fn joins_lines_and_hyphenated_words() {
         let paragraphs = page_paragraphs(&lines(
-            "The gift of gen-\nerosity comes  first.\n\nLicensed CC Attribution-\nNonCommercial.\n",
+            "The gift of gen-\nerosity comes  first.\n\nLicensed CC Attribution-\nNonCommercial.\n\nStruggle Toward Re\u{ad}\nbirth, pub\u{ad}\n\nlished it \u{ad}\nself.\n",
         ));
         assert_eq!(
             paragraphs,
             [
                 "The gift of generosity comes first.",
-                "Licensed CC Attribution-NonCommercial."
+                "Licensed CC Attribution-NonCommercial.",
+                "Struggle Toward Rebirth, published itself."
             ]
         );
     }
@@ -800,13 +818,27 @@ mod tests {
             vec!["He came from".to_string()],
             vec!["sandalwood country.".to_string(), "Next.".to_string()],
             vec!["He was an ascetic.".to_string()],
-            vec!["Here, he stayed.".to_string()],
+            vec!["Here, he stayed. Mon\u{ad}".to_string()],
+            vec!["Key.".to_string()],
+            vec!["It ran on over".to_string()],
+            vec!["this whole page, and".to_string()],
+            vec!["onto the next.".to_string()],
+            vec!["It stopped at".to_string()],
+            vec![],
+            vec!["a blank page.".to_string()],
         ];
         join_across_pages(&mut pages);
         assert_eq!(pages[0], ["He came from sandalwood country."]);
         assert_eq!(pages[1], ["Next."]);
         assert_eq!(pages[2], ["He was an ascetic."]);
-        assert_eq!(pages[3], ["Here, he stayed."]);
+        assert_eq!(pages[3], ["Here, he stayed. MonKey."]);
+        assert_eq!(
+            pages[5],
+            ["It ran on over this whole page, and onto the next."]
+        );
+        assert!(pages[6].is_empty() && pages[7].is_empty());
+        assert_eq!(pages[8], ["It stopped at"]);
+        assert_eq!(pages[10], ["a blank page."]);
     }
 
     fn entry(title: &str, page: usize) -> (usize, String, usize) {

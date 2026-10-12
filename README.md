@@ -221,9 +221,12 @@ alongside the old one. Neither may change. The version comes from
   aside) it's at that position on 3 or more pages, which removes
   running headers and footers. Paragraphs split on blank lines; a
   line ending "gen-" followed by "erosity" joins as "generosity",
-  while "Attribution-" + "NonCommercial" keeps its hyphen; a paragraph
+  while "Attribution-" + "NonCommercial" keeps its hyphen; a soft
+  hyphen (U+00AD, which OCR tools like ABBYY FineReader put at line
+  ends) always joins its halves, even across a blank line; a paragraph
   that doesn't end a sentence joins one starting lowercase on the
-  next page. Chapters start at the pages of the outline's top-level
+  next page, or any next page after a soft hyphen, and keeps going
+  when it takes up a whole page. Chapters start at the pages of the outline's top-level
   entries, with "Front matter" before the first, or are 20-page
   blocks without an outline. The title comes from `/Info`, then XMP
   `dc:title`, then the largest text on pages 1–5 (if 1.5× the body
@@ -245,6 +248,13 @@ alongside the old one. Neither may change. The version comes from
   panicking PDF as an error and carried on (with `panic = "abort"` it
   died), and parsed the 242-page book in 0.39s. Dropping
   `panic = "abort"` grew the release binary from 10.8 MB to 12.5 MB.
+  The soft-hyphen and whole-page joins were checked by parsing *Shout
+  of Buddha* (255 pages, a typewritten book OCR'd by ABBYY FineReader
+  11) before and after: 151 of its 400 paragraphs had words split
+  like "Re birth", none do now, and its words are otherwise
+  unchanged except "Su- tras" across a page becoming "Sutras". Its
+  own OCR errors ("liv in g", "andtheNew") are in the text layer
+  itself. *Buddhist Life/Buddhist Path* parses identically.
   Not yet imported in the Tauri window, and the Books screen's new
   copy and picker filter were checked only by the frontend tests, not
   clicked through.
@@ -869,6 +879,11 @@ In the same order of priority as the Python version, then newer ones.
      before the next paragraph is joined to it, a real hyphen at a
      line end followed by a lowercase word is removed, and text a PDF
      draws twice comes out doubled.
+   - A scanned PDF with an OCR text layer imports with that layer's
+     mistakes: split or run-together words ("liv in g", "andtheNew")
+     and misread letters stay as they are, so search misses them.
+     Re-running OCR on the scan (e.g. `ocrmypdf --force-ocr`) and
+     re-importing is the only fix.
    - A PDF without a usable `/Info` or XMP title is titled from the
      largest text on pages 1–5, its most frequent running header, or
      its file name, so a decorative cover word or a series name can
