@@ -20,7 +20,10 @@ function BookmarkPopover({ contentBlockId, folders, checkedFolderIds, onChanged,
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
     }
     function onMouseDown(e: MouseEvent) {
       const target = e.target as Element;

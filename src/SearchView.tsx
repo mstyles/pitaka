@@ -14,6 +14,8 @@ type Props = {
   active: boolean;
   /** Bumped when books are added or removed, so stale results get re-run. */
   libraryVersion: number;
+  /** Bumped by Mod+F, to focus the search box again while it's showing. */
+  focusRequest: number;
   /** The book passage search is limited to, or null for the whole library. */
   bookId: number | null;
   onBookIdChange: (bookId: number | null) => void;
@@ -36,7 +38,14 @@ function highlight(snippet: string) {
     .map((part, i) => (i % 2 === 1 ? <mark key={i}>{part.slice(1, -1)}</mark> : part));
 }
 
-function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResult }: Props) {
+function SearchView({
+  active,
+  libraryVersion,
+  focusRequest,
+  bookId,
+  onBookIdChange,
+  onOpenResult,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [chapterResults, setChapterResults] = useState<ChapterMatch[]>([]);
@@ -133,6 +142,11 @@ function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResu
         runSearch(last.query, last.exact, last.scope, book);
     })();
   }, [active, libraryVersion]);
+
+  // Separate from the effect above, so focusing doesn't reload the book list.
+  useEffect(() => {
+    if (active) inputRef.current?.focus();
+  }, [focusRequest]);
 
   function toggleExactWords(exact: boolean) {
     setExactWords(exact);

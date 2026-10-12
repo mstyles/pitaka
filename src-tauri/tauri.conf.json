@@ -12,8 +12,13 @@
     "windows": [
       {
         "title": "Pitaka",
-        "width": 800,
-        "height": 600
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 480,
+        "center": true,
+        "visible": false,
+        "create": false
       }
     ],
     "security": {

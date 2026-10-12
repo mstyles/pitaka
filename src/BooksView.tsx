@@ -345,6 +345,13 @@ function relativePath(path: string, dir: string) {
   return path.startsWith(dir) ? path.slice(dir.length).replace(/^[\\/]+/, "") : path;
 }
 
+/** A shortcut or app menu item asking for one of the screen's buttons. */
+export type BooksRequest = {
+  action: "import-book" | "import-folder" | "back-up" | "restore";
+  /** Counts up, so the same action twice in a row runs twice. */
+  seq: number;
+};
+
 type Props = {
   onOpenBook: (bookId: number) => void;
   /** Called after a book is added or removed, so a kept search can re-run. */
@@ -357,6 +364,9 @@ type Props = {
   onFilterChange: (filter: string) => void;
   sort: BookSort;
   onSortChange: (sort: BookSort) => void;
+  request: BooksRequest | null;
+  /** Called once a request has run, so it doesn't run again on the next visit. */
+  onRequestHandled: () => void;
   view: BookView;
   onViewChange: (view: BookView) => void;
   /** Bumped by App when the library changes elsewhere, e.g. covers were found. */
@@ -374,6 +384,8 @@ function BooksView({
   onFilterChange,
   sort,
   onSortChange,
+  request,
+  onRequestHandled,
   view,
   onViewChange,
   libraryVersion,
@@ -592,8 +604,34 @@ function BooksView({
     }
   }
 
+  // Runs what the button would, once the books are loaded and so whether
+  // any are queued is known. The ref stops StrictMode's second effect run
+  // from running it twice.
+  const handledSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (!request || books == null || handledSeq.current === request.seq) return;
+    handledSeq.current = request.seq;
+    onRequestHandled();
+    if (importing) {
+      setImportStatus(info("Wait for the folder import to finish"));
+    } else if (request.action === "restore" && anyQueued) {
+      setImportStatus(info("Stop indexing to restore a backup"));
+    } else {
+      const run = {
+        "import-book": importBook,
+        "import-folder": importFolder,
+        "back-up": backUp,
+        restore,
+      };
+      run[request.action]();
+    }
+  }, [request?.seq, books == null]);
+
   function cancelOnEscape(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Escape") setEditing(null);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setEditing(null);
+    }
   }
 
   /** The Title and Author form, in a list row or (stacked) in a grid card. */
@@ -756,7 +794,10 @@ function BooksView({
               value={filter}
               onChange={(e) => onFilterChange(e.currentTarget.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") onFilterChange("");
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  onFilterChange("");
+                }
               }}
               placeholder="Filter by title or author…"
             />

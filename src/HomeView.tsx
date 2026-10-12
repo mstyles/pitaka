@@ -216,6 +216,9 @@ function HomeView({ libraryVersion, onNavigate, onOpenBook }: Props) {
           </ul>
         </section>
       )}
+      <p className="home-hint">
+        Press <kbd>?</kbd> for keyboard shortcuts
+      </p>
       {errors.map((e) => (
         <StatusLine key={e} status={failed(e)} />
       ))}

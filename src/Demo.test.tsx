@@ -1,5 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DemoBanner from "./DemoBanner";
 import { DEMO_BACKUP_ERROR, DEMO_IMPORT_ERROR, demoOptions } from "./demo/installDemo";
 import { goTo, renderApp, resultItems, search } from "./test/renderApp";
@@ -51,6 +51,44 @@ describe("browser demo", () => {
     expect(screen.queryByRole("button", { name: "Chapters" })).toBeNull();
     render(<DemoBanner />);
     expect(screen.getByText(/Chapter search by meaning needs the desktop app/)).toBeTruthy();
+  });
+
+  describe("keys", () => {
+    beforeEach(() => {
+      vi.stubEnv("MODE", "demo");
+    });
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("lists the shortcuts without the browser's Find and Open", async () => {
+      const { user } = renderApp(demoOptions());
+      await screen.findByText("1 book");
+      await user.keyboard("?");
+      const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+      expect(within(sheet).queryByText("Ctrl+F")).toBeNull();
+      expect(within(sheet).queryByText("Ctrl+O")).toBeNull();
+      expect(within(sheet).queryByText("Ctrl+Shift+O")).toBeNull();
+      expect(within(sheet).getByText("Ctrl+1")).toBeTruthy();
+    });
+
+    it("leaves Ctrl+F and Ctrl+O to the browser", async () => {
+      const { callsTo } = renderApp(demoOptions());
+      await screen.findByText("1 book");
+      for (const key of ["f", "o"]) {
+        const e = new KeyboardEvent("keydown", {
+          key,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.body.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.getByRole("heading", { level: 1, name: "Pitaka" })).toBeTruthy();
+      expect(callsTo("plugin:dialog|open")).toEqual([]);
+    });
   });
 
   it("links the banner to the install instructions", () => {

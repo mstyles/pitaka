@@ -15,6 +15,7 @@ import { BookmarkIcon, PenIcon, SearchIcon } from "./icons";
 import NoteCard from "./NoteCard";
 import { atEnd, percentRead, SAVE_DELAY_MS, topVisibleBlockId } from "./readingPosition";
 import SelectionToolbar from "./SelectionToolbar";
+import { isEditable } from "./shortcuts";
 import StatusLine, { failed } from "./StatusLine";
 import type {
   BlockBookmark,
@@ -364,7 +365,10 @@ function ReaderView({
   useEffect(() => {
     if (!toolbar) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setToolbar(null);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setToolbar(null);
+      }
     }
     function onMouseDown(e: globalThis.MouseEvent) {
       if (!(e.target as Element).closest?.(".selection-toolbar")) setToolbar(null);
@@ -376,6 +380,33 @@ function ReaderView({
       document.removeEventListener("mousedown", onMouseDown);
     };
   }, [toolbar != null]);
+
+  // Escape leaves the book, and ← / → change chapter. The popovers, the
+  // selection toolbar and a note card handle Escape first (on `document`
+  // or in React, both before `window`) and mark it handled, so Escape
+  // closes the innermost thing first. Nothing happens while a note is
+  // being written, so a stray key can't discard it.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+        return;
+      }
+      if (isEditable(e.target) || textRef.current?.querySelector(".note-card textarea")) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onBack();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const i = chapters.findIndex((c) => c.id === activeChapterId);
+        const next = i < 0 ? undefined : chapters[e.key === "ArrowLeft" ? i - 1 : i + 1];
+        if (next) {
+          e.preventDefault();
+          selectChapter(next.id);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chapters, activeChapterId, onBack]);
 
   /** After a mouse or keyboard selection, offers to highlight what's selected. */
   function selectionEnded(e: { target: EventTarget }) {
