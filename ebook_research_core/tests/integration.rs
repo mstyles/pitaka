@@ -521,6 +521,57 @@ fn highlights_and_notes_a_passage() {
     assert!(db::list_annotated_books(&conn).unwrap().is_empty());
 }
 
+/// A backup made on one install, restored on a fresh one, gives back the
+/// books and notes without the book files, and still recognises the file
+/// when it's imported again.
+#[test]
+fn restore_moves_a_library_to_a_new_install() {
+    let old_path = &temp_path("test_backup_old_library.db");
+    let new_path = &temp_path("test_backup_new_library.db");
+    let backup = &temp_path("test_backup.pitaka");
+    for path in [old_path, new_path, backup] {
+        let _ = std::fs::remove_file(path);
+    }
+
+    let mut old = open_db(old_path).unwrap();
+    let book_id = import_book(&mut old, "test.epub").unwrap().book_id;
+    let chapter = db::get_book_chapters(&old, book_id)
+        .unwrap()
+        .into_iter()
+        .find(|c| c.title.as_deref() == Some("Chapter One: Beginnings"))
+        .expect("Chapter One should be imported");
+    let block = db::get_chapter_content(&old, chapter.id)
+        .unwrap()
+        .blocks
+        .remove(0);
+    let first_word: String = block
+        .text
+        .chars()
+        .take_while(|c| c.is_alphanumeric())
+        .collect();
+    let end = first_word.chars().count() as i64;
+    let highlight = db::add_highlight(&old, block.id, 0, end, "blue").unwrap();
+    db::add_highlight_note(&old, highlight.id, "moved with me").unwrap();
+    let annotations =
+        serde_json::to_value(db::list_book_annotations(&old, book_id).unwrap()).unwrap();
+    let manifest = db::backup_library(&old, backup, "9.9.9").unwrap();
+    assert_eq!(manifest.app_version, "9.9.9");
+    drop(old);
+
+    let mut new = open_db(new_path).unwrap();
+    let counts = db::restore_library(&mut new, backup, "9.9.9").unwrap();
+    assert_eq!(counts, manifest.counts);
+    assert_eq!(
+        serde_json::to_value(db::list_book_annotations(&new, book_id).unwrap()).unwrap(),
+        annotations
+    );
+    let hits = search(&new, &first_word, SearchMode::Stemmed, None, 50).unwrap();
+    assert!(hits.iter().any(|h| h.chapter_id == chapter.id));
+    let again = import_book(&mut new, "test.epub").unwrap();
+    assert!(again.already_imported);
+    assert_eq!(again.book_id, book_id);
+}
+
 /// A query term with a curated transliteration variant also finds the other
 /// spelling. Uses its own variant list rather than the shipped one, so these
 /// assertions don't move when `data/term_variants.txt` is edited.

@@ -17,6 +17,10 @@ pub use db::{
     SearchMode, SearchResult, SemanticStatus, VariantIndex, HIGHLIGHT_COLORS, LENGTH_PENALTY,
     MIN_SCORE,
 };
+pub use db::{
+    backup_library, library_counts, read_backup_manifest, restore_library, BackupManifest,
+    LibraryCounts,
+};
 #[cfg(feature = "semantic")]
 pub use db::{index_book, search_chapters};
 pub use epub::{parse_epub, ParsedBook};

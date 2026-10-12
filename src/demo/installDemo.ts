@@ -8,12 +8,16 @@ import { createSearch } from "./search";
 export const DEMO_IMPORT_ERROR =
   "Importing your own books needs the desktop app. This demo has one book built in.";
 
+export const DEMO_BACKUP_ERROR =
+  "Backups need the desktop app. This demo keeps your highlights and notes until you close the page.";
+
 /** Mock backend options that serve the demo book. */
 export function demoOptions(): MockOptions {
   return {
     data: data as Fixtures,
     search: createSearch(Object.values(data.chapter_content) as ChapterContent[]),
     importError: DEMO_IMPORT_ERROR,
+    backupError: DEMO_BACKUP_ERROR,
     // The file picker "succeeds" so the import error is shown, not a cancel.
     openPath: "/your-book.epub",
   };

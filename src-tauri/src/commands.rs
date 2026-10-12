@@ -4,9 +4,10 @@
 //! command/state conventions.
 
 use ebook_research_core::{
-    db, open_db, AnnotatedBook, BlockBookmark, BookAnnotation, BookScan, BookSummary,
-    BookmarkFolder, ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary,
-    FolderBookmark, Highlight, ImportOutcome, Note, SearchMode, SearchResult, SemanticStatus,
+    db, open_db, AnnotatedBook, BackupManifest, BlockBookmark, BookAnnotation, BookScan,
+    BookSummary, BookmarkFolder, ChapterAnnotations, ChapterContent, ChapterMatch, ChapterSummary,
+    FolderBookmark, Highlight, ImportOutcome, LibraryCounts, Note, SearchMode, SearchResult,
+    SemanticStatus,
 };
 use rusqlite::Connection;
 use std::sync::Mutex;
@@ -568,6 +569,50 @@ pub fn list_book_annotations(
 ) -> Result<Vec<BookAnnotation>, String> {
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     db::list_book_annotations(&conn, book_id).map_err(|e| e.to_string())
+}
+
+/// Frontend calls: `invoke("backup_library", { path })`. Writes the whole
+/// library to one compressed file.
+#[tauri::command]
+pub fn backup_library(
+    path: String,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<BackupManifest, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::backup_library(&conn, &path, &app_version(&app)).map_err(|e| format!("{e:#}"))
+}
+
+/// Frontend calls: `invoke("read_backup_manifest", { path })`, to say what
+/// a backup holds before asking to restore it. Fails for a file that isn't
+/// a backup, or one from a newer Pitaka.
+#[tauri::command]
+pub fn read_backup_manifest(path: String) -> Result<BackupManifest, String> {
+    db::read_backup_manifest(&path).map_err(|e| format!("{e:#}"))
+}
+
+/// Frontend calls: `invoke("restore_library", { path })`. Replaces the
+/// whole library with the backup's, after saving the current one as
+/// `library-before-restore.pitaka` in the app data folder.
+#[tauri::command]
+pub fn restore_library(
+    path: String,
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<LibraryCounts, String> {
+    // A chapter in flight would write its vectors into the restored
+    // library, where its id may belong to another book.
+    #[cfg(feature = "semantic")]
+    if state.index_queue.is_busy() {
+        return Err("Stop indexing before restoring a backup".into());
+    }
+    let mut conn = state.conn.lock().map_err(|e| e.to_string())?;
+    db::restore_library(&mut conn, &path, &app_version(&app)).map_err(|e| format!("{e:#}"))
+}
+
+/// The version in `src-tauri/Cargo.toml`, which a release bumps.
+fn app_version(app: &AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 /// Opens the library and stashes the connection in managed state. If that
