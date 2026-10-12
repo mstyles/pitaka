@@ -15,7 +15,8 @@ export function renderApp(opts: MockOptions & { fakeTimers?: boolean } = {}) {
 }
 
 export async function search(user: ReturnType<typeof userEvent.setup>, query: string) {
-  const input = screen.getByPlaceholderText("Search your library…");
+  // "Search your library…", or "Search <title>…" when limited to one book.
+  const input = screen.getByPlaceholderText(/^Search .*…$/);
   await user.type(input, query);
   // Scoped to the form: the header also has a "Search" button.
   await user.click(within(input.closest("form")!).getByRole("button", { name: "Search" }));

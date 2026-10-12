@@ -337,7 +337,7 @@ describe("indexing for chapter search", () => {
 
     await goTo(user, "Search");
     await goTo(user, "Books");
-    await screen.findByText(LONG_BOOK);
+    await screen.findByText(LONG_BOOK, { selector: ".book-title" });
     expect(screen.queryByText(/for chapter search/)).toBeNull();
   });
 

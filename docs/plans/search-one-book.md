@@ -78,3 +78,9 @@ Checked with Python's SQLite 3.46.1 (the system `sqlite3` has no FTS5) against m
 1. `cargo test -p ebook_research_core`, `cargo clippy --workspace --all-targets`, `npx tsc --noEmit`, `npm test`, `npm run format:check`.
 2. `npm run dev:mock`: pick a book, switch modes and scopes, Search this book from the reader, remove the scoped book.
 3. `npm run tauri dev` against the 53-book library: "mindfulness" library-wide vs. scoped to one Thich Nhat Hanh book; a scoped search returns hits from a book absent from the library-wide 50.
+
+## Implementation notes (differences from this plan)
+- `LastSearch` doesn't record the book: a re-run after books change uses the current `bookId` (nulled if that book was removed), since every change of book already re-runs the search, so the two only differ when there was nothing to search.
+- There was no `select` styling, so `select` joins `input` and `button` in the base control rules (border, radius, height, focus ring) rather than `.search-book` restating them.
+- The `search` test helper finds the box by `/^Search .*…$/`, since the placeholder names the book while scoped.
+- `Books.test.tsx` "shows a run that finished while away once" looked up a book's title with no selector; the mounted, hidden Search screen's picker now has an `<option>` with the same text, so it's scoped to `.book-title` like the file's other lookups.

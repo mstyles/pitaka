@@ -11,12 +11,13 @@ to keep, and highlights and notes as you read.
 
 ![Search results for "patacara", with "Paṭācārā" highlighted in each passage](docs/screenshots/search.jpg)
 
-- **Search your whole library at once.** Every paragraph of every book is
-  indexed, results are ranked with the matching words highlighted, and
-  "learn" also finds "learning" (or tick *Exact words*). Case and
-  diacritics are ignored, so `samsara` finds "saṃsāra", and `dharma`
-  also finds a text that only writes "dhamma". Quoted phrases,
-  `prefix*` and `AND`/`OR`/`NOT` work too.
+- **Search your whole library at once**, or just one book, picked on
+  the Search screen or with *Search this book* in the reader. Every
+  paragraph of every book is indexed, results are ranked with the
+  matching words highlighted, and "learn" also finds "learning" (or
+  tick *Exact words*). Case and diacritics are ignored, so `samsara`
+  finds "saṃsāra", and `dharma` also finds a text that only writes
+  "dhamma". Quoted phrases, `prefix*` and `AND`/`OR`/`NOT` work too.
 - **Find chapters by meaning.** Describe what you're after — "dealing with difficult emotions" — and
   get the chapters about it, whatever words they use. A small embedding
   model runs on your own computer; it's downloaded once and nothing is
@@ -322,7 +323,12 @@ alongside the old one. Neither may change. The version comes from
   nothing leaves ranks and snippets untouched, which is why the recorded
   demo searches didn't move. `search()` uses the bundled list and
   `search_with_variants()` takes one, so the tests don't depend on what
-  the shipped file holds.
+  the shipped file holds. Both take an optional `book_id` that limits
+  the search to one book; `search_can_be_limited_to_one_book` checks
+  the book is filtered before the result limit applies (a book whose
+  hits rank below the library's top 50 still gets them), that ranks
+  and snippets are the same as library-wide, and that an unknown id
+  finds nothing.
 - `ebook_research_core/tests/integration.rs` — parses a real (synthetic,
   2-chapter) EPUB, checks its `nav.xhtml` spine item is skipped (exactly
   2 chapters, contiguous `idx`), loads it into a fresh DB, and asserts
@@ -459,6 +465,16 @@ alongside the old one. Neither may change. The version comes from
     so a book's `<` or markup shows as text. It stays mounted,
     so the query and results survive leaving the screen, and re-runs
     the last search when books were imported or removed meanwhile.
+    With more than one book, a "Search in" picker (All books, then each
+    book by title) limits passage search to one book and re-runs the
+    query; the box then reads "Search {title}…" and results drop the
+    repeated book title. It's hidden for Chapters. If the chosen book
+    is removed, it goes back to All books. The reader's *Search this
+    book* opens the screen limited to that book and re-runs the last
+    query. Covered by `Search.test.tsx` and `ReaderView.test.tsx`, and
+    checked in the browser against the mocked backend (Search this
+    book, switching books, back to All books); not clicked through in
+    the Tauri window.
   - `src/BookmarksView.tsx` — the Bookmarks & notes screen: folders
     with counts and a new-folder form, then each book with highlights
     or notes ("2 highlights, 2 notes"). `src/FolderView.tsx` shows a
@@ -942,6 +958,7 @@ Done:
       installers and attaches them to a draft GitHub release
 - [x] Import text-layer PDFs, with chapters from the outline
 - [x] Filter the Books screen by title or author, and sort it by title
+- [x] Search within a single book, from the Search screen or the reader
 
 Later:
 

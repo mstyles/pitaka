@@ -54,6 +54,8 @@ type Props = {
   /** A note whose card starts open, when arriving from the note itself. */
   openNoteId?: number;
   onBack: () => void;
+  /** Opens the Search screen limited to this book. */
+  onSearchBook: (bookId: number) => void;
 };
 
 function ReaderView({
@@ -63,6 +65,7 @@ function ReaderView({
   backLabel,
   openNoteId,
   onBack,
+  onSearchBook,
 }: Props) {
   const [book, setBook] = useState<BookSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
@@ -407,6 +410,13 @@ function ReaderView({
           <div className="reader-book">
             <div className="reader-book-title">{book.title ?? "Untitled"}</div>
             <div className="reader-book-author">{book.author ?? "Unknown author"}</div>
+            <button className="reader-search-book" onClick={() => onSearchBook(bookId)}>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <circle cx="10.5" cy="10.5" r="6" />
+                <path d="M15 15l5.5 5.5" />
+              </svg>
+              Search this book
+            </button>
           </div>
         )}
         <ul className="reader-chapter-list">

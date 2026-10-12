@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ChapterMatch, SearchMode, SearchResult, SemanticStatus } from "./types";
+import { sortBooks } from "./BooksView";
+import type { BookSummary, ChapterMatch, SearchMode, SearchResult, SemanticStatus } from "./types";
 
 /** Where a result opens the reader: a passage hit or a chapter match. */
 export type ResultTarget = Pick<SearchResult, "book_id" | "chapter_id" | "content_block_id">;
@@ -10,6 +11,9 @@ type Props = {
   active: boolean;
   /** Bumped when books are added or removed, so stale results get re-run. */
   libraryVersion: number;
+  /** The book passage search is limited to, or null for the whole library. */
+  bookId: number | null;
+  onBookIdChange: (bookId: number | null) => void;
   onOpenResult: (result: ResultTarget) => void;
 };
 
@@ -29,7 +33,7 @@ function highlight(snippet: string) {
     .map((part, i) => (i % 2 === 1 ? <mark key={i}>{part.slice(1, -1)}</mark> : part));
 }
 
-function SearchView({ active, libraryVersion, onOpenResult }: Props) {
+function SearchView({ active, libraryVersion, bookId, onBookIdChange, onOpenResult }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [chapterResults, setChapterResults] = useState<ChapterMatch[]>([]);
@@ -41,7 +45,12 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
   const [status, setStatus] = useState("");
   // False until the first search returns, so the count line doesn't say "No results" up front.
   const [searched, setSearched] = useState(false);
+  // For the "Search in" picker.
+  const [books, setBooks] = useState<BookSummary[]>([]);
   const lastSearch = useRef<LastSearch | null>(null);
+  // The book this view last searched or chose itself, so a change to
+  // `bookId` from outside (the reader's Search this book) can be told apart.
+  const handledBookId = useRef(bookId);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function refreshSemantic() {
@@ -52,7 +61,19 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
     }
   }
 
-  async function runSearch(q: string, exact: boolean, scope: Scope) {
+  async function refreshBooks() {
+    try {
+      const list = await invoke<BookSummary[]>("list_books");
+      setBooks(list);
+      return list;
+    } catch {
+      // Without the list there's no picker, and the scope stays as it is.
+      return null;
+    }
+  }
+
+  async function runSearch(q: string, exact: boolean, scope: Scope, book: number | null) {
+    if (scope === "passages") handledBookId.current = book;
     if (!q.trim()) return;
     lastSearch.current = { query: q, exact, scope, version: libraryVersion };
     setSearching(true);
@@ -63,7 +84,9 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
         refreshSemantic();
       } else {
         const mode: SearchMode = exact ? "exact" : "stemmed";
-        setResults(await invoke<SearchResult[]>("search_library", { query: q, mode }));
+        setResults(
+          await invoke<SearchResult[]>("search_library", { query: q, mode, bookId: book }),
+        );
       }
       setStatus("");
       setSearched(true);
@@ -74,19 +97,49 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
     }
   }
 
+  // Declared before the effect below so that, arriving from the reader,
+  // this search runs first and the stale re-run sees it as current.
+  useEffect(() => {
+    if (bookId === handledBookId.current) return;
+    // Search this book, from the reader: book scope is for passages.
+    if (scope !== "passages") {
+      setScope("passages");
+      setSearched(false);
+      setStatus("");
+    }
+    inputRef.current?.focus();
+    runSearch(query, exactWords, "passages", bookId);
+  }, [bookId]);
+
   useEffect(() => {
     if (!active) return;
     inputRef.current?.focus();
     refreshSemantic();
-    // Re-run what was actually searched, not whatever has been typed since.
-    const last = lastSearch.current;
-    if (last && last.version !== libraryVersion) runSearch(last.query, last.exact, last.scope);
+    (async () => {
+      const list = await refreshBooks();
+      let book = bookId;
+      if (book != null && list && !list.some((b) => b.id === book)) {
+        // The book was removed: search the library rather than nothing.
+        book = null;
+        handledBookId.current = null;
+        onBookIdChange(null);
+      }
+      // Re-run what was actually searched, not whatever has been typed since.
+      const last = lastSearch.current;
+      if (last && last.version !== libraryVersion)
+        runSearch(last.query, last.exact, last.scope, book);
+    })();
   }, [active, libraryVersion]);
 
   function toggleExactWords(exact: boolean) {
     setExactWords(exact);
     // Re-run straight away so the two modes are easy to compare.
-    runSearch(query, exact, scope);
+    runSearch(query, exact, scope, bookId);
+  }
+
+  function changeBook(next: number | null) {
+    onBookIdChange(next);
+    runSearch(query, exactWords, "passages", next);
   }
 
   function changeScope(next: Scope) {
@@ -97,12 +150,13 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
     else setResults([]);
     setSearched(false);
     setStatus("");
-    runSearch(query, exactWords, next);
+    runSearch(query, exactWords, next, bookId);
   }
 
   const chapterScope = scope === "chapters";
   const count = chapterScope ? chapterResults.length : results.length;
   const noun = chapterScope ? "chapter" : "result";
+  const scopedBook = chapterScope ? undefined : books.find((b) => b.id === bookId);
 
   return (
     <main className="container">
@@ -133,7 +187,7 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
         className="row"
         onSubmit={(e) => {
           e.preventDefault();
-          runSearch(query, exactWords, scope);
+          runSearch(query, exactWords, scope, bookId);
         }}
       >
         <div className="search-field">
@@ -145,12 +199,32 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
-            placeholder="Search your library…"
+            placeholder={
+              scopedBook ? `Search ${scopedBook.title ?? "Untitled"}…` : "Search your library…"
+            }
           />
         </div>
         <button type="submit" className="button-primary" disabled={searching}>
           {searching ? "Searching…" : "Search"}
         </button>
+        {!chapterScope && books.length > 1 && (
+          <select
+            className="search-book"
+            aria-label="Search in"
+            value={bookId ?? ""}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              changeBook(value === "" ? null : Number(value));
+            }}
+          >
+            <option value="">All books</option>
+            {sortBooks(books, "title").map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.title ?? "Untitled"}
+              </option>
+            ))}
+          </select>
+        )}
         {!chapterScope && (
           <label
             className="search-mode"
@@ -193,7 +267,12 @@ function SearchView({ active, libraryVersion, onOpenResult }: Props) {
           {results.map((r) => (
             <li key={r.content_block_id} onClick={() => onOpenResult(r)}>
               <div className="result-meta">
-                <b>{r.book_title ?? "Untitled"}</b> ·{" "}
+                {/* Scoped to one book, its title would repeat on every row. */}
+                {bookId == null && (
+                  <>
+                    <b>{r.book_title ?? "Untitled"}</b> ·{" "}
+                  </>
+                )}
                 {r.chapter_title ?? `Chapter ${r.chapter_idx + 1}`}
               </div>
               <div className="result-snippet">{highlight(r.snippet)}</div>

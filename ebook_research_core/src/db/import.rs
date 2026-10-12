@@ -251,7 +251,7 @@ mod tests {
         }
         assert_eq!(get_book_chapters(&conn, kept).unwrap().len(), 1);
         for mode in [SearchMode::Stemmed, SearchMode::Exact] {
-            let hits = search(&conn, "zebra", mode, 10).unwrap();
+            let hits = search(&conn, "zebra", mode, None, 10).unwrap();
             assert_eq!(hits.len(), 1, "{mode:?}");
             assert_eq!(hits[0].book_id, kept, "{mode:?}");
         }
