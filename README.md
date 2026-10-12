@@ -38,6 +38,9 @@ to keep, and highlights and notes as you read.
 - **Back up your library** to one file and restore it on another
   computer: books, folders, highlights and notes come back as they were,
   without the book files.
+- **Keyboard shortcuts** for search, importing, each section and
+  reading chapter by chapter; `?` lists them. The desktop app also has
+  a File / View / Help menu.
 - **Local and private.** Your books are indexed into a SQLite database on
   your own computer; nothing is uploaded anywhere.
 
@@ -174,6 +177,16 @@ copy written over it with SQLite's backup API, through its locking, so
 the indexing worker's own connection sees the restored library too. A
 restore is refused while `IndexQueue::is_busy`, so a chapter in flight
 can't write its vectors into the restored library.
+
+Keyboard shortcuts are handled in one place, `src/shortcuts.ts`, in
+the frontend on every platform. The app menu (`src-tauri/src/menu.rs`)
+has no accelerators: each item emits a `menu` event named after the
+same action a key sends, so a menu item runs the same code as its key
+and its button, and only Quit and the two web links are handled in
+Rust. The window is created hidden from `setup` in `src-tauri/src/lib.rs`;
+on first launch it's shrunk to fit a screen too small for 1280×800 and
+then shown. After that, `tauri-plugin-window-state` restores its size,
+position and maximised state.
 
 The app's identity is in `src-tauri/tauri.conf.json`. `identifier`
 (`com.pitaka.app`) names the data directory, so changing it would lose
@@ -767,6 +780,30 @@ alongside the old one. Neither may change. The version comes from
   reader are covered by `Books.test.tsx`, and title order (leading
   articles, numbers, accents, untitled last) by `BooksView.test.ts`.
   Not checked in the Tauri window or in dark mode.
+- Keyboard shortcuts, the shortcuts sheet and the app menu.
+  `shortcuts.test.ts` checks the key mapping (Ctrl on Linux and
+  Windows, the digits by physical key for AZERTY, `?` ignored in a text
+  field, Find and Open left to the browser in the demo) and that the
+  ids in `src-tauri/src/menu.rs` match `MENU_ACTIONS`.
+  `Shortcuts.test.tsx` covers Ctrl+F (focusing the box again when
+  Search is showing, and searching the open book from the reader),
+  Ctrl+1–4, Ctrl+O and Ctrl+Shift+O, the "Wait for the folder import
+  to finish" and "Stop indexing to restore a backup" refusals, `menu`
+  events, ← / → and Escape in the reader, Escape closing the
+  selection toolbar and the highlight and bookmark popovers before the
+  book, a note being written surviving both keys, and the sheet
+  (Escape, Close, the backdrop, Tab kept inside, shortcuts ignored
+  while it's open). `Demo.test.tsx` checks the demo leaves Ctrl+F and
+  Ctrl+O to the browser. Checked in Chrome against the mocked backend
+  (`npm run dev:mock`, keys sent from the page): the sheet and the
+  Home hint, Ctrl+F/1/2/4/O, chapter keys stopping at the last
+  chapter, and Escape closing the bookmark and highlight popovers
+  before the book, with no console errors. Not checked in
+  `npm run dev:demo` or in dark mode. Not run in the Tauri window at
+  all: the menu, About box, window size, minimum size, first-launch
+  fitting and restored position are unverified on every platform, as
+  is whether WebView2 keeps Ctrl+F for its find bar. macOS is
+  untested.
 
 `src-tauri` builds, `npm run tauri dev` launches the app, and the UI has
 been clicked through end to end in the Tauri window (before the "Exact
@@ -850,7 +887,8 @@ pitaka/
 │   ├── Cargo.toml               <- ebook_research_core = { path = "../ebook_research_core" }
 │   └── src/
 │       ├── main.rs
-│       ├── lib.rs                <- registers commands + plugins
+│       ├── lib.rs                <- registers commands + plugins, opens the window
+│       ├── menu.rs               <- File / View / Help menu, emits `menu` events
 │       └── commands.rs           <- import_book / search_library / list_books /
 │                                    get_book_chapters / get_chapter_content /
 │                                    bookmark folder + bookmark commands /
@@ -876,6 +914,8 @@ pitaka/
 │   ├── Skeleton.tsx             <- placeholder rows and cards while loading
 │   ├── useDelayed.ts            <- waits 200ms before a loading state shows
 │   ├── icons.tsx                <- the app's Lucide icons, the one import point
+│   ├── shortcuts.ts             <- keyboard shortcuts and the menu's action names
+│   ├── ShortcutsSheet.tsx       <- the `?` list of shortcuts
 │   ├── annotate.ts              <- highlight runs, selection offsets
 │   ├── *.test.tsx               <- component tests (npm test)
 │   ├── test/                    <- mocked backend, fixtures, test setup
@@ -1041,6 +1081,16 @@ In the same order of priority as the Python version, then newer ones.
     - A restore briefly needs free space for the extracted library
       next to `library.db`, as well as for
       `library-before-restore.pitaka`.
+11. Keyboard and menu:
+    - The menu shows no shortcuts beside its items; `?` (or Help →
+      Keyboard shortcuts) lists them.
+    - Leaving the reader from the menu or a section key discards a
+      note being written, as the back button does. Escape and the arrow
+      keys do nothing while a note is open.
+    - In the browser demo, Ctrl/⌘+F and Ctrl/⌘+O are left to the
+      browser, and Chrome keeps Ctrl+1–4 for its tabs.
+    - Ctrl/⌘ `=`, `-` and `0` are reserved for the reader's text size
+      and do nothing yet.
 
 ## Roadmap
 
@@ -1098,6 +1148,7 @@ Done:
 - [x] Filter the Books screen by title or author, and sort it by title
 - [x] Search within a single book, from the Search screen or the reader
 - [x] Back up the library to one file and restore it
+- [x] Keyboard shortcuts, an app menu and a larger default window
 
 Later:
 

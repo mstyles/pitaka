@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import BookmarksView from "./BookmarksView";
 import BooksView, {
   type BookSort,
+  type BooksRequest,
   folderImportLine,
   plural,
   useFolderImport,
@@ -13,10 +14,19 @@ import HomeView from "./HomeView";
 import NavBar, { type Screen } from "./NavBar";
 import ReaderView from "./ReaderView";
 import SearchView from "./SearchView";
+import { type Action, useShortcuts } from "./shortcuts";
+import ShortcutsSheet from "./ShortcutsSheet";
 import { done, failed, type Status } from "./StatusLine";
 import Toaster, { type Toast } from "./Toaster";
 import type { BookSummary, SemanticIndexFailed, SemanticIndexProgress } from "./types";
 import "./App.css";
+
+const SECTION_ACTIONS: Partial<Record<Action, Screen>> = {
+  "go-home": "home",
+  "go-books": "books",
+  "go-bookmarks": "bookmarks",
+  "go-search": "search",
+};
 
 /** At most this many toasts show; another drops the oldest. */
 const MAX_TOASTS = 3;
@@ -43,6 +53,14 @@ function App() {
   const { dismissFinished, ...indexer } = useIndexing();
   const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  /** Bumped by Mod+F, so the search box takes focus even when Search is showing. */
+  const [searchFocus, setSearchFocus] = useState(0);
+  /** A menu item or key asking the Books screen to run one of its buttons. */
+  const [booksRequest, setBooksRequest] = useState<BooksRequest | null>(null);
+  const nextRequestSeq = useRef(1);
+  // The demo is a web page: Mod+F and Mod+O stay the browser's Find and Open.
+  const browserKeys = import.meta.env.MODE === "demo";
   const nextToastId = useRef(1);
   const booksShowing = screen === "books" && reader == null;
   // Read from the effects below, which run on events rather than on screen changes.
@@ -96,6 +114,54 @@ function App() {
     };
   }, []);
 
+  /**
+   * Runs a shortcut or app menu item. Returns false for one nothing handles
+   * yet, so its key is left to the browser.
+   */
+  function runAction(a: Action): boolean {
+    setShowShortcuts(false);
+    const section = SECTION_ACTIONS[a];
+    if (section) {
+      if (a === "go-search") {
+        // From the reader, this is Search this book.
+        if (reader) setSearchBookId(reader.bookId);
+        setSearchFocus((n) => n + 1);
+      }
+      setReader(null);
+      navigate(section);
+      return true;
+    }
+    switch (a) {
+      case "import-book":
+      case "import-folder":
+      case "back-up":
+      case "restore":
+        setReader(null);
+        navigate("books");
+        setBooksRequest({ action: a, seq: nextRequestSeq.current++ });
+        return true;
+      case "shortcuts":
+        setShowShortcuts(true);
+        return true;
+      default:
+        // Reader text size, reserved for the reader settings.
+        return false;
+    }
+  }
+
+  useShortcuts(runAction, !showShortcuts, { browserKeys });
+
+  // The app menu (src-tauri/src/menu.rs) sends the same actions. Through a
+  // ref, as the listener is added once.
+  const runActionRef = useRef(runAction);
+  runActionRef.current = runAction;
+  useEffect(() => {
+    const unlisten = listen<Action>("menu", (e) => runActionRef.current(e.payload));
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
   function navigate(to: Screen) {
     if (screen === "books" && to !== "books") dismissFinished();
     // The Bookmarks & notes link always shows the lists.
@@ -130,6 +196,8 @@ function App() {
           onFilterChange={setBookFilter}
           sort={bookSort}
           onSortChange={setBookSort}
+          request={booksRequest}
+          onRequestHandled={() => setBooksRequest(null)}
           {...folderImport}
         />
       )}
@@ -162,6 +230,7 @@ function App() {
       <div hidden={screen !== "search" || reader != null}>
         <SearchView
           active={screen === "search" && reader == null}
+          focusRequest={searchFocus}
           libraryVersion={libraryVersion}
           bookId={searchBookId}
           onBookIdChange={setSearchBookId}
@@ -189,6 +258,9 @@ function App() {
             navigate("search");
           }}
         />
+      )}
+      {showShortcuts && (
+        <ShortcutsSheet browserKeys={browserKeys} onClose={() => setShowShortcuts(false)} />
       )}
       <Toaster
         toasts={toasts}
