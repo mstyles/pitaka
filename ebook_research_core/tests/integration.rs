@@ -362,7 +362,7 @@ fn upgrades_unversioned_library() {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let hits = |q: &str, mode| {
             search(&conn, q, mode, None, 10)

@@ -1,4 +1,4 @@
-//! Book covers: the thumbnail stored for each book (migration 007), and
+//! Book covers: the thumbnail stored for each book (migration 008), and
 //! adding covers to books imported before Pitaka read them.
 
 use super::import::file_hash;
@@ -69,7 +69,7 @@ pub struct CoverBackfill {
 }
 
 /// Looks for the cover of every book that has no `book_covers` row: those
-/// imported before migration 007, or restored from an older backup. A
+/// imported before migration 008, or restored from an older backup. A
 /// book whose file is missing, or has changed since it was imported, is
 /// recorded as `'unavailable'` and isn't looked at again.
 ///
@@ -320,8 +320,8 @@ mod tests {
     }
 
     #[test]
-    fn migration_007_adds_an_empty_table() {
-        let dir = Scratch::new("migration-007");
+    fn migration_008_adds_an_empty_table() {
+        let dir = Scratch::new("migration-008");
         let path = dir.path("library.db");
         {
             let mut old = Connection::open(&path).unwrap();
@@ -336,7 +336,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM book_covers", [], |row| row.get(0))
             .unwrap();
