@@ -45,3 +45,8 @@ semantic = [
     "dep:tokenizers",
     "dep:hf-hub",
 ]
+
+# Needs the embedding model, so it builds only with `--features semantic`.
+[[example]]
+name = "shot_chapters"
+required-features = ["semantic"]
