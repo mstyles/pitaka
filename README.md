@@ -919,6 +919,14 @@ alongside the old one. Neither may change. The version comes from
   1200×800 after opening the "patacara" hit "Out of sympathy for me…",
   with the banner removed. It's below the 1280px breakpoint, so it shows
   the single-column reader without the empty note margin.
+  The landing page's 0.5.0 sections use two more screenshots from
+  `npm run dev:demo` in Chrome, banner removed, Sepia theme:
+  `reader-display.jpg` (the Display panel open, after opening The Book of
+  the Fives) and `continue-reading.jpg` (Home's Continue reading row).
+  The page was checked from `npm run build:site` in Chrome at desktop
+  width only. The search, chapter-search, notes and bookmarks
+  screenshots predate 0.5.0's type and spacing scale and were not
+  retaken, and no screenshot shows a real book cover.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
