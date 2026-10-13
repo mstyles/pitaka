@@ -7,11 +7,11 @@ import { installMockBackend, type MockOptions } from "./mockBackend";
 /** Renders the whole app against the mocked backend. */
 export function renderApp(opts: MockOptions & { fakeTimers?: boolean } = {}) {
   if (opts.fakeTimers) vi.useFakeTimers({ shouldAdvanceTime: true });
-  const { calls } = installMockBackend(opts);
+  const { calls, openedUrls } = installMockBackend(opts);
   const user = userEvent.setup(opts.fakeTimers ? { advanceTimers: vi.advanceTimersByTime } : {});
   render(<App />);
   const callsTo = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args);
-  return { user, callsTo };
+  return { user, callsTo, openedUrls };
 }
 
 export async function search(user: ReturnType<typeof userEvent.setup>, query: string) {

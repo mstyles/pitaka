@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SAVE_DELAY_MS } from "./readingPosition";
+import { FEEDBACK_LINKS } from "./feedback";
 import { fixtures } from "./test/mockBackend";
 import { goTo, renderApp, scrollTo, scrollToEnd, type Section } from "./test/renderApp";
 
@@ -193,5 +194,58 @@ describe("home", () => {
     renderApp({ fail: { list_books: "database is locked" } });
     expect(await screen.findByText("Loading library failed: database is locked")).toBeTruthy();
     expect((card("Search") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("feedback links", () => {
+  afterEach(() => {
+    delete (globalThis as { isTauri?: boolean }).isTauri;
+  });
+
+  const links = [
+    ["Report a bug", FEEDBACK_LINKS.bug],
+    ["Suggest an idea", FEEDBACK_LINKS.idea],
+    ["email me", FEEDBACK_LINKS.email],
+  ] as const;
+
+  function expectLinks() {
+    for (const [name, href] of links) {
+      const link = screen.getByRole("link", { name });
+      expect(link.getAttribute("href")).toBe(href);
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toBe("noreferrer");
+    }
+  }
+
+  it("shows them on home", async () => {
+    renderApp();
+    await waitFor(() => expect(detail("Books")).toBe("2 books"));
+    expectLinks();
+  });
+
+  it("shows them with an empty library", async () => {
+    renderApp({ data: { ...fixtures, books: [] } });
+    await screen.findByText("Welcome to Pitaka");
+    expectLinks();
+  });
+
+  it("hands the link to the system in the desktop app", async () => {
+    (globalThis as { isTauri?: boolean }).isTauri = true;
+    const { user, openedUrls } = renderApp();
+    await waitFor(() => expect(detail("Books")).toBe("2 books"));
+    const click = vi.fn();
+    const link = screen.getByRole("link", { name: "Report a bug" });
+    // React handles clicks at the root, so look once the event has bubbled past it.
+    document.addEventListener("click", (e) => click(e.defaultPrevented), { once: true });
+    await user.click(link);
+    expect(openedUrls).toEqual([FEEDBACK_LINKS.bug]);
+    expect(click).toHaveBeenCalledWith(true);
+  });
+
+  it("is a plain link in the browser", async () => {
+    const { user, openedUrls } = renderApp();
+    await waitFor(() => expect(detail("Books")).toBe("2 books"));
+    await user.click(screen.getByRole("link", { name: "Suggest an idea" }));
+    expect(openedUrls).toEqual([]);
   });
 });

@@ -773,6 +773,16 @@ button.button-quiet.button-danger:hover:not(:disabled) {
   color: var(--muted);
 }
 
+.home-feedback {
+  margin: var(--space-10) 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.home-feedback a {
+  color: var(--accent);
+}
+
 /* Keyboard shortcuts (ShortcutsSheet.tsx) */
 
 kbd {

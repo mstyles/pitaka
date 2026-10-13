@@ -129,6 +129,7 @@ export function installMockBackend({
   backfillFound,
 }: MockOptions = {}) {
   const calls: MockCall[] = [];
+  const openedUrls: string[] = [];
   const withIndexState = (list: BookSummary[]) =>
     list.map((b) => ({ ...b, index_state: indexStates[b.id] ?? b.index_state }));
   const startingBooks = () => withIndexState(initialBooks);
@@ -631,6 +632,9 @@ export function installMockBackend({
           }, 0);
         }
         return null;
+      case "plugin:opener|open_url":
+        openedUrls.push(args.url as string);
+        return undefined;
       case "plugin:dialog|save":
         return savePath;
       case "plugin:dialog|open": {
@@ -662,7 +666,7 @@ export function installMockBackend({
   // generated covers that a failed image falls back to.
   mockConvertFileSrc("linux");
 
-  return { calls };
+  return { calls, openedUrls };
 }
 
 /** Sends the events the app sends while it indexes a book for chapter search. */

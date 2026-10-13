@@ -2,6 +2,7 @@ import { type ComponentType, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import BookCover from "./BookCover";
 import EmptyState from "./EmptyState";
+import { ExternalLink, FEEDBACK_LINKS } from "./feedback";
 import { BookmarkIcon, BooksIcon, SearchIcon } from "./icons";
 import type { Screen } from "./NavBar";
 import { SkeletonRows } from "./Skeleton";
@@ -218,6 +219,12 @@ function HomeView({ libraryVersion, onNavigate, onOpenBook }: Props) {
       )}
       <p className="home-hint">
         Press <kbd>?</kbd> for keyboard shortcuts
+      </p>
+      <p className="home-feedback">
+        Found a bug, or have an idea?{" "}
+        <ExternalLink href={FEEDBACK_LINKS.bug}>Report a bug</ExternalLink> ·{" "}
+        <ExternalLink href={FEEDBACK_LINKS.idea}>Suggest an idea</ExternalLink> · or{" "}
+        <ExternalLink href={FEEDBACK_LINKS.email}>email me</ExternalLink>.
       </p>
       {errors.map((e) => (
         <StatusLine key={e} status={failed(e)} />

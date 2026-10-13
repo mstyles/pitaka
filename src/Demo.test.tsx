@@ -14,6 +14,11 @@ describe("browser demo", () => {
     expect(screen.getByText(BOOK)).toBeTruthy();
   });
 
+  it("links to bug reports from home", async () => {
+    renderApp(demoOptions());
+    expect(await screen.findByRole("link", { name: "Report a bug" })).toBeTruthy();
+  });
+
   it("searches the book, ignoring diacritics, and opens a hit in the reader", async () => {
     const { user } = renderApp(demoOptions());
     await goTo(user, "Search");

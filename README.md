@@ -145,7 +145,11 @@ the public domain (CC0) by [SuttaCentral](https://suttacentral.net); see
 
 ## Contributing
 
-Bug reports and fixes are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+Found a bug, or have an idea?
+[Report a bug](https://github.com/mstyles/pitaka/issues/new?template=bug_report.md)
+or [suggest an idea](https://github.com/mstyles/pitaka/issues/new?template=feedback.md)
+on GitHub, or email mstyleshk@gmail.com if you don't have a GitHub
+account. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for how to set up, which checks to run, and how pull requests work, and
 [SECURITY.md](SECURITY.md) for reporting a vulnerability privately.
 Changes between versions are in [CHANGELOG.md](CHANGELOG.md).
@@ -1046,6 +1050,10 @@ Windows in 14, and the artifacts were `Pitaka_0.2.0_x64-setup.exe`
 Ubuntu 22.04, launches on this machine. The tag path (draft release,
 uploads to it, `SHA256SUMS`) hasn't run, and the Windows installers
 haven't been installed; both wait for the first version tag.
+- Feedback links: `Home.test.tsx` covers the Home links in the browser
+  and in Tauri mode, and `Demo.test.tsx` the demo's Home. The Help menu
+  items, the project page section and opening `mailto:` have not been
+  checked yet: they wait on `npm run tauri dev` and Chrome.
 
 ## Project structure
 
@@ -1392,6 +1400,7 @@ Later:
 - [ ] Render a PDF's first page as its cover (needs a PDF renderer)
 - [x] Edit a book's title and author from the library, for books whose
       metadata is missing or wrong
+- [x] Feedback links on the website, the README, Home and the Help menu
 
 ## Releasing
 

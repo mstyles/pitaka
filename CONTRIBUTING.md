@@ -3,9 +3,12 @@
 Thanks for your interest. Pitaka is a small personal project, but bug
 reports, fixes and ideas are welcome.
 
-## Reporting a bug
+## Reporting a bug or suggesting an idea
 
-Open an issue using the bug report template. For import or display
+Ideas use the Idea or feedback template, and email to
+mstyleshk@gmail.com is fine for either.
+
+For a bug, open an issue using the bug report template. For import or display
 problems, say where the EPUB came from (publisher, or a link if it's
 freely available) and which OS you're on: most bugs are specific to how
 a particular book is put together. Please don't attach a book you don't
