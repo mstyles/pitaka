@@ -6,6 +6,18 @@ is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+### Added
+
+- Scroll the reader's text with the up and down arrow keys, even after
+  clicking a chapter in the sidebar. Holding a key repeats, and the
+  shortcuts sheet lists them.
+
+### Fixed
+
+- The "Bookmarks & notes" menu item showed as "Bookmarks _ notes"; the ampersand now displays.
+
 ## [0.5.0] - 2026-10-12
 
 ### Added
