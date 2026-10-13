@@ -16,6 +16,7 @@ import BooksView, {
 import HomeView from "./HomeView";
 import NavBar, { type Screen } from "./NavBar";
 import ReaderView from "./ReaderView";
+import { applyTheme, loadSettings, saveSettings } from "./readerSettings";
 import SearchView from "./SearchView";
 import { type Action, useShortcuts } from "./shortcuts";
 import ShortcutsSheet from "./ShortcutsSheet";
@@ -63,6 +64,8 @@ function App() {
   const { dismissFinished, ...indexer } = useIndexing();
   const folderImport = useFolderImport(() => setLibraryVersion((v) => v + 1));
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // Here rather than in the reader, so the theme applies on every screen.
+  const [readerSettings, setReaderSettings] = useState(loadSettings);
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Bumped by Mod+F, so the search box takes focus even when Search is showing. */
   const [searchFocus, setSearchFocus] = useState(0);
@@ -83,6 +86,11 @@ function App() {
     const id = nextToastId.current++;
     setToasts((ts) => [...ts, { ...status, id }].slice(-MAX_TOASTS));
   }
+
+  useEffect(() => {
+    saveSettings(readerSettings);
+    applyTheme(readerSettings.theme);
+  }, [readerSettings]);
 
   // The Books screen's own status lines now have the same news.
   useEffect(() => {
@@ -286,6 +294,8 @@ function App() {
           focusBlockId={reader.focusBlockId}
           backLabel={reader.backLabel}
           openNoteId={reader.openNoteId}
+          settings={readerSettings}
+          onSettingsChange={setReaderSettings}
           onBack={() => setReader(null)}
           onSearchBook={(bookId) => {
             setSearchBookId(bookId);

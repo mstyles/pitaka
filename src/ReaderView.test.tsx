@@ -1,6 +1,6 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SAVE_DELAY_MS } from "./readingPosition";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { fixtures } from "./test/mockBackend";
 import { goTo, renderApp, resultItems, scrollTo, scrollToEnd, search } from "./test/renderApp";
 
@@ -352,5 +352,136 @@ describe("reading position", () => {
     await waitFor(() => expect(callsTo("set_reading_position")).toHaveLength(1));
     expect(document.querySelector(".reader-error")).toBeNull();
     expect(paragraphs()).toHaveLength(40);
+  });
+});
+
+async function openBook(user: ReturnType<typeof renderApp>["user"], title: string) {
+  await goTo(user, "Books");
+  await user.click(await screen.findByText(title, { selector: ".book-title" }));
+  await waitFor(() => expect(paragraphs().length).toBeGreaterThan(0));
+}
+
+function readerStyle(name: string) {
+  return document.querySelector<HTMLElement>(".reader")!.style.getPropertyValue(name);
+}
+
+function pressed(name: string) {
+  return screen.getByRole("button", { name }).getAttribute("aria-pressed");
+}
+
+describe("chapter openings", () => {
+  it("sets a title block as a heading, and a first paragraph of prose in small caps", async () => {
+    const { user } = renderApp();
+    await openBook(user, "Test Book of Research");
+    expect(screen.getByRole("button", { name: "Chapter One: Beginnings" }).className).toBe(
+      "active",
+    );
+    expect(document.getElementById("block-1")!.classList).toContain("reader-chapter-heading");
+    // Its paragraphs are all shorter than prose.
+    expect(document.querySelector(".reader-opening")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^← Books/ }));
+    await openBook(user, "A Long Book for Scrolling");
+    await waitFor(() => expect(document.getElementById("block-8")).not.toBeNull());
+    expect(document.getElementById("block-8")!.classList).toContain("reader-opening");
+    expect(document.querySelector(".reader-chapter-heading")).toBeNull();
+  });
+});
+
+describe("display settings", () => {
+  it("changes the text and theme, and remembers them", async () => {
+    let { user } = renderApp();
+    await openBook(user, "Test Book of Research");
+    const display = screen.getByRole("button", { name: "Display" });
+    expect(display.getAttribute("aria-expanded")).toBe("false");
+    await user.click(display);
+    const panel = screen.getByRole("dialog", { name: "Display settings" });
+    expect(display.getAttribute("aria-expanded")).toBe("true");
+    expect(within(panel).getByText("19")).toBeTruthy();
+
+    await user.click(within(panel).getByRole("button", { name: "Larger text" }));
+    expect(readerStyle("--reader-size")).toBe("21px");
+    expect(within(panel).getByText("21")).toBeTruthy();
+    await user.click(within(panel).getByRole("button", { name: "Loose" }));
+    expect(readerStyle("--reader-leading")).toBe("1.95");
+    await user.click(within(panel).getByRole("button", { name: "Wide" }));
+    expect(readerStyle("--reader-measure")).toBe("40em");
+    expect(pressed("System")).toBe("true");
+    await user.click(within(panel).getByRole("button", { name: "Sepia" }));
+    expect(document.documentElement.dataset.theme).toBe("sepia");
+    expect(pressed("Sepia")).toBe("true");
+    expect(pressed("System")).toBe("false");
+
+    // A new window reads them back.
+    cleanup();
+    ({ user } = renderApp());
+    await openBook(user, "Test Book of Research");
+    expect(readerStyle("--reader-size")).toBe("21px");
+    expect(document.documentElement.dataset.theme).toBe("sepia");
+    await user.click(screen.getByRole("button", { name: "Display" }));
+    expect(screen.getByText("21")).toBeTruthy();
+    expect(pressed("Sepia")).toBe("true");
+    expect(pressed("Loose")).toBe("true");
+    expect(pressed("Wide")).toBe("true");
+
+    const reset = screen.getByRole<HTMLButtonElement>("button", { name: "Default text settings" });
+    await user.click(reset);
+    expect(screen.getByText("19")).toBeTruthy();
+    expect(pressed("Normal")).toBe("true");
+    expect(pressed("Medium")).toBe("true");
+    expect(pressed("Sepia")).toBe("true");
+    expect(readerStyle("--reader-size")).toBe("19px");
+    expect(reset.disabled).toBe(true);
+  });
+
+  it("stops at the largest size", async () => {
+    const { user } = renderApp();
+    await openBook(user, "Test Book of Research");
+    await user.click(screen.getByRole("button", { name: "Display" }));
+    const larger = screen.getByRole<HTMLButtonElement>("button", { name: "Larger text" });
+    for (let i = 0; i < 3; i++) await user.click(larger);
+    expect(screen.getByText("26")).toBeTruthy();
+    expect(larger.disabled).toBe(true);
+    const smaller = screen.getByRole<HTMLButtonElement>("button", { name: "Smaller text" });
+    expect(smaller.disabled).toBe(false);
+  });
+
+  it("closes on Escape or a click in the text, changing nothing", async () => {
+    const { user } = renderApp();
+    await openBook(user, "Test Book of Research");
+    const display = screen.getByRole("button", { name: "Display" });
+    await user.click(display);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Display settings" })).toBeNull();
+
+    await user.click(display);
+    fireEvent.mouseDown(paragraphs()[1]);
+    expect(screen.queryByRole("dialog", { name: "Display settings" })).toBeNull();
+    expect(readerStyle("--reader-size")).toBe("19px");
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+
+    // The button itself still toggles it.
+    await user.click(display);
+    await user.click(display);
+    expect(screen.queryByRole("dialog", { name: "Display settings" })).toBeNull();
+  });
+
+  it("puts the selection toolbar away when the text reflows", async () => {
+    const { user } = renderApp();
+    await openBook(user, "Test Book of Research");
+    await user.click(screen.getByRole("button", { name: "Display" }));
+    const text = paragraphs()[1].firstChild as Text;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 4);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    fireEvent.mouseUp(paragraphs()[1]);
+    expect(await screen.findByRole("toolbar", { name: "Highlight selection" })).toBeTruthy();
+
+    // A click with no mousedown first, as a keyboard shortcut would change it.
+    fireEvent.click(screen.getByRole("button", { name: "Larger text" }));
+    expect(readerStyle("--reader-size")).toBe("21px");
+    expect(screen.queryByRole("toolbar")).toBeNull();
   });
 });

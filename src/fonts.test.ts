@@ -1,6 +1,7 @@
 // @ts-expect-error type error without @types/node package
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { woff2Features } from "./test/woff2Features";
 
 // Read from disk: Vitest replaces CSS imports, even `?raw`, with "".
 // Paths are relative to the repo root, where Vitest runs.
@@ -37,4 +38,20 @@ describe("bundled font subsets", () => {
       expect(range).toEqual(expect.arrayContaining(["U+0100-02BA", "U+1E00-1E9F"]));
     },
   );
+});
+
+// fontsource strips these, so re-downloading its files would lose the
+// reader's old-style figures and small caps; scripts/subset-literata.sh
+// keeps them.
+describe("Literata keeps old-style figures and small caps", () => {
+  it.each(["latin", "latin-ext"])("literata-%s-wght-normal.woff2", (subset) => {
+    const features = woff2Features(`src/assets/fonts/literata-${subset}-wght-normal.woff2`);
+    expect(features).toEqual(expect.arrayContaining(["onum", "smcp"]));
+  });
+
+  it("can tell a fontsource file apart", () => {
+    const features = woff2Features("src/assets/fonts/fraunces-latin-opsz-normal.woff2");
+    expect(features).toContain("liga");
+    expect(features).not.toContain("smcp");
+  });
 });

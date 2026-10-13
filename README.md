@@ -29,6 +29,8 @@ to keep, and highlights and notes as you read.
   highlight them in one of four colours, and note a highlight or a whole
   paragraph. Notes open in the margin beside the text, and each book's
   highlights and notes are listed in reading order.
+- **Make the reader yours**: text size, line spacing, column width and
+  a Light, Sepia or Dark theme, remembered on this computer.
 - **Keep passages in bookmark folders**, one per topic or project, each
   passage linked back to its place in the book.
 - **Bring in a whole folder.** Import one EPUB or PDF, or pick a folder
@@ -701,9 +703,51 @@ alongside the old one. Neither may change. The version comes from
     `src/annotate.ts`, skipping the note markers. Clicking a highlight
     opens `src/HighlightPopover.tsx` (recolour, add a note, remove).
     A note shows as a raised pen after its highlight or paragraph, and
-    clicking it opens `src/NoteCard.tsx` beside the text from 1280px
-    wide, or under the paragraph below that; a pen under the bookmark
-    icon starts or toggles the paragraph's own note.
+    clicking it opens `src/NoteCard.tsx` in a margin column beside the
+    text when there's room, or under the paragraph otherwise; a pen
+    under the bookmark icon starts or toggles the paragraph's own note.
+    The margin column is decided by a `ResizeObserver` on the text's
+    pane (`useMarginColumn`) rather than a media query, since the
+    column width follows the reader settings; at the defaults it
+    appears from a 1,262px window.
+  - Reader display settings: **Display** under *Search this book* opens
+    `src/ReaderSettingsPanel.tsx` with text size (16–26px in six steps),
+    line spacing (Tight / Normal / Loose), width (28, 34 or 40em of the
+    text size) and a theme (System, Light, Sepia, Dark) that applies to
+    the whole app, plus *Default text settings*. The settings live in
+    `localStorage` (`src/readerSettings.ts`), so the browser demo has
+    them too; `main.tsx` sets the theme's `data-theme` before the first
+    render. A change of settings closes the selection toolbar and
+    highlight popover and keeps the paragraph at the top of the view in
+    place (`overflow-anchor: none` on the pane, as Chrome's own scroll
+    anchoring moved it a second time). The text gets `text-wrap:
+    pretty`, hanging punctuation (WebKit only: WebView2 on Windows
+    ignores it, not checked on Windows) and old-style figures, also in
+    search snippets, folder passages and annotation quotes. A chapter's
+    first block is set as a heading when it equals the chapter title,
+    and the first line of the first paragraph of 100+ characters within
+    four blocks after it is in small caps (`src/chapterOpening.ts`).
+    Covered by `src/readerSettings.test.ts`, `src/chapterOpening.test.ts`
+    and `src/ReaderView.test.tsx` (the panel, persistence across a new
+    render, reset, the size limits, closing, the toolbar going away);
+    `src/styles.test.ts` keeps the chosen Dark theme's tokens identical
+    to the system dark mode's and checks Sepia sets every colour token.
+    Sepia's contrast, computed: text on bg 10.6:1, muted on bg 5.4:1
+    and on the hover wash 5.3:1, accent on bg 5.9:1, on-accent on
+    accent 6.5:1. The plan's WebKitGTK 2.52.6 `CSS.supports` checks
+    found `text-wrap: pretty`, `hanging-punctuation`,
+    `font-variant-numeric: oldstyle-nums` and `font-variant-caps:
+    small-caps` supported. Checked in Chrome against the mocked
+    backend: each size, spacing, width and theme; the margin column at
+    1,262px but not 1,261px at the defaults, and gone in a 700px pane;
+    the bookmark icon fully inside the pane at 26px in that narrow
+    pane; Dark and Sepia on Home, Books and Search; the paragraph at the
+    top staying put across size changes; real small caps on Part One's
+    first line and old-style figures in the text and snippets; the
+    settings and theme surviving a reload. Not clicked through in the
+    Tauri window (WebKitGTK), so the first-frame theme flash, hanging
+    quotes and `text-wrap: pretty` on the longest chapter there are
+    unchecked, as is the browser demo's Pali book.
   - `src-tauri/src/commands.rs` — if the library database can't be
     opened at startup, the app shows the error in a dialog and quits
     when it's dismissed, rather than panicking with nothing on screen.
@@ -723,6 +767,14 @@ alongside the old one. Neither may change. The version comes from
   - `src/fonts.css` — the Paper style's bundled OFL fonts (Fraunces,
     Literata, Source Sans 3), latin and latin-ext subsets, so Pali
     diacritics (ā ṃ ṭ ḍ ṅ ṇ ḷ) render in them rather than a fallback.
+    Literata is subset from upstream google/fonts (version 3.103, at a
+    pinned commit) by `scripts/subset-literata.sh`, keeping the
+    old-style figures and small caps (`onum`, `smcp`, `c2sc`) that
+    fontsource strips, Pali small caps included (checked in the
+    subset's GSUB that ā ṭ ṃ ī ū map to small caps); the files grew from
+    52 KB and 43 KB to 71 KB (latin) and 58 KB (latin-ext).
+    `src/fonts.test.ts` reads both files' GSUB feature lists and fails
+    if `onum` or `smcp` goes missing.
     The latin subsets' `unicode-range` leaves out the combining macron
     (U+0304), which the upstream CSS includes: with it, Chrome split
     "ā" into "a" + macron from the latin file and Fraunces drew the
@@ -1032,6 +1084,9 @@ pitaka/
 │   ├── BookmarksView.tsx        <- folder list, new folder
 │   ├── FolderView.tsx           <- one folder's passages
 │   ├── ReaderView.tsx           <- chapter sidebar + scrolling text
+│   ├── ReaderSettingsPanel.tsx  <- the reader's Display panel
+│   ├── readerSettings.ts        <- text size, spacing, width, theme (localStorage)
+│   ├── chapterOpening.ts        <- which blocks open a chapter
 │   ├── BookmarkPopover.tsx      <- tick a paragraph into folders
 │   ├── BookAnnotationsView.tsx  <- one book's highlights and notes
 │   ├── SelectionToolbar.tsx     <- highlight or note a text selection
@@ -1238,6 +1293,12 @@ In the same order of priority as the Python version, then newer ones.
     counts as being read once you scroll or change chapter in it, and
     only the latest position is kept: there's no reading history, and
     no way to mark a book finished or reset its progress by hand.
+14. Display settings live in the app's web storage, not the library:
+    they're per computer, aren't in a backup, and the dev server
+    (`npm run tauri dev`) and the installed app keep separate ones. The
+    chapter heading and the small-caps opening are guesses from the text
+    (a first block equal to the chapter title, a first paragraph of 100+
+    characters), because the parser drops heading markup (limitation 3).
 
 ## Roadmap
 
@@ -1266,6 +1327,8 @@ Done:
 - [x] Launch screen with separate Books, Bookmarks and Search screens
 - [x] Paper visual style: bundled serif fonts, colour tokens with a
       matching dark mode
+- [x] Reader display settings (size, spacing, width, theme) and book
+      typography
 - [x] Type and spacing scales and a button hierarchy
 - [x] Status lines and toasts, loading and empty states, entrance
       motion and a shared icon set

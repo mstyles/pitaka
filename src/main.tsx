@@ -3,6 +3,10 @@ import ReactDOM from "react-dom/client";
 import "./fonts.css";
 import App from "./App";
 import DemoBanner from "./DemoBanner";
+import { applyTheme, loadSettings } from "./readerSettings";
+
+// Before the first render, so a chosen theme doesn't flash the system one.
+applyTheme(loadSettings().theme);
 
 async function start() {
   // `npm run dev:mock`: run in a plain browser tab against fixture data

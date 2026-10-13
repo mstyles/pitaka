@@ -1,6 +1,9 @@
 import {
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
+  type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -10,10 +13,13 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { segments, selectionOffsets } from "./annotate";
 import BookmarkPopover from "./BookmarkPopover";
+import { chapterOpening } from "./chapterOpening";
 import HighlightPopover from "./HighlightPopover";
 import { BookmarkIcon, PenIcon, SearchIcon } from "./icons";
 import NoteCard from "./NoteCard";
 import { atEnd, percentRead, SAVE_DELAY_MS, topVisibleBlockId } from "./readingPosition";
+import { LEADING, MEASURE, type ReaderSettings } from "./readerSettings";
+import ReaderSettingsPanel from "./ReaderSettingsPanel";
 import SelectionToolbar from "./SelectionToolbar";
 import { isEditable } from "./shortcuts";
 import StatusLine, { failed } from "./StatusLine";
@@ -48,6 +54,35 @@ const NO_ANNOTATIONS: ChapterAnnotations = { highlights: [], notes: [] };
 
 /** How long closing the window waits for a pending save. */
 const CLOSE_SAVE_TIMEOUT_MS = 500;
+/** The margin column's width, and the gap between it and the text, in px. */
+const MARGIN_COLUMN = 240;
+const MARGIN_GAP = 24;
+
+/**
+ * Whether there's room beside the text for a margin column of note cards.
+ * The text's width follows the reader settings, which a media query can't
+ * read, so this measures `.reader-content` instead: at the defaults (34em
+ * of 19px = 646px, plus the gap and the column, 910px of content) the
+ * column appears from a 1,262px window (sidebar 272 + padding 80). jsdom has
+ * no ResizeObserver, so there it's never shown, as the media query did.
+ */
+function useMarginColumn(contentRef: RefObject<HTMLElement | null>, measurePx: number) {
+  const [room, setRoom] = useState(false);
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const check = () => {
+      const style = getComputedStyle(el);
+      const inner = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setRoom(inner >= measurePx + MARGIN_GAP + MARGIN_COLUMN);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [contentRef, measurePx]);
+  return room;
+}
 
 /** The element a node is, or is in. */
 function elementOf(node: Node | null) {
@@ -65,6 +100,8 @@ type Props = {
   onBack: () => void;
   /** Opens the Search screen limited to this book. */
   onSearchBook: (bookId: number) => void;
+  settings: ReaderSettings;
+  onSettingsChange: (update: (s: ReaderSettings) => ReaderSettings) => void;
 };
 
 function ReaderView({
@@ -75,6 +112,8 @@ function ReaderView({
   openNoteId,
   onBack,
   onSearchBook,
+  settings,
+  onSettingsChange,
 }: Props) {
   const [book, setBook] = useState<BookSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
@@ -105,6 +144,8 @@ function ReaderView({
   const [topBlockId, setTopBlockId] = useState<number | null>(null);
   /** Whether the end of the book is on screen. */
   const [endShowing, setEndShowing] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const displayButtonRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   // Saving the position. Only reading counts: nothing is saved until the
@@ -115,6 +156,10 @@ function ReaderView({
   const savePendingRef = useRef(false);
   const lastSavedRef = useRef<{ blockId: number; finished: boolean } | null>(null);
   const frameRef = useRef<number | null>(null);
+  const { size, leading, width } = settings;
+  const withMargin = useMarginColumn(contentRef, size * MEASURE[width]);
+  /** The paragraph at the top of the view, and how far below the top it starts. */
+  const placeRef = useRef<{ blockId: string; offset: number } | null>(null);
   const loadingContent = content == null && !error;
   const showTextSkeleton = useDelayed(loadingContent);
   const showChapterSkeleton = useDelayed(!chaptersLoaded && !error);
@@ -353,6 +398,69 @@ function ReaderView({
     return () => clearTimeout(t);
   }, [flashBlockId]);
 
+  /** Notes the first paragraph still showing at the top, to keep it there across a reflow. */
+  function notePlace() {
+    const box = contentRef.current;
+    if (!box) return;
+    const top = box.getBoundingClientRect().top;
+    const ps = box.querySelectorAll<HTMLElement>(".reader-paragraph");
+    // Paragraphs run down the page, so search for the first whose bottom is below the top.
+    let lo = 0;
+    let hi = ps.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ps[mid].getBoundingClientRect().bottom > top) hi = mid;
+      else lo = mid + 1;
+    }
+    const p = ps[lo];
+    placeRef.current = p ? { blockId: p.id, offset: p.getBoundingClientRect().top - top } : null;
+  }
+
+  // Noted as the reader scrolls, once a frame, so a change of settings from
+  // anywhere (the panel, or a shortcut) can put the same paragraph back.
+  useEffect(() => {
+    const box = contentRef.current;
+    if (!box) return;
+    let frame = 0;
+    function onScroll() {
+      if (!frame) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          notePlace();
+        });
+      }
+    }
+    box.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      box.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  // A new chapter starts at its top or at its target paragraph; the scroll
+  // that follows notes the place again.
+  useEffect(() => {
+    placeRef.current = null;
+  }, [content]);
+
+  // New text settings reflow the chapter: the selection toolbar's and the
+  // highlight popover's positions go stale, and the paragraph that was at
+  // the top goes back to the same place.
+  const firstLayout = useRef(true);
+  useLayoutEffect(() => {
+    if (firstLayout.current) {
+      firstLayout.current = false;
+      return;
+    }
+    setToolbar(null);
+    setHighlightPopover(null);
+    const box = contentRef.current;
+    const place = placeRef.current;
+    const p = place && document.getElementById(place.blockId);
+    if (!box || !place || !p) return;
+    box.scrollTop += p.getBoundingClientRect().top - box.getBoundingClientRect().top - place.offset;
+  }, [size, leading, width, withMargin]);
+
   function selectChapter(chapterId: number) {
     startedReading();
     setFlashBlockId(null);
@@ -469,6 +577,9 @@ function ReaderView({
     const h = await highlightSelection("yellow");
     if (h) setDraftNote({ contentBlockId: h.content_block_id, highlightId: h.id });
   }
+
+  // Stable, so the panel's document listeners aren't swapped on every render.
+  const closeDisplay = useCallback(() => setDisplayOpen(false), []);
 
   function toggleNote(noteId: number) {
     setOpenNoteIds((open) => {
@@ -600,9 +711,15 @@ function ReaderView({
               ),
         }
       : null;
+  const opening = content ? chapterOpening(content) : { headingId: null, openingId: null };
+  const readerStyle = {
+    "--reader-size": `${size}px`,
+    "--reader-leading": LEADING[leading],
+    "--reader-measure": `${MEASURE[width]}em`,
+  } as CSSProperties;
 
   return (
-    <main className="reader">
+    <main className="reader" style={readerStyle}>
       <nav className="reader-sidebar" aria-label="Chapters">
         <button className="reader-back button-quiet" onClick={onBack} title={backLabel}>
           {backLabel}
@@ -624,6 +741,26 @@ function ReaderView({
               <SearchIcon size={16} />
               Search this book
             </button>
+            <button
+              ref={displayButtonRef}
+              className="reader-display button-sm button-icon"
+              aria-expanded={displayOpen}
+              aria-controls="reader-settings"
+              onClick={() => setDisplayOpen((open) => !open)}
+            >
+              <span className="reader-display-glyph" aria-hidden="true">
+                Aa
+              </span>
+              Display
+            </button>
+            {displayOpen && (
+              <ReaderSettingsPanel
+                settings={settings}
+                onChange={onSettingsChange}
+                onClose={closeDisplay}
+                buttonRef={displayButtonRef}
+              />
+            )}
           </div>
         )}
         {showChapterSkeleton && (
@@ -670,7 +807,7 @@ function ReaderView({
           </div>
         )}
         <div
-          className="reader-text"
+          className={withMargin ? "reader-text with-margin" : "reader-text"}
           ref={textRef}
           aria-busy={showTextSkeleton || undefined}
           onMouseUp={selectionEnded}
@@ -710,7 +847,14 @@ function ReaderView({
                 <p
                   id={`block-${b.id}`}
                   data-block-id={b.id}
-                  className={b.id === flashBlockId ? "reader-paragraph flash" : "reader-paragraph"}
+                  className={[
+                    "reader-paragraph",
+                    b.id === opening.headingId && "reader-chapter-heading",
+                    b.id === opening.openingId && "reader-opening",
+                    b.id === flashBlockId && "flash",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
                   {paragraphText(b, highlights, notes)}
                 </p>
