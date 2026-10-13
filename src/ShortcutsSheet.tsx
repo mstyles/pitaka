@@ -74,6 +74,14 @@ function ShortcutsSheet({ browserKeys, onClose }: Props) {
       ),
       does: "Previous / next chapter",
     },
+    {
+      keys: (
+        <>
+          <kbd>↑</kbd> / <kbd>↓</kbd>
+        </>
+      ),
+      does: "Scroll the text",
+    },
     { keys: <kbd>Esc</kbd>, does: "Close the popup, or go back" },
   ];
 

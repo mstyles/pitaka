@@ -172,6 +172,17 @@ describe("keys in the reader", () => {
     await waitFor(() => expect(chapterButton(CHAPTER_ONE).className).toBe("active"));
   });
 
+  it("scrolls the text with the up and down keys from the sidebar", async () => {
+    const { user } = renderApp();
+    await openLongBook(user);
+    const content = document.querySelector<HTMLElement>(".reader-content")!;
+    document.querySelector<HTMLElement>(".reader-chapter-list button")!.focus();
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(content.scrollTop).toBe(80);
+    await user.keyboard("{ArrowUp}");
+    expect(content.scrollTop).toBe(40);
+  });
+
   it("goes back with Escape", async () => {
     const { user } = renderApp();
     await openTestBook(user);
@@ -260,6 +271,7 @@ describe("the shortcuts sheet", () => {
     const sheet = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
     expect(within(sheet).getByText("Ctrl+Shift+O")).toBeTruthy();
     expect(within(sheet).getByText("Previous / next chapter")).toBeTruthy();
+    expect(within(sheet).getByText("Scroll the text")).toBeTruthy();
     expect(document.activeElement).toBe(within(sheet).getByRole("button", { name: "Close" }));
   });
 

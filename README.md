@@ -984,7 +984,8 @@ alongside the old one. Neither may change. The version comes from
   Search is showing, and searching the open book from the reader),
   Ctrl+1–4, Ctrl+O and Ctrl+Shift+O, the "Wait for the folder import
   to finish" and "Stop indexing to restore a backup" refusals, `menu`
-  events, ← / → and Escape in the reader, Escape closing the
+  events, ← / → and Escape in the reader, ↑ / ↓ scrolling the text
+  with the focus in the sidebar, Escape closing the
   selection toolbar and the highlight and bookmark popovers before the
   book, a note being written surviving both keys, and the sheet
   (Escape, Close, the backdrop, Tab kept inside, shortcuts ignored
