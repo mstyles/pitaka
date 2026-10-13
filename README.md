@@ -926,7 +926,10 @@ alongside the old one. Neither may change. The version comes from
   The page was checked from `npm run build:site` in Chrome at desktop
   width only. The search, chapter-search, notes and bookmarks
   screenshots predate 0.5.0's type and spacing scale and were not
-  retaken, and no screenshot shows a real book cover.
+  retaken. `home.jpg` was retaken in the real app (`npm run tauri dev`
+  against a scratch `XDG_DATA_HOME` library holding the demo book) and
+  shows the EPUB's own cover, extracted by `cover.rs`, in the Your
+  library row; the Continue reading rows draw no cover.
 - `npm run dev:mock` serves the same mocked UI on :1430 for a browser
   check; `/ship` walks it in Chrome with screenshots. Real layout and
   scrolling, but still not the Tauri window or the Rust side. Walked
