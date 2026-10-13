@@ -50,7 +50,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let view = SubmenuBuilder::new(app, "View")
         .item(&item("go-home", "Home")?)
         .item(&item("go-books", "Books")?)
-        .item(&item("go-bookmarks", "Bookmarks & notes")?)
+        .item(&item("go-bookmarks", "Bookmarks && notes")?)
         .item(&item("go-search", "Search")?)
         .build()?;
 
