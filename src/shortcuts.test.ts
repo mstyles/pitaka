@@ -83,7 +83,7 @@ describe("the app menu", () => {
 
   it("sends the actions the frontend knows", () => {
     expect(ids.length).toBeGreaterThan(0);
-    const handledInRust = ["quit", "website", "report"];
+    const handledInRust = ["quit", "website", "report", "suggest", "email"];
     expect(ids.filter((id) => !handledInRust.includes(id))).toEqual(
       expect.arrayContaining(MENU_ACTIONS),
     );

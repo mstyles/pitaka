@@ -17,7 +17,8 @@ book you don't have the right to share. -->
 **Environment**
 
 - OS and version:
-- Pitaka commit (`git rev-parse --short HEAD`):
+- Pitaka version (the release you downloaded, or `git rev-parse --short HEAD`
+  if you built it):
 - Desktop app or browser demo:
 
 **Anything else**

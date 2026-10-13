@@ -6,6 +6,10 @@ is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
 
+### Added
+
+- Home and the Help menu link to bug reports, ideas and email feedback.
+
 ## [0.4.0] - 2026-10-06
 
 ### Added

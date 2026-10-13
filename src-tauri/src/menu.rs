@@ -1,6 +1,6 @@
 //! The app menu. Each item's id is an action name from `src/shortcuts.ts`,
 //! sent to the frontend as a `menu` event so it runs the same code as the
-//! buttons and keys; only Quit and the two links are handled here. Items
+//! buttons and keys; only Quit and the links are handled here. Items
 //! have no accelerators: on GTK the menu would take the key before the
 //! webview saw it, and the frontend handles the keys itself.
 
@@ -9,7 +9,10 @@ use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_opener::OpenerExt;
 
 const WEBSITE: &str = "https://mstyles.github.io/pitaka/";
-const ISSUES: &str = "https://github.com/mstyles/pitaka/issues";
+// The same URLs as `FEEDBACK_LINKS` in `src/feedback.tsx`.
+const BUG: &str = "https://github.com/mstyles/pitaka/issues/new?template=bug_report.md";
+const IDEA: &str = "https://github.com/mstyles/pitaka/issues/new?template=feedback.md";
+const EMAIL: &str = "mailto:mstyleshk@gmail.com?subject=Pitaka%20feedback";
 
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let item = |id: &str, label: &str| MenuItemBuilder::with_id(id, label).build(app);
@@ -55,7 +58,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         .item(&item("shortcuts", "Keyboard shortcuts")?)
         .separator()
         .item(&item("website", "Pitaka website")?)
-        .item(&item("report", "Report a problem")?);
+        .item(&item("report", "Report a bug")?)
+        .item(&item("suggest", "Suggest an idea")?)
+        .item(&item("email", "Email feedback")?);
     // On macOS, About lives in the app menu.
     #[cfg(not(target_os = "macos"))]
     let help = help
@@ -116,7 +121,13 @@ pub fn handle(app: &AppHandle, event: MenuEvent) {
             let _ = app.opener().open_url(WEBSITE, None::<&str>);
         }
         "report" => {
-            let _ = app.opener().open_url(ISSUES, None::<&str>);
+            let _ = app.opener().open_url(BUG, None::<&str>);
+        }
+        "suggest" => {
+            let _ = app.opener().open_url(IDEA, None::<&str>);
+        }
+        "email" => {
+            let _ = app.opener().open_url(EMAIL, None::<&str>);
         }
         id => {
             let _ = app.emit("menu", id);
