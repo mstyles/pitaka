@@ -57,6 +57,8 @@ const CLOSE_SAVE_TIMEOUT_MS = 500;
 /** The margin column's width, and the gap between it and the text, in px. */
 const MARGIN_COLUMN = 240;
 const MARGIN_GAP = 24;
+/** How far ↑ / ↓ scroll the text, in px: about a line, as browsers do. */
+const LINE_SCROLL = 40;
 
 /**
  * Whether there's room beside the text for a margin column of note cards.
@@ -489,17 +491,27 @@ function ReaderView({
     };
   }, [toolbar != null]);
 
-  // Escape leaves the book, and ← / → change chapter. The popovers, the
-  // selection toolbar and a note card handle Escape first (on `document`
-  // or in React, both before `window`) and mark it handled, so Escape
-  // closes the innermost thing first. Nothing happens while a note is
-  // being written, so a stray key can't discard it.
+  // Escape leaves the book, ← / → change chapter and ↑ / ↓ scroll the
+  // text wherever the focus is (after clicking a chapter it's in the
+  // sidebar, where the browser would scroll that instead). The popovers,
+  // the selection toolbar and a note card handle Escape first (on
+  // `document` or in React, both before `window`) and mark it handled,
+  // so Escape closes the innermost thing first. Nothing happens while a
+  // note is being written, so a stray key can't discard it.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (isEditable(e.target) || textRef.current?.querySelector(".note-card textarea")) return;
+      const box = contentRef.current;
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && box) {
+        // Focus inside the text already scrolls it.
+        if (box.contains(e.target as Node)) return;
+        e.preventDefault();
+        readingRef.current = true;
+        box.scrollTop += e.key === "ArrowUp" ? -LINE_SCROLL : LINE_SCROLL;
         return;
       }
-      if (isEditable(e.target) || textRef.current?.querySelector(".note-card textarea")) return;
+      if (e.repeat) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onBack();
