@@ -6,9 +6,41 @@ is a GitHub release with installers for Linux and Windows.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-12
+
 ### Added
 
+- Covers: each book's cover is taken from its EPUB (or a PDF's first
+  page) and shown on the Books screen and Home. The Books screen has a
+  Grid view of cover cards; books without a cover get a generated one.
+- Reopen each book where you left it. A progress bar and "Chapter 2 of
+  3 · 52%" show how far through a book you are, and Home has a Continue
+  reading section.
+- Reader settings: a Display button sets text size, line spacing,
+  column width and a System, Light, Sepia or Dark theme. The text is
+  also set better, with old-style figures, a heading for the chapter
+  title and small caps on the first line.
+- Back up the library to one `.pitaka` file and restore it, with the
+  previous library kept as an undo.
+- Edit a book's title and author from the Books screen.
+- Search within a single book, from the Search screen's "Search in"
+  picker or the reader's Search this book button.
+- Filter the Books screen and sort it by title.
+- Keyboard shortcuts (press `?` for the list) and a File / View / Help
+  menu. The window opens larger, and remembers its size and position.
+- Progress, loading and empty states across the app, with icons and
+  motion that respects reduced-motion settings.
 - Home and the Help menu link to bug reports, ideas and email feedback.
+
+### Changed
+
+- Text, spacing and buttons use one consistent scale, and buttons have
+  a clear primary, secondary, quiet and danger style.
+
+### Fixed
+
+- Words that OCR'd PDFs break with soft hyphens are rejoined, and a
+  paragraph that spans three pages is no longer split in two.
 
 ## [0.4.0] - 2026-10-06
 
